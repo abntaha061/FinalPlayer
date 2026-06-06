@@ -122,4 +122,8 @@ class MediaRepository(context: Context) {
     suspend fun clearHistory() {
         mediaDao.clearHistory()
     }
+
+    suspend fun insertMediaFiles(files: List<MediaFile>) {
+        mediaDao.insertMediaFiles(files)
+    }
 }

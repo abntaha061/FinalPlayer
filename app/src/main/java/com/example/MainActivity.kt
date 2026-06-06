@@ -35,7 +35,10 @@ import com.example.ui.screens.BrowserScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.PlayerScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.MusicLyricsPlayerScreen
+import com.example.data.local.entities.MediaFile
 import com.example.ui.theme.MyApplicationTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -133,12 +136,43 @@ fun MainNavigationRoot() {
                 }
             }
         } else {
+            val isFullPlayerOpen by viewModel.isFullPlayerOpen.collectAsState()
+            val scope = rememberCoroutineScope()
+
+            val handlePlayFile: (String) -> Unit = { path ->
+                val file = java.io.File(path)
+                val ext = file.extension.lowercase()
+                val isAudio = ext in listOf("mp3", "wav", "flac", "ogg", "m4a", "aac", "wma", "opus") || path.startsWith("http")
+                if (isAudio) {
+                    scope.launch {
+                        val dbTrack = viewModel.getMediaByPath(path)
+                        val track = dbTrack ?: MediaFile(
+                            path = path,
+                            title = file.nameWithoutExtension,
+                            duration = 300000L,
+                            size = file.length(),
+                            dateModified = file.lastModified(),
+                            isVideo = false
+                        )
+                        viewModel.playAudio(track)
+                        viewModel.setFullPlayerOpen(true)
+                    }
+                } else {
+                    activePlayingFilePath = path
+                }
+            }
+
             // Full screen overlay player is active
             if (activePlayingFilePath != null) {
                 PlayerScreen(
                     filePath = activePlayingFilePath!!,
                     viewModel = viewModel,
                     onBack = { activePlayingFilePath = null }
+                )
+            } else if (isFullPlayerOpen) {
+                MusicLyricsPlayerScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.setFullPlayerOpen(false) }
                 )
             } else {
                 // Navigation components layout
@@ -150,7 +184,7 @@ fun MainNavigationRoot() {
                     composable("home") {
                         HomeScreen(
                             viewModel = viewModel,
-                            onPlayFile = { activePlayingFilePath = it },
+                            onPlayFile = handlePlayFile,
                             onNavigateToBrowser = { navController.navigate("browser") },
                             onNavigateToSettings = { navController.navigate("settings") }
                         )
@@ -158,7 +192,7 @@ fun MainNavigationRoot() {
                     composable("browser") {
                         BrowserScreen(
                             viewModel = viewModel,
-                            onPlayFile = { activePlayingFilePath = it },
+                            onPlayFile = handlePlayFile,
                             onBack = { navController.popBackStack() }
                         )
                     }

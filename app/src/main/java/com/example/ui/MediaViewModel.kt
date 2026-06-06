@@ -5,6 +5,9 @@ import android.content.Context
 import android.media.audiofx.Equalizer
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.example.data.local.entities.HistoryEntity
 import com.example.data.local.entities.MediaFile
 import com.example.data.local.entities.PlaylistEntity
@@ -15,12 +18,111 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
 class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MediaRepository(application)
     private val context = application.applicationContext
+
+    // --- BACKGROUND AUDIO PLAYER ---
+    @Volatile
+    private var audioPlayer: ExoPlayer? = null
+
+    private val _currentTrack = MutableStateFlow<MediaFile?>(null)
+    val currentTrack: StateFlow<MediaFile?> = _currentTrack.asStateFlow()
+
+    private val _isAudioPlaying = MutableStateFlow(false)
+    val isAudioPlaying: StateFlow<Boolean> = _isAudioPlaying.asStateFlow()
+
+    private val _audioProgress = MutableStateFlow(0L)
+    val audioProgress: StateFlow<Long> = _audioProgress.asStateFlow()
+
+    private val _audioDuration = MutableStateFlow(0L)
+    val audioDuration: StateFlow<Long> = _audioDuration.asStateFlow()
+
+    private val _isFullPlayerOpen = MutableStateFlow(false)
+    val isFullPlayerOpen: StateFlow<Boolean> = _isFullPlayerOpen.asStateFlow()
+
+    private fun getAudioPlayer(): ExoPlayer {
+        if (audioPlayer == null) {
+            audioPlayer = ExoPlayer.Builder(context).build().apply {
+                addListener(object : Player.Listener {
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        _isAudioPlaying.value = isPlaying
+                    }
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_READY) {
+                            _audioDuration.value = duration.coerceAtLeast(0L)
+                        } else if (state == Player.STATE_ENDED) {
+                            _isAudioPlaying.value = false
+                        }
+                    }
+                })
+            }
+            viewModelScope.launch {
+                while (true) {
+                    audioPlayer?.let {
+                        if (it.isPlaying) {
+                            _audioProgress.value = it.currentPosition
+                        }
+                    }
+                    delay(250)
+                }
+            }
+        }
+        return audioPlayer!!
+    }
+
+    fun playAudio(track: MediaFile) {
+        if (_currentTrack.value?.path == track.path && audioPlayer != null) {
+            toggleAudioPlayPause()
+            return
+        }
+        _currentTrack.value = track
+        viewModelScope.launch {
+            val player = getAudioPlayer()
+            player.stop()
+            player.clearMediaItems()
+            player.setMediaItem(MediaItem.fromUri(track.path))
+            player.prepare()
+            player.playWhenReady = true
+            _isAudioPlaying.value = true
+            addToHistory(track.path, 0L)
+        }
+    }
+
+    fun toggleAudioPlayPause() {
+        val player = getAudioPlayer()
+        if (player.isPlaying) {
+            player.pause()
+        } else {
+            player.play()
+        }
+    }
+
+    fun seekAudioTo(positionMs: Long) {
+        val player = getAudioPlayer()
+        player.seekTo(positionMs)
+        _audioProgress.value = positionMs
+    }
+
+    fun stopAudio() {
+        audioPlayer?.stop()
+        _isAudioPlaying.value = false
+        _currentTrack.value = null
+    }
+
+    fun setFullPlayerOpen(open: Boolean) {
+        _isFullPlayerOpen.value = open
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        audioPlayer?.release()
+        audioPlayer = null
+    }
 
     // --- REACTIVE STREAMS ---
     val videos = repository.videosFlow
@@ -60,8 +162,56 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             repository.triggerScan(context) { progress ->
                 _scanProgress.value = progress
             }
+            seedSampleTracksIfNeeded()
             _isScanning.value = false
         }
+    }
+
+    private suspend fun seedSampleTracksIfNeeded() {
+        try {
+            val audios = repository.audioFlow.first()
+            if (audios.isEmpty()) {
+                val samples = listOf(
+                    MediaFile(
+                        path = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+                        title = "أعطني الناي وغنّ (Give Me the Flute)",
+                        duration = 372000L,
+                        size = 5420000L,
+                        dateModified = System.currentTimeMillis(),
+                        isVideo = false,
+                        artist = "فيروز (Fairuz)",
+                        album = "القصائد الخالدة"
+                    ),
+                    MediaFile(
+                        path = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+                        title = "أ غداً ألقاك (Will I Meet You Tomorrow)",
+                        duration = 423000L,
+                        size = 6200000L,
+                        dateModified = System.currentTimeMillis() - 86400000L,
+                        isVideo = false,
+                        artist = "أم كلثوم (Umm Kulthum)",
+                        album = "روائع أم كلثوم"
+                    ),
+                    MediaFile(
+                        path = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+                        title = "قارئة الفنجان (The Cup Reader)",
+                        duration = 502000L,
+                        size = 7500000L,
+                        dateModified = System.currentTimeMillis() - 172800000L,
+                        isVideo = false,
+                        artist = "عبد الحليم حافظ (Abdel Halim)",
+                        album = "العندليب الأسمر"
+                    )
+                )
+                repository.insertMediaFiles(samples)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun getMediaByPath(path: String): MediaFile? {
+        return repository.getMediaByPath(path)
     }
 
     // --- MEDIA MANIPULATIONS ---

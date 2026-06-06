@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -223,28 +224,34 @@ fun HomeScreen(
             }
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                windowInsets = WindowInsets.navigationBars
-            ) {
-                NavigationBarItem(
-                    selected = selectedBottomTab == 0,
-                    onClick = { selectedBottomTab = 0 },
-                    icon = { Icon(Icons.Default.VideoLibrary, contentDescription = "Videos") },
-                    label = { Text("الفيديوهات") }
-                )
-                NavigationBarItem(
-                    selected = selectedBottomTab == 1,
-                    onClick = { selectedBottomTab = 1 },
-                    icon = { Icon(Icons.Default.MusicNote, contentDescription = "Music") },
-                    label = { Text("الموسيقى") }
-                )
-                NavigationBarItem(
-                    selected = selectedBottomTab == 2,
-                    onClick = { selectedBottomTab = 2 },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                    label = { Text("الإعدادات") }
-                )
+            Column {
+                val currentTrack by viewModel.currentTrack.collectAsState()
+                if (currentTrack != null) {
+                    MiniPlayer(viewModel = viewModel)
+                }
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    windowInsets = WindowInsets.navigationBars
+                ) {
+                    NavigationBarItem(
+                        selected = selectedBottomTab == 0,
+                        onClick = { selectedBottomTab = 0 },
+                        icon = { RedCircleIcon(Icons.Default.VideoLibrary, selectedBottomTab == 0, "Videos") },
+                        label = { Text("الفيديوهات") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedBottomTab == 1,
+                        onClick = { selectedBottomTab = 1 },
+                        icon = { RedCircleIcon(Icons.Default.MusicNote, selectedBottomTab == 1, "Music") },
+                        label = { Text("الموسيقى") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedBottomTab == 2,
+                        onClick = { selectedBottomTab = 2 },
+                        icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 2, "Settings") },
+                        label = { Text("الإعدادات") }
+                    )
+                }
             }
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -265,6 +272,7 @@ fun HomeScreen(
                             viewModel = viewModel,
                             layoutMode = layoutMode,
                             viewContentMode = viewContentMode,
+                            onViewContentModeChange = { viewContentMode = it },
                             sortOption = sortOption,
                             sortDirection = sortDirection,
                             searchQuery = searchQuery,
@@ -819,6 +827,7 @@ fun VideosAndFoldersTab(
     viewModel: MediaViewModel,
     layoutMode: String,
     viewContentMode: String,
+    onViewContentModeChange: (String) -> Unit,
     sortOption: String,
     sortDirection: String,
     searchQuery: String,
@@ -909,10 +918,9 @@ fun VideosAndFoldersTab(
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
                 val quickActions = listOf(
-                    QuickActionItem("الموسيقى", Icons.Default.MusicNote, Color(0xFFFF9800)) { onSelectedBottomTab(1) },
+                    QuickActionItem("FinalPlayer", Icons.Default.PlayCircle, Color(0xFFFFC107)) { onSelectedBottomTab(1) },
+                    QuickActionItem("المجلدات", Icons.Default.Folder, Color(0xFF4CAF50)) { onViewContentModeChange("FOLDERS") },
                     QuickActionItem("المنظف", Icons.Default.Brush, Color(0xFF00BCD4)) { onShowCleaner() },
-                    QuickActionItem("نقل ملفات", Icons.Default.CompareArrows, Color(0xFF2196F3)) { onShowTransfer() },
-                    QuickActionItem("الحالات", Icons.Default.FileDownload, Color(0xFF4CAF50)) { onShowStatusSaver() },
                     QuickActionItem("قوائمه", Icons.Default.PlaylistPlay, Color(0xFF9C27B0)) { onSelectedSubTabIndex(1) },
                     QuickActionItem("الخزنة", Icons.Default.Shield, Color(0xFF3F51B5)) { onSelectedSubTabIndex(2) }
                 )
@@ -1609,5 +1617,121 @@ fun PrivateVaultTab(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun MiniPlayer(viewModel: MediaViewModel) {
+    val currentTrack by viewModel.currentTrack.collectAsState()
+    val isPlaying by viewModel.isAudioPlaying.collectAsState()
+    val track = currentTrack ?: return
+
+    val colors = remember(track.id) { getAuroraColors(track) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color(0xFF1E1E26), Color(0xFF15151B))
+                )
+            )
+            .border(width = 0.5.dp, color = Color.White.copy(alpha = 0.08f))
+            .clickable { viewModel.setFullPlayerOpen(true) }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(colors.first, shape = CircleShape)
+                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.MusicNote,
+                contentDescription = "Track Art Place",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = track.title,
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = track.artist ?: "فنان غير معروف",
+                color = Color.LightGray.copy(alpha = 0.7f),
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        IconButton(
+            onClick = { viewModel.toggleAudioPlayPause() },
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), CircleShape)
+                .size(36.dp)
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = "Play/Pause audio stream",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        IconButton(
+            onClick = { viewModel.stopAudio() },
+            modifier = Modifier.size(36.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Stop stream audio",
+                tint = Color.LightGray.copy(alpha = 0.8f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun RedCircleIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isSelected: Boolean,
+    contentDescription: String
+) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .background(
+                color = if (isSelected) Color.Red else Color.Transparent,
+                shape = CircleShape
+            )
+            .border(
+                width = 1.5.dp,
+                color = if (isSelected) Color.Red else Color.Gray.copy(alpha = 0.3f),
+                shape = CircleShape
+            )
+            .padding(6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (isSelected) Color.White else Color.Gray,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
