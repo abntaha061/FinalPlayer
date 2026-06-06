@@ -1,0 +1,6 @@
+{
+  "name": "FinalPlayer",
+  "description": "Professional high-performance media player featuring differential catalog indexing, swipe gestures, localized subtitles, sleep timer, internal playlist engine, background audio playback with lock screen session manager, private secure folders, and custom audio equalizers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
