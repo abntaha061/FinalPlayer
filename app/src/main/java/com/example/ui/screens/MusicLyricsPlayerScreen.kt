@@ -57,29 +57,36 @@ fun MusicLyricsPlayerScreen(
 
     val track = currentTrack ?: return
 
-    val colors = remember(track.id) { getAuroraColors(track) }
+    val baseColors = remember(track.id) { getAuroraColors(track) }
+    var colors by remember(track.id) { mutableStateOf(baseColors) }
     val lyrics = remember(track.id) { LyricsProvider.getLyricsForTrack(track.title, track.artist, track.path) }
 
     var albumArtBitmap by remember(track.path) { mutableStateOf<android.graphics.Bitmap?>(null) }
     LaunchedEffect(track.path) {
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val retriever = MediaMetadataRetriever()
+            var bitmapRes: android.graphics.Bitmap? = null
+            var colorsRes: AuroraColors? = null
             try {
                 retriever.setDataSource(track.path)
                 val art = retriever.embeddedPicture
                 if (art != null) {
-                    albumArtBitmap = BitmapFactory.decodeByteArray(art, 0, art.size)
-                } else {
-                    albumArtBitmap = null
+                    val bitmap = BitmapFactory.decodeByteArray(art, 0, art.size)
+                    bitmapRes = bitmap
+                    colorsRes = extractAuroraColorsFromBitmap(bitmap)
                 }
             } catch (e: Exception) {
-                albumArtBitmap = null
+                // error
             } finally {
                 try {
                     retriever.release()
                 } catch (e: Exception) {}
             }
+            bitmapRes to colorsRes
         }
+
+        albumArtBitmap = result.first
+        colors = result.second ?: baseColors
     }
 
     // Active lyric calculation
@@ -781,4 +788,110 @@ fun getAuroraColors(track: MediaFile): AuroraColors {
             )
         }
     }
+}
+
+fun extractAuroraColorsFromBitmap(bitmap: android.graphics.Bitmap): AuroraColors? {
+    try {
+        // Downscale bitmap to 24x24 for fast and lightweight pixel analysis
+        val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, 24, 24, false)
+        val pixels = IntArray(scaled.width * scaled.height)
+        scaled.getPixels(pixels, 0, scaled.width, 0, 0, scaled.width, scaled.height)
+        
+        val hsvList = ArrayList<Triple<Int, FloatArray, Float>>()
+        
+        for (color in pixels) {
+            val alpha = (color shr 24) and 0xff
+            if (alpha < 200) continue
+            
+            val r = (color shr 16) and 0xff
+            val g = (color shr 8) and 0xff
+            val b = color and 0xff
+            
+            val max = maxOf(r, g, b)
+            val min = minOf(r, g, b)
+            val diff = max - min
+            
+            if (max < 30 || min > 225 || diff < 15) {
+                continue
+            }
+            
+            val hsv = FloatArray(3)
+            android.graphics.Color.RGBToHSV(r, g, b, hsv)
+            val weight = hsv[1] * hsv[2]
+            hsvList.add(Triple(color, hsv, weight))
+        }
+        
+        if (hsvList.size < 10) {
+            hsvList.clear()
+            for (color in pixels) {
+                val r = (color shr 16) and 0xff
+                val g = (color shr 8) and 0xff
+                val b = color and 0xff
+                val hsv = FloatArray(3)
+                android.graphics.Color.RGBToHSV(r, g, b, hsv)
+                hsvList.add(Triple(color, hsv, 1f))
+            }
+        }
+        
+        val buckets = Array(6) { ArrayList<Triple<Int, FloatArray, Float>>() }
+        for (item in hsvList) {
+            val hue = item.second[0]
+            val bucketIdx = (hue / 60.0f).toInt().coerceIn(0, 5)
+            buckets[bucketIdx].add(item)
+        }
+        
+        val activeBuckets = buckets
+            .mapIndexed { index, list -> index to list.sumOf { it.third.toDouble() } }
+            .filter { it.second > 0 }
+            .sortedByDescending { it.second }
+            
+        val extractedColors = ArrayList<Color>()
+        
+        for (bucketInfo in activeBuckets) {
+            val bucketIdx = bucketInfo.first
+            val bestColorItem = buckets[bucketIdx].maxByOrNull { it.third }
+            if (bestColorItem != null) {
+                extractedColors.add(Color(bestColorItem.first))
+            }
+            if (extractedColors.size >= 4) break
+        }
+        
+        if (scaled != bitmap) {
+            scaled.recycle()
+        }
+        
+        if (extractedColors.size >= 2) {
+            val main1 = extractedColors[0]
+            val main2 = extractedColors[1]
+            
+            val hsv1 = FloatArray(3)
+            android.graphics.Color.RGBToHSV((main1.red * 255).toInt(), (main1.green * 255).toInt(), (main1.blue * 255).toInt(), hsv1)
+            val hsv2 = FloatArray(3)
+            android.graphics.Color.RGBToHSV((main2.red * 255).toInt(), (main2.green * 255).toInt(), (main2.blue * 255).toInt(), hsv2)
+            
+            val averageHue = (hsv1[0] + hsv2[0]) / 2f
+            val c3 = Color.hsv(averageHue, maxOf(hsv1[1], hsv2[1]) * 0.9f, maxOf(hsv1[2], hsv2[2]) * 0.8f)
+            val c4 = Color.hsv((hsv1[0] + 180f) % 360f, hsv1[1] * 0.4f, maxOf(hsv1[2], hsv2[2]) * 0.3f + 0.15f)
+            
+            return AuroraColors(
+                c1 = main1,
+                c2 = main2,
+                c3 = c3,
+                c4 = c4
+            )
+        } else if (extractedColors.size == 1) {
+            val main1 = extractedColors[0]
+            val hsv = FloatArray(3)
+            android.graphics.Color.RGBToHSV((main1.red * 255).toInt(), (main1.green * 255).toInt(), (main1.blue * 255).toInt(), hsv)
+            
+            val c1 = main1
+            val c2 = Color.hsv((hsv[0] + 60f) % 360f, hsv[1], hsv[2])
+            val c3 = Color.hsv((hsv[0] + 120f) % 360f, hsv[1] * 0.9f, hsv[2] * 0.8f)
+            val c4 = Color.hsv((hsv[0] + 240f) % 360f, hsv[1] * 0.8f, hsv[2] * 0.6f)
+            return AuroraColors(c1, c2, c3, c4)
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return null
 }
