@@ -41,6 +41,11 @@ import com.example.data.local.entities.ScannedFolder
 import com.example.ui.MediaViewModel
 import com.example.ui.components.TrackArtwork
 import java.io.File
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1133,13 +1138,50 @@ fun VideosAndFoldersTab(
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayCircle,
-                                contentDescription = "Video marker icon",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(42.dp)
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
+                            val thumbnail = rememberVideoThumbnail(video.path)
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 110.dp, height = 65.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.Black.copy(alpha = 0.3f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (thumbnail != null) {
+                                    Image(
+                                        bitmap = thumbnail,
+                                        contentDescription = "Video thumbnail",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(
+                                                brush = Brush.verticalGradient(
+                                                    colors = listOf(
+                                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                                                    )
+                                                )
+                                            )
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.PlayArrow,
+                                        contentDescription = "Play icon overlay",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
                              Column(modifier = Modifier.weight(1f)) {
                                  Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                      Text(
@@ -1180,66 +1222,7 @@ fun VideosAndFoldersTab(
                                          }
                                      }
 
-                                     // Offset 3-dots actions menu
-                                     var isMenuExpanded by remember { mutableStateOf(false) }
-                                     Box {
-                                         IconButton(
-                                             onClick = { isMenuExpanded = true },
-                                             modifier = Modifier.size(32.dp)
-                                         ) {
-                                             Icon(
-                                                 imageVector = Icons.Default.MoreVert,
-                                                 contentDescription = "Options menu",
-                                                 tint = Color.Gray
-                                             )
-                                         }
-                                         DropdownMenu(
-                                             expanded = isMenuExpanded,
-                                             onDismissRequest = { isMenuExpanded = false }
-                                         ) {
-                                             DropdownMenuItem(
-                                                 text = { Text("تسمية الملف", fontSize = 13.sp) },
-                                                 leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                                 onClick = {
-                                                     isMenuExpanded = false
-                                                     videoToRename = video
-                                                     newNameText = video.title
-                                                 }
-                                             )
-                                             DropdownMenuItem(
-                                                 text = { Text("حذف الملف", fontSize = 13.sp) },
-                                                 leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
-                                                 onClick = {
-                                                     isMenuExpanded = false
-                                                     videoToDelete = video
-                                                 }
-                                             )
-                                             DropdownMenuItem(
-                                                 text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
-                                                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                                 onClick = {
-                                                     isMenuExpanded = false
-                                                     viewModel.setPrivateStatus(video, true)
-                                                 }
-                                             )
-                                             DropdownMenuItem(
-                                                 text = { Text(if (video.isFavorite) "إزالة من المفضلة" else "إضافة إلى المفضلة", fontSize = 13.sp) },
-                                                 leadingIcon = { 
-                                                     Icon(
-                                                         imageVector = if (video.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
-                                                         contentDescription = null, 
-                                                         modifier = Modifier.size(16.dp),
-                                                         tint = if (video.isFavorite) Color.Red else Color.Unspecified
-                                                     ) 
-                                                 },
-                                                 onClick = {
-                                                     isMenuExpanded = false
-                                                     viewModel.toggleFavorite(video)
-                                                 }
-                                             )
-                                         }
-                                     }
-                                 }
+                                  }
                                  Spacer(modifier = Modifier.height(4.dp))
                                 val secs = video.duration / 1000
                                 Text(
@@ -1249,6 +1232,66 @@ fun VideosAndFoldersTab(
                                     fontSize = 11.sp,
                                     color = Color.Gray
                                 )
+                            }
+
+                            // Offset 3-dots actions menu
+                            var isMenuExpanded by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(
+                                    onClick = { isMenuExpanded = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "Options menu",
+                                        tint = Color.Gray
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = isMenuExpanded,
+                                    onDismissRequest = { isMenuExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("تسمية الملف", fontSize = 13.sp) },
+                                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            isMenuExpanded = false
+                                            videoToRename = video
+                                            newNameText = video.title
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("حذف الملف", fontSize = 13.sp) },
+                                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
+                                        onClick = {
+                                            isMenuExpanded = false
+                                            videoToDelete = video
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
+                                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            isMenuExpanded = false
+                                            viewModel.setPrivateStatus(video, true)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(if (video.isFavorite) "إزالة من المفضلة" else "إضافة إلى المفضلة", fontSize = 13.sp) },
+                                        leadingIcon = { 
+                                            Icon(
+                                                imageVector = if (video.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
+                                                contentDescription = null, 
+                                                modifier = Modifier.size(16.dp),
+                                                tint = if (video.isFavorite) Color.Red else Color.Unspecified
+                                            ) 
+                                        },
+                                        onClick = {
+                                            isMenuExpanded = false
+                                            viewModel.toggleFavorite(video)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -1359,6 +1402,38 @@ fun VideosAndFoldersTab(
 }
 
 @Composable
+fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.ImageBitmap? {
+    if (videoPath == null) return null
+    var bitmap by remember(videoPath) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(videoPath) {
+        withContext(Dispatchers.IO) {
+            try {
+                android.media.MediaMetadataRetriever().use { retriever ->
+                    retriever.setDataSource(videoPath)
+                    val frame = retriever.getFrameAtTime(1000000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: retriever.frameAtTime
+                    if (frame != null) {
+                        bitmap = frame.asImageBitmap()
+                    }
+                }
+            } catch (e: Exception) {
+                try {
+                    android.media.MediaMetadataRetriever().use { retriever ->
+                        retriever.setDataSource(videoPath)
+                        val frame = retriever.frameAtTime
+                        if (frame != null) {
+                            bitmap = frame.asImageBitmap()
+                        }
+                    }
+                } catch (ex: Exception) {
+                    // Suppress and fallback
+                }
+            }
+        }
+    }
+    return bitmap
+}
+
+@Composable
 fun VideoGridItem(
     video: MediaFile,
     onClick: () -> Unit,
@@ -1368,6 +1443,7 @@ fun VideoGridItem(
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val thumbnail = rememberVideoThumbnail(video.path)
     Card(
         modifier = modifier
             .padding(vertical = 6.dp)
@@ -1381,16 +1457,30 @@ fun VideoGridItem(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(105.dp)
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f)
-                            )
-                        )
-                    ),
+                    .background(Color.Black.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
             ) {
+                if (thumbnail != null) {
+                    Image(
+                        bitmap = thumbnail,
+                        contentDescription = "Video thumbnail",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f)
+                                    )
+                                )
+                            )
+                    )
+                }
                 Icon(
                     Icons.Default.PlayCircle,
                     contentDescription = "Play video badge",
@@ -1422,12 +1512,6 @@ fun VideoGridItem(
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = video.title,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
                     val hasSubtitles = remember(video.path) {
                         try {
                             val vf = java.io.File(video.path)
@@ -1441,20 +1525,33 @@ fun VideoGridItem(
                             } else false
                         } catch (e: Exception) { false }
                     }
-                    if (hasSubtitles) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .background(Color(0xFF007AFF).copy(alpha = 0.15f), RoundedCornerShape(3.dp))
-                                .border(0.5.dp, Color(0xFF007AFF), RoundedCornerShape(3.dp))
-                                .padding(horizontal = 3.dp, vertical = 0.5.dp)
-                        ) {
-                            Text(
-                                text = "SRT",
-                                color = Color(0xFF007AFF),
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = video.title,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (hasSubtitles) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFF007AFF).copy(alpha = 0.15f), RoundedCornerShape(3.dp))
+                                    .border(0.5.dp, Color(0xFF007AFF), RoundedCornerShape(3.dp))
+                                    .padding(horizontal = 3.dp, vertical = 0.5.dp)
+                            ) {
+                                Text(
+                                    text = "SRT",
+                                    color = Color(0xFF007AFF),
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
 
@@ -1710,12 +1807,49 @@ fun PlaylistsAndFavoritesTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (favorite.isVideo) {
-                        Icon(
-                            Icons.Default.PlayCircle,
-                            contentDescription = "Media icon type",
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(32.dp)
-                        )
+                        val thumbnail = rememberVideoThumbnail(favorite.path)
+                        Box(
+                            modifier = Modifier
+                                .size(width = 60.dp, height = 40.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color.Black.copy(alpha = 0.3f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (thumbnail != null) {
+                                Image(
+                                    bitmap = thumbnail,
+                                    contentDescription = "Video thumbnail",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(
+                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                                                )
+                                            )
+                                        )
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = "Play icon overlay",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(10.dp)
+                                )
+                            }
+                        }
                     } else {
                         TrackArtwork(
                             filePath = favorite.path,
