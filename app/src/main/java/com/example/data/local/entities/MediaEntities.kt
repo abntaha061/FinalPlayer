@@ -12,7 +12,10 @@ data class ScannedFolder(
     val lastScannedAt: Long
 ) : Serializable
 
-@Entity(tableName = "media_files")
+@Entity(
+    tableName = "media_files",
+    indices = [androidx.room.Index(value = ["path"], unique = true)]
+)
 data class MediaFile(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val path: String,

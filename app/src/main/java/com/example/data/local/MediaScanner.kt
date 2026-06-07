@@ -11,13 +11,17 @@ import kotlinx.coroutines.flow.first
 import java.io.File
 
 class MediaScanner(private val mediaDao: MediaDao) {
+    private val scanMutex = kotlinx.coroutines.sync.Mutex()
 
     // Comprehensive real-time scan merging MediaStore with direct Filesystem crawling
     suspend fun scanMedia(context: Context, onProgress: (String) -> Unit = {}): Int = withContext(Dispatchers.IO) {
-        Log.d("MediaScanner", "Initiating highly robust local file and MediaStore complete sync.")
-        onProgress("جاري فحص جميع ملفات ومجلدات الوسائط على جهازك 🔍...")
-
+        if (!scanMutex.tryLock()) {
+            Log.d("MediaScanner", "MediaScanner: scan already in progress, skipping duplicate trigger.")
+            return@withContext 0
+        }
         try {
+            Log.d("MediaScanner", "Initiating highly robust local file and MediaStore complete sync.")
+            onProgress("جاري فحص جميع ملفات ومجلدات الوسائط على جهازك 🔍...")
             // 1. Fetch from standard Android MediaStore database
             val mediaStoreFiles = queryAllMediaStoreItems(context)
             Log.d("MediaScanner", "Found ${mediaStoreFiles.size} items in MediaStore.")
@@ -95,6 +99,8 @@ class MediaScanner(private val mediaDao: MediaDao) {
             Log.e("MediaScanner", "Storage comprehensive sync failure", e)
             onProgress("فشل في مسح مجلدات التخزين!")
             return@withContext 0
+        } finally {
+            scanMutex.unlock()
         }
     }
 
@@ -131,7 +137,7 @@ class MediaScanner(private val mediaDao: MediaDao) {
                 scanDirectoryFiles(file, foundFiles, visitedDirs)
             } else if (file.isFile) {
                 val ext = file.extension.lowercase()
-                val path = file.absolutePath
+                val path = try { file.canonicalPath } catch (e: Exception) { file.absolutePath }
                 val size = file.length()
 
                 if (size < 1024) continue // ignore small corrupt assets less than 1KB
@@ -256,8 +262,9 @@ class MediaScanner(private val mediaDao: MediaDao) {
                 val heightCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
 
                 while (cursor.moveToNext()) {
-                    val path = cursor.getString(dataCol) ?: continue
-                    val file = File(path)
+                    val rawPath = cursor.getString(dataCol) ?: continue
+                    val file = File(rawPath)
+                    val path = try { file.canonicalPath } catch (e: Exception) { file.absolutePath }
                     val dateMod = cursor.getLong(dateModCol) * 1000L
                     foundFiles.add(
                         MediaFile(
@@ -304,8 +311,9 @@ class MediaScanner(private val mediaDao: MediaDao) {
                 val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
 
                 while (cursor.moveToNext()) {
-                    val path = cursor.getString(dataCol) ?: continue
-                    val file = File(path)
+                    val rawPath = cursor.getString(dataCol) ?: continue
+                    val file = File(rawPath)
+                    val path = try { file.canonicalPath } catch (e: Exception) { file.absolutePath }
                     val dateMod = cursor.getLong(dateModCol) * 1000L
                     foundFiles.add(
                         MediaFile(
