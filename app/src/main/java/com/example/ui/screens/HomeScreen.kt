@@ -177,7 +177,7 @@ fun HomeScreen(
                     )
 
                     // Incremental scan alert progress banner
-                    AnimatedVisibility(visible = isScanning) {
+                    AnimatedVisibility(visible = false) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -840,6 +840,9 @@ fun VideosAndFoldersTab(
     onShowCleaner: () -> Unit
 ) {
     var selectedFolderPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var videoToRename by remember { mutableStateOf<MediaFile?>(null) }
+    var newNameText by remember { mutableStateOf("") }
+    var videoToDelete by remember { mutableStateOf<MediaFile?>(null) }
 
     // Derive folders list if database list is empty as a failover
     val derivedFoldersList = remember(videoList, scannedFolders) {
@@ -1143,8 +1146,8 @@ fun VideosAndFoldersTab(
                                          text = video.title,
                                          fontSize = 14.sp,
                                          fontWeight = FontWeight.SemiBold,
-                                         maxLines = 1,
-                                         overflow = TextOverflow.Ellipsis,
+
+
                                          modifier = Modifier.weight(1f, fill = false)
                                      )
                                      val hasSubtitles = remember(video.path) {
@@ -1176,6 +1179,66 @@ fun VideosAndFoldersTab(
                                              )
                                          }
                                      }
+
+                                     // Offset 3-dots actions menu
+                                     var isMenuExpanded by remember { mutableStateOf(false) }
+                                     Box {
+                                         IconButton(
+                                             onClick = { isMenuExpanded = true },
+                                             modifier = Modifier.size(32.dp)
+                                         ) {
+                                             Icon(
+                                                 imageVector = Icons.Default.MoreVert,
+                                                 contentDescription = "Options menu",
+                                                 tint = Color.Gray
+                                             )
+                                         }
+                                         DropdownMenu(
+                                             expanded = isMenuExpanded,
+                                             onDismissRequest = { isMenuExpanded = false }
+                                         ) {
+                                             DropdownMenuItem(
+                                                 text = { Text("تسمية الملف", fontSize = 13.sp) },
+                                                 leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                                 onClick = {
+                                                     isMenuExpanded = false
+                                                     videoToRename = video
+                                                     newNameText = video.title
+                                                 }
+                                             )
+                                             DropdownMenuItem(
+                                                 text = { Text("حذف الملف", fontSize = 13.sp) },
+                                                 leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
+                                                 onClick = {
+                                                     isMenuExpanded = false
+                                                     videoToDelete = video
+                                                 }
+                                             )
+                                             DropdownMenuItem(
+                                                 text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
+                                                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                                 onClick = {
+                                                     isMenuExpanded = false
+                                                     viewModel.setPrivateStatus(video, true)
+                                                 }
+                                             )
+                                             DropdownMenuItem(
+                                                 text = { Text(if (video.isFavorite) "إزالة من المفضلة" else "إضافة إلى المفضلة", fontSize = 13.sp) },
+                                                 leadingIcon = { 
+                                                     Icon(
+                                                         imageVector = if (video.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
+                                                         contentDescription = null, 
+                                                         modifier = Modifier.size(16.dp),
+                                                         tint = if (video.isFavorite) Color.Red else Color.Unspecified
+                                                     ) 
+                                                 },
+                                                 onClick = {
+                                                     isMenuExpanded = false
+                                                     viewModel.toggleFavorite(video)
+                                                 }
+                                             )
+                                         }
+                                     }
                                  }
                                  Spacer(modifier = Modifier.height(4.dp))
                                 val secs = video.duration / 1000
@@ -1185,22 +1248,6 @@ fun VideosAndFoldersTab(
                                     ),
                                     fontSize = 11.sp,
                                     color = Color.Gray
-                                )
-                            }
-                            // Fav Toggle
-                            IconButton(onClick = { viewModel.toggleFavorite(video) }) {
-                                Icon(
-                                    imageVector = if (video.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = "Toggle favorite icon selector",
-                                    tint = if (video.isFavorite) Color.Red else Color.LightGray
-                                )
-                            }
-                            // Safe Private Vault option
-                            IconButton(onClick = { viewModel.setPrivateStatus(video, true) }) {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = "Move to key password secure vault",
-                                    tint = Color.LightGray
                                 )
                             }
                         }
@@ -1221,6 +1268,13 @@ fun VideosAndFoldersTab(
                                         onClick = { onPlayFile(video.path) },
                                         onFavoriteClick = { viewModel.toggleFavorite(video) },
                                         onVaultClick = { viewModel.setPrivateStatus(video, true) },
+                                        onRenameClick = {
+                                            videoToRename = video
+                                            newNameText = video.title
+                                        },
+                                        onDeleteClick = {
+                                            videoToDelete = video
+                                        },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -1234,6 +1288,74 @@ fun VideosAndFoldersTab(
             }
         }
     }
+
+    // --- Rename Dialog ---
+    if (videoToRename != null) {
+        AlertDialog(
+            onDismissRequest = { videoToRename = null },
+            title = { Text("إعادة تسمية الملف", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("أدخل الاسم الجديد للملف:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newNameText,
+                        onValueChange = { newNameText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val currentVideo = videoToRename
+                        if (currentVideo != null && newNameText.isNotBlank()) {
+                            viewModel.renameFile(currentVideo, newNameText)
+                        }
+                        videoToRename = null
+                    }
+                ) {
+                    Text("حفظ")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { videoToRename = null }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
+    // --- Delete Confirmation Dialog ---
+    if (videoToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { videoToDelete = null },
+            title = { Text("حذف الملف", fontWeight = FontWeight.Bold, color = Color.Red) },
+            text = {
+                Text("هل أنت متأكد من رغبتك في حذف هذا الملف بشكل نهائي من جهازك؟")
+            },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                    onClick = {
+                        val currentVideo = videoToDelete
+                        if (currentVideo != null) {
+                            viewModel.deleteFile(currentVideo)
+                        }
+                        videoToDelete = null
+                    }
+                ) {
+                    Text("حذف", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { videoToDelete = null }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -1242,6 +1364,8 @@ fun VideoGridItem(
     onClick: () -> Unit,
     onFavoriteClick: () -> Unit,
     onVaultClick: () -> Unit,
+    onRenameClick: () -> Unit,
+    onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -1302,8 +1426,6 @@ fun VideoGridItem(
                         text = video.title,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     val hasSubtitles = remember(video.path) {
@@ -1335,6 +1457,66 @@ fun VideoGridItem(
                             )
                         }
                     }
+
+                    // 3-dots Menu trigger
+                    var isMenuExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(
+                            onClick = { isMenuExpanded = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Options menu",
+                                tint = Color.Gray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = isMenuExpanded,
+                            onDismissRequest = { isMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("تسمية الملف", fontSize = 13.sp) },
+                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                onClick = {
+                                    isMenuExpanded = false
+                                    onRenameClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("حذف الملف", fontSize = 13.sp) },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
+                                onClick = {
+                                    isMenuExpanded = false
+                                    onDeleteClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
+                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                onClick = {
+                                    isMenuExpanded = false
+                                    onVaultClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (video.isFavorite) "إزالة من المفضلة" else "إضافة إلى المفضلة", fontSize = 13.sp) },
+                                leadingIcon = { 
+                                    Icon(
+                                        imageVector = if (video.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
+                                        contentDescription = null, 
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (video.isFavorite) Color.Red else Color.Unspecified
+                                    ) 
+                                },
+                                onClick = {
+                                    isMenuExpanded = false
+                                    onFavoriteClick()
+                                }
+                            )
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(
@@ -1347,24 +1529,6 @@ fun VideoGridItem(
                         fontSize = 11.sp,
                         color = Color.Gray
                     )
-                    Row {
-                        IconButton(onClick = onFavoriteClick, modifier = Modifier.size(24.dp)) {
-                            Icon(
-                                imageVector = if (video.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "Favorite status click option",
-                                tint = if (video.isFavorite) Color.Red else Color.LightGray,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                        IconButton(onClick = onVaultClick, modifier = Modifier.size(24.dp)) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Lock in private suitcase option",
-                                tint = Color.LightGray,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                    }
                 }
             }
         }
