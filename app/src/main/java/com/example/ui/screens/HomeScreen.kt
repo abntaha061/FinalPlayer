@@ -191,11 +191,11 @@ fun HomeScreen(
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    "جاري مسح الملفات الجديدة... (Scanning media library)",
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    fontSize = 12.sp
-                                )
+                                 Text(
+                                     text = if (scanProgressText.isNotEmpty()) scanProgressText else "جاري مسح الملفات الجديدة... (Scanning media library)",
+                                     color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                     fontSize = 12.sp
+                                 )
                             }
                         }
                     }
@@ -1137,15 +1137,47 @@ fun VideosAndFoldersTab(
                                 modifier = Modifier.size(42.dp)
                             )
                             Spacer(modifier = Modifier.width(16.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = video.title,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
+                             Column(modifier = Modifier.weight(1f)) {
+                                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                     Text(
+                                         text = video.title,
+                                         fontSize = 14.sp,
+                                         fontWeight = FontWeight.SemiBold,
+                                         maxLines = 1,
+                                         overflow = TextOverflow.Ellipsis,
+                                         modifier = Modifier.weight(1f, fill = false)
+                                     )
+                                     val hasSubtitles = remember(video.path) {
+                                         try {
+                                             val vf = java.io.File(video.path)
+                                             val parent = vf.parentFile
+                                             if (parent != null && parent.exists()) {
+                                                 val baseName = vf.nameWithoutExtension
+                                                 parent.listFiles()?.any { sib ->
+                                                     val sName = sib.name
+                                                     sName.startsWith(baseName) && (sName.endsWith(".srt", ignoreCase = true) || sName.endsWith(".vtt", ignoreCase = true))
+                                                 } ?: false
+                                             } else false
+                                         } catch (e: Exception) { false }
+                                     }
+                                     if (hasSubtitles) {
+                                         Spacer(modifier = Modifier.width(6.dp))
+                                         Box(
+                                             modifier = Modifier
+                                                 .background(Color(0xFF007AFF).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                                 .border(0.5.dp, Color(0xFF007AFF), RoundedCornerShape(4.dp))
+                                                 .padding(horizontal = 4.dp, vertical = 1.dp)
+                                         ) {
+                                             Text(
+                                                 text = "SRT",
+                                                 color = Color(0xFF007AFF),
+                                                 fontSize = 9.sp,
+                                                 fontWeight = FontWeight.Bold
+                                             )
+                                         }
+                                     }
+                                 }
+                                 Spacer(modifier = Modifier.height(4.dp))
                                 val secs = video.duration / 1000
                                 Text(
                                     text = "المدة: %d:%02d | الحجم: %.1f MB".format(
@@ -1262,13 +1294,48 @@ fun VideoGridItem(
 
             // Information elements
             Column(modifier = Modifier.padding(8.dp)) {
-                Text(
-                    text = video.title,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = video.title,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    val hasSubtitles = remember(video.path) {
+                        try {
+                            val vf = java.io.File(video.path)
+                            val parent = vf.parentFile
+                            if (parent != null && parent.exists()) {
+                                val baseName = vf.nameWithoutExtension
+                                parent.listFiles()?.any { sib ->
+                                    val sName = sib.name
+                                    sName.startsWith(baseName) && (sName.endsWith(".srt", ignoreCase = true) || sName.endsWith(".vtt", ignoreCase = true))
+                                } ?: false
+                            } else false
+                        } catch (e: Exception) { false }
+                    }
+                    if (hasSubtitles) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFF007AFF).copy(alpha = 0.15f), RoundedCornerShape(3.dp))
+                                .border(0.5.dp, Color(0xFF007AFF), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 3.dp, vertical = 0.5.dp)
+                        ) {
+                            Text(
+                                text = "SRT",
+                                color = Color(0xFF007AFF),
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),

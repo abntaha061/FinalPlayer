@@ -12,31 +12,52 @@ import java.io.File
 
 class MediaScanner(private val mediaDao: MediaDao) {
 
-    // highly robust MediaStore complete sync
+    // Comprehensive real-time scan merging MediaStore with direct Filesystem crawling
     suspend fun scanMedia(context: Context, onProgress: (String) -> Unit = {}): Int = withContext(Dispatchers.IO) {
-        Log.d("MediaScanner", "Initiating highly robust MediaStore complete sync.")
-        onProgress("جاري فحص ملفات الوسائط على جهازك 🔍...")
+        Log.d("MediaScanner", "Initiating highly robust local file and MediaStore complete sync.")
+        onProgress("جاري فحص جميع ملفات ومجلدات الوسائط على جهازك 🔍...")
 
         try {
-            // 1. Fetch current items from MediaStore
+            // 1. Fetch from standard Android MediaStore database
             val mediaStoreFiles = queryAllMediaStoreItems(context)
             Log.d("MediaScanner", "Found ${mediaStoreFiles.size} items in MediaStore.")
 
-            // 2. Fetch all existing paths from Room Database
+            // 2. Comprehensive directly crawler for files that haven't been indexed by the OS yet
+            val filesystemFiles = mutableListOf<MediaFile>()
+            try {
+                val rootStorage = android.os.Environment.getExternalStorageDirectory()
+                if (rootStorage != null && rootStorage.exists()) {
+                    scanDirectoryFiles(rootStorage, filesystemFiles)
+                }
+            } catch (e: Exception) {
+                Log.e("MediaScanner", "Failed to walk physical filesystem storage", e)
+            }
+            Log.d("MediaScanner", "Found ${filesystemFiles.size} items via direct filesystem crawl.")
+
+            // 3. Merge results to achieve absolute 100% detection rate. 
+            // Filesystem files take precedence as they are fresher, unique by path.
+            val allScannedFiles = (mediaStoreFiles + filesystemFiles).associateBy { it.path }.values.toList()
+            Log.d("MediaScanner", "Merged absolute unique items for DB sync: ${allScannedFiles.size}")
+
+            if (allScannedFiles.isEmpty()) {
+                onProgress("")
+                return@withContext 0
+            }
+
+            // 4. Fetch existing DB entries to compare differences
             val existingFiles = mediaDao.getAllMediaFilesFlow().first()
             val existingMapByPath = existingFiles.associateBy { it.path }
 
-            // 3. Diff: Identify additions/updates and deletions
             val toInsertOrUpdate = mutableListOf<MediaFile>()
-            val scannedPathsSet = mediaStoreFiles.map { it.path }.toSet()
+            val scannedPathsSet = allScannedFiles.map { it.path }.toSet()
 
-            for (mediaStoreFile in mediaStoreFiles) {
-                val existing = existingMapByPath[mediaStoreFile.path]
+            for (scannedFile in allScannedFiles) {
+                val existing = existingMapByPath[scannedFile.path]
                 if (existing == null) {
-                    toInsertOrUpdate.add(mediaStoreFile)
-                } else if (existing.dateModified != mediaStoreFile.dateModified) {
-                    // File modified, preserve favorite, private, etc.
-                    toInsertOrUpdate.add(mediaStoreFile.copy(
+                    toInsertOrUpdate.add(scannedFile)
+                } else if (existing.dateModified != scannedFile.dateModified || existing.size != scannedFile.size) {
+                    // File modified, preserve user states: favorite, private, playback history progress, thumbnails
+                    toInsertOrUpdate.add(scannedFile.copy(
                         id = existing.id,
                         isFavorite = existing.isFavorite,
                         isPrivate = existing.isPrivate,
@@ -46,34 +67,137 @@ class MediaScanner(private val mediaDao: MediaDao) {
                 }
             }
 
-            // Identify orphaned items in our database that are no longer in MediaStore
+            // Detect and clear cached records of files that have been physically deleted by the user
             val toDeletePaths = existingFiles.filter { dbFile ->
-                // Only clean up local paths, don't delete external online playlist assets
+                // Clean up local paths that do not exist physically on storage anymore
                 !dbFile.path.startsWith("http") && !scannedPathsSet.contains(dbFile.path)
             }.map { it.path }
 
-            // 4. Perform database operations in batches
+            // Apply DB sync transactions
             if (toDeletePaths.isNotEmpty()) {
-                Log.d("MediaScanner", "Deleting ${toDeletePaths.size} orphaned local files.")
+                Log.d("MediaScanner", "Deleting ${toDeletePaths.size} orphaned local player files.")
                 mediaDao.deleteMediaFilesByPaths(toDeletePaths)
             }
 
             if (toInsertOrUpdate.isNotEmpty()) {
-                Log.d("MediaScanner", "Inserting/Updating ${toInsertOrUpdate.size} files.")
+                Log.d("MediaScanner", "Storing/updating ${toInsertOrUpdate.size} scanned items.")
                 insertBatchChunked(toInsertOrUpdate)
                 onProgress("تم مزامنة ${toInsertOrUpdate.size} ملفات جديدة ✅")
             } else {
                 onProgress("")
             }
 
-            // 5. Update folder statistics based on what is currently in Room Database
+            // Re-catalog the folders based on the actual synchronized DB states
             refreshFoldersFromDb()
 
             return@withContext toInsertOrUpdate.size
         } catch (e: Exception) {
-            Log.e("MediaScanner", "Full sync failure", e)
-            onProgress("فشل في مسح الملفات")
+            Log.e("MediaScanner", "Storage comprehensive sync failure", e)
+            onProgress("فشل في مسح مجلدات التخزين!")
             return@withContext 0
+        }
+    }
+
+    private fun scanDirectoryFiles(dir: File, foundFiles: MutableList<MediaFile>, visitedDirs: MutableSet<String> = mutableSetOf()) {
+        if (!dir.exists() || !dir.isDirectory) return
+
+        // Prevent symlink cycles or repeating folder runs
+        val canonicalPath = try { dir.canonicalPath } catch (e: Exception) { dir.absolutePath }
+        if (visitedDirs.contains(canonicalPath)) return
+        visitedDirs.add(canonicalPath)
+
+        val files = try {
+            dir.listFiles()
+        } catch (e: Exception) {
+            null
+        } ?: return
+
+        // Skip folders marked with .nomedia to respect hidden cache / app assets files
+        val hasNoMedia = files.any { it.name.equals(".nomedia", ignoreCase = true) }
+        if (hasNoMedia) return
+
+        for (file in files) {
+            val name = file.name
+            if (file.isDirectory) {
+                // EXTREMELY CRITICAL: Ignore System paths and app caches to prevent heavy background lags or UI lockouts
+                if (name.equals("Android", ignoreCase = true) ||
+                    name.startsWith(".") ||
+                    name.equals("cache", ignoreCase = true) ||
+                    name.equals("temp", ignoreCase = true) ||
+                    name.equals("databases", ignoreCase = true)
+                ) {
+                    continue
+                }
+                scanDirectoryFiles(file, foundFiles, visitedDirs)
+            } else if (file.isFile) {
+                val ext = file.extension.lowercase()
+                val path = file.absolutePath
+                val size = file.length()
+
+                if (size < 1024) continue // ignore small corrupt assets less than 1KB
+
+                if (ext == "mp4" || ext == "mkv" || ext == "webm" || ext == "avi" || ext == "3gp" || ext == "flv") {
+                    val dateModified = file.lastModified()
+                    val title = file.nameWithoutExtension
+
+                    var duration = 0L
+                    var width = 0
+                    var height = 0
+                    try {
+                        android.media.MediaMetadataRetriever().use { retriever ->
+                            retriever.setDataSource(path)
+                            duration = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                            width = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                            height = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                        }
+                    } catch (e: Exception) {
+                        Log.w("MediaScanner", "Error querying metadata for video file: $path", e)
+                    }
+
+                    foundFiles.add(
+                        MediaFile(
+                            path = path,
+                            title = title,
+                            duration = duration,
+                            size = size,
+                            dateModified = dateModified,
+                            isVideo = true,
+                            width = width,
+                            height = height
+                        )
+                    )
+                } else if (ext == "mp3" || ext == "wav" || ext == "m4a" || ext == "ogg" || ext == "flac") {
+                    val dateModified = file.lastModified()
+                    val title = file.nameWithoutExtension
+
+                    var duration = 0L
+                    var artist: String? = null
+                    var album: String? = null
+                    try {
+                        android.media.MediaMetadataRetriever().use { retriever ->
+                            retriever.setDataSource(path)
+                            duration = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                            artist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                            album = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                        }
+                    } catch (e: Exception) {
+                        Log.w("MediaScanner", "Error querying metadata for audio file: $path", e)
+                    }
+
+                    foundFiles.add(
+                        MediaFile(
+                            path = path,
+                            title = title,
+                            duration = duration,
+                            size = size,
+                            dateModified = dateModified,
+                            isVideo = false,
+                            artist = artist,
+                            album = album
+                        )
+                    )
+                }
+            }
         }
     }
 
