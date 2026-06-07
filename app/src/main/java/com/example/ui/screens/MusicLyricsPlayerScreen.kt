@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -31,6 +33,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import com.example.data.local.entities.MediaFile
 import com.example.ui.MediaViewModel
 import kotlinx.coroutines.delay
@@ -53,6 +59,28 @@ fun MusicLyricsPlayerScreen(
     val colors = remember(track.id) { getAuroraColors(track) }
     val lyrics = remember(track.id) { LyricsProvider.getLyricsForTrack(track.title, track.artist, track.path) }
 
+    var albumArtBitmap by remember(track.path) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(track.path) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(track.path)
+                val art = retriever.embeddedPicture
+                if (art != null) {
+                    albumArtBitmap = BitmapFactory.decodeByteArray(art, 0, art.size)
+                } else {
+                    albumArtBitmap = null
+                }
+            } catch (e: Exception) {
+                albumArtBitmap = null
+            } finally {
+                try {
+                    retriever.release()
+                } catch (e: Exception) {}
+            }
+        }
+    }
+
     // Active lyric calculation
     val activeIndex = remember(progress, lyrics) {
         val idx = lyrics.indexOfLast { progress >= it.timeMs }
@@ -69,7 +97,7 @@ fun MusicLyricsPlayerScreen(
             .testTag("aurora_music_player_screen")
     ) {
         // 1. Aurora Background layer
-        AuroraBackground(colors = colors)
+        AuroraBackground(colors = colors, albumArtBitmap = albumArtBitmap)
 
         // Dim dark filter
         Box(
@@ -148,7 +176,7 @@ fun MusicLyricsPlayerScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        RotatingAlbumArt(isPlaying = isPlaying, colors = colors, modifier = Modifier.scale(0.85f))
+                        TrackAlbumArtCard(albumArtBitmap = albumArtBitmap, colors = colors, modifier = Modifier.scale(0.85f))
                         Spacer(modifier = Modifier.height(16.dp))
                         TrackMetaData(title = track.title, artist = track.artist)
                         Spacer(modifier = Modifier.height(8.dp))
@@ -195,7 +223,7 @@ fun MusicLyricsPlayerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    RotatingAlbumArt(isPlaying = isPlaying, colors = colors)
+                    TrackAlbumArtCard(albumArtBitmap = albumArtBitmap, colors = colors)
                     Spacer(modifier = Modifier.height(24.dp))
                     TrackMetaData(title = track.title, artist = track.artist)
 
@@ -435,177 +463,222 @@ fun PlaybackControlsSection(
 }
 
 @Composable
-fun RotatingAlbumArt(
-    isPlaying: Boolean,
-    colors: Pair<Color, Color>,
+fun TrackAlbumArtCard(
+    albumArtBitmap: android.graphics.Bitmap?,
+    colors: AuroraColors,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "vinyl_transition")
-    val rotationAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 20000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "vinyl_rotate"
-    )
-
-    // Freeze angle if paused to resemble real life CD turntable
-    val animatedAngle = if (isPlaying) rotationAngle else 0f
+    val imageBitmap = remember(albumArtBitmap) { albumArtBitmap?.asImageBitmap() }
 
     Box(
         modifier = modifier
-            .size(200.dp)
-            .graphicsLayer { rotationZ = animatedAngle },
+            .size(240.dp)
+            .shadow(16.dp, RoundedCornerShape(24.dp))
+            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(24.dp))
+            .border(1.5.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp)),
         contentAlignment = Alignment.Center
     ) {
-        // Outer Vinyl Frame
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF0C0C0F), shape = CircleShape)
-                .border(2.dp, Color.White.copy(alpha = 0.15f), CircleShape)
-        ) {
-            // Grooves drawing
+        if (imageBitmap != null) {
+            Image(
+                bitmap = imageBitmap,
+                contentDescription = "Track Album Art",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(24.dp)),
+                contentScale = ContentScale.Crop
+            )
+        } else {
             Box(
                 modifier = Modifier
-                    .fillMaxSize(0.85f)
-                    .align(Alignment.Center)
-                    .border(1.dp, Color.White.copy(alpha = 0.05f), CircleShape)
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize(0.7f)
-                    .align(Alignment.Center)
-                    .border(1.dp, Color.White.copy(alpha = 0.05f), CircleShape)
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize(0.55f)
-                    .align(Alignment.Center)
-                    .border(1.dp, Color.White.copy(alpha = 0.05f), CircleShape)
-            )
-        }
-
-        // Concentric Vinyl Center Album Arts
-        Box(
-            modifier = Modifier
-                .fillMaxSize(0.42f)
-                .background(
-                    brush = Brush.sweepGradient(
-                        colors = listOf(colors.first, colors.second, colors.first)
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(colors.c1, colors.c2, colors.c3, colors.c4)
+                        )
                     ),
-                    shape = CircleShape
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MusicNote,
+                    contentDescription = "Music icon",
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(64.dp)
                 )
-                .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            // Spindle hole
-            Box(
-                modifier = Modifier
-                    .size(14.dp)
-                    .background(Color(0xFF050508), shape = CircleShape)
-                    .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape)
-            )
+            }
         }
     }
 }
 
 @Composable
-fun AuroraBackground(colors: Pair<Color, Color>, modifier: Modifier = Modifier) {
+fun AuroraBackground(
+    colors: AuroraColors,
+    albumArtBitmap: android.graphics.Bitmap?,
+    modifier: Modifier = Modifier
+) {
     val infiniteTransition = rememberInfiniteTransition(label = "aurora_lights")
 
-    // Slow organic floating movement vectors for the aurora lights
-    val pulseAlpha1 by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.6f,
+    // Slow organic floating movement vectors for the 4 colors of the fluid liquid aurora
+    val tX1 by infiniteTransition.animateFloat(
+        initialValue = -110f,
+        targetValue = 110f,
         animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = SineBehaviorEasing),
+            animation = tween(8000, easing = SineBehaviorEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "aurora_pulse1"
+        label = "t_x1"
     )
-    val pulseAlpha2 by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 0.2f,
+    val tY1 by infiniteTransition.animateFloat(
+        initialValue = -90f,
+        targetValue = 90f,
         animationSpec = infiniteRepeatable(
-            animation = tween(5500, easing = SineBehaviorEasing),
+            animation = tween(11000, easing = SineBehaviorEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "aurora_pulse2"
+        label = "t_y1"
     )
 
-    val translationX1 by infiniteTransition.animateFloat(
-        initialValue = -80f,
+    val tX2 by infiniteTransition.animateFloat(
+        initialValue = 100f,
+        targetValue = -100f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(9000, easing = SineBehaviorEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "t_x2"
+    )
+    val tY2 by infiniteTransition.animateFloat(
+        initialValue = -70f,
+        targetValue = 110f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(12000, easing = SineBehaviorEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "t_y2"
+    )
+
+    val tX3 by infiniteTransition.animateFloat(
+        initialValue = -75f,
+        targetValue = 90f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(10000, easing = SineBehaviorEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "t_x3"
+    )
+    val tY3 by infiniteTransition.animateFloat(
+        initialValue = 110f,
+        targetValue = -90f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(7500, easing = SineBehaviorEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "t_y3"
+    )
+
+    val tX4 by infiniteTransition.animateFloat(
+        initialValue = 115f,
+        targetValue = -115f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(11500, easing = SineBehaviorEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "t_x4"
+    )
+    val tY4 by infiniteTransition.animateFloat(
+        initialValue = -110f,
         targetValue = 80f,
         animationSpec = infiniteRepeatable(
-            animation = tween(7000, easing = SineBehaviorEasing),
+            animation = tween(9500, easing = SineBehaviorEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "translation_x1"
-    )
-    val translationY1 by infiniteTransition.animateFloat(
-        initialValue = -50f,
-        targetValue = 120f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(8500, easing = SineBehaviorEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "translation_y1"
-    )
-
-    val translationX2 by infiniteTransition.animateFloat(
-        initialValue = 70f,
-        targetValue = -70f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(6000, easing = SineBehaviorEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "translation_x2"
+        label = "t_y4"
     )
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF050508)) // Dark cosmos velvet canvas
+            .background(Color(0xFF06060A))
     ) {
-        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize().blur(50.dp)) {
+        // Dynamic Blurred Album Art Background
+        if (albumArtBitmap != null) {
+            val imgBitmap = remember(albumArtBitmap) { albumArtBitmap.asImageBitmap() }
+            Image(
+                bitmap = imgBitmap,
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(40.dp)
+                    .graphicsLayer { alpha = 0.26f },
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        // Aurora Canvas
+        androidx.compose.foundation.Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(70.dp)
+        ) {
             val width = size.width
             val height = size.height
 
-            // Aurora Cloud 1
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(colors.first.copy(alpha = pulseAlpha1), Color.Transparent),
-                    center = androidx.compose.ui.geometry.Offset(
-                        x = width * 0.35f + translationX1.dp.toPx(),
-                        y = height * 0.3f + translationY1.dp.toPx()
-                    ),
-                    radius = width * 1.1f
-                ),
-                radius = width * 1.1f,
-                center = androidx.compose.ui.geometry.Offset(
-                    x = width * 0.35f + translationX1.dp.toPx(),
-                    y = height * 0.3f + translationY1.dp.toPx()
-                )
+            val c1Pos = androidx.compose.ui.geometry.Offset(
+                x = width * 0.3f + tX1.dp.toPx(),
+                y = height * 0.35f + tY1.dp.toPx()
+            )
+            val c2Pos = androidx.compose.ui.geometry.Offset(
+                x = width * 0.75f + tX2.dp.toPx(),
+                y = height * 0.25f + tY2.dp.toPx()
+            )
+            val c3Pos = androidx.compose.ui.geometry.Offset(
+                x = width * 0.25f + tX3.dp.toPx(),
+                y = height * 0.7f + tY3.dp.toPx()
+            )
+            val c4Pos = androidx.compose.ui.geometry.Offset(
+                x = width * 0.7f + tX4.dp.toPx(),
+                y = height * 0.65f + tY4.dp.toPx()
             )
 
-            // Aurora Cloud 2
+            // Aurora metaball circles
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(colors.second.copy(alpha = pulseAlpha2), Color.Transparent),
-                    center = androidx.compose.ui.geometry.Offset(
-                        x = width * 0.72f + translationX2.dp.toPx(),
-                        y = height * 0.65f + translationY1.dp.toPx()
-                    ),
-                    radius = width * 1.2f
+                    colors = listOf(colors.c1.copy(alpha = 0.52f), Color.Transparent),
+                    center = c1Pos,
+                    radius = width * 0.95f
                 ),
-                radius = width * 1.2f,
-                center = androidx.compose.ui.geometry.Offset(
-                    x = width * 0.72f + translationX2.dp.toPx(),
-                    y = height * 0.65f + translationY1.dp.toPx()
-                )
+                radius = width * 0.95f,
+                center = c1Pos
+            )
+
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(colors.c2.copy(alpha = 0.48f), Color.Transparent),
+                    center = c2Pos,
+                    radius = width * 1.05f
+                ),
+                radius = width * 1.05f,
+                center = c2Pos
+            )
+
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(colors.c3.copy(alpha = 0.45f), Color.Transparent),
+                    center = c3Pos,
+                    radius = width * 0.9f
+                ),
+                radius = width * 0.9f,
+                center = c3Pos
+            )
+
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(colors.c4.copy(alpha = 0.50f), Color.Transparent),
+                    center = c4Pos,
+                    radius = width * 1.0f
+                ),
+                radius = width * 1.0f,
+                center = c4Pos
             )
         }
     }
@@ -616,24 +689,53 @@ private val SineBehaviorEasing = Easing { fraction ->
     ((sinVal + 1) / 2).toFloat()
 }
 
-fun getAuroraColors(track: MediaFile): Pair<Color, Color> {
+data class AuroraColors(
+    val c1: Color,
+    val c2: Color,
+    val c3: Color,
+    val c4: Color
+)
+
+fun getAuroraColors(track: MediaFile): AuroraColors {
     val title = track.title.lowercase()
     val artist = (track.artist ?: "").lowercase()
     return when {
         title.contains("أعطني") || title.contains("fairuz") || title.contains("ناي") || artist.contains("فيروز") -> {
-            Pair(Color(0xFF034F6A), Color(0xFF14C39C))
+            AuroraColors(
+                c1 = Color(0xFF034F6A),
+                c2 = Color(0xFF14C39C),
+                c3 = Color(0xFF0F7A7D),
+                c4 = Color(0xFF3CDC9F)
+            )
         }
         title.contains("ألقاك") || title.contains("kulthum") || title.contains("غداً") || artist.contains("كلثوم") -> {
-            Pair(Color(0xFF7A071E), Color(0xFFDF9E21))
+            AuroraColors(
+                c1 = Color(0xFF7A071E),
+                c2 = Color(0xFFDF9E21),
+                c3 = Color(0xFFB52B3C),
+                c4 = Color(0xFFFFD166)
+            )
         }
         title.contains("فنجان") || title.contains("abdel") || title.contains("حليم") || artist.contains("حليم") -> {
-            Pair(Color(0xFF331B6A), Color(0xFF8B2EFF))
+            AuroraColors(
+                c1 = Color(0xFF331B6A),
+                c2 = Color(0xFF8B2EFF),
+                c3 = Color(0xFF4A0072),
+                c4 = Color(0xFFB388FF)
+            )
         }
         else -> {
             val hash = (track.title + (track.artist ?: "")).hashCode()
             val hue1 = (hash.absoluteValue % 360).toFloat()
-            val hue2 = (hue1 + 130) % 360
-            Pair(Color.hsv(hue1, 0.7f, 0.35f), Color.hsv(hue2, 0.8f, 0.65f))
+            val hue2 = (hue1 + 75f) % 360
+            val hue3 = (hue1 + 150f) % 360
+            val hue4 = (hue1 + 225f) % 360
+            AuroraColors(
+                c1 = Color.hsv(hue1, 0.70f, 0.35f),
+                c2 = Color.hsv(hue2, 0.85f, 0.45f),
+                c3 = Color.hsv(hue3, 0.65f, 0.40f),
+                c4 = Color.hsv(hue4, 0.75f, 0.50f)
+            )
         }
     }
 }

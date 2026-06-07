@@ -39,6 +39,7 @@ import com.example.data.local.entities.MediaFile
 import com.example.data.local.entities.PlaylistEntity
 import com.example.data.local.entities.ScannedFolder
 import com.example.ui.MediaViewModel
+import com.example.ui.components.TrackArtwork
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1336,11 +1337,11 @@ fun MusicPlayerTab(
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.Audiotrack,
-                            contentDescription = "Music notation icon",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(32.dp)
+                        TrackArtwork(
+                            filePath = track.path,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(8.dp))
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
@@ -1465,11 +1466,21 @@ fun PlaylistsAndFavoritesTab(
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        if (favorite.isVideo) Icons.Default.PlayCircle else Icons.Default.Audiotrack,
-                        contentDescription = "Media icon type",
-                        tint = MaterialTheme.colorScheme.secondary
-                    )
+                    if (favorite.isVideo) {
+                        Icon(
+                            Icons.Default.PlayCircle,
+                            contentDescription = "Media icon type",
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    } else {
+                        TrackArtwork(
+                            filePath = favorite.path,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                        )
+                    }
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         favorite.title,
@@ -1641,20 +1652,14 @@ fun MiniPlayer(viewModel: MediaViewModel) {
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        TrackArtwork(
+            filePath = track.path,
             modifier = Modifier
                 .size(40.dp)
-                .background(colors.first, shape = CircleShape)
+                .clip(CircleShape)
                 .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Default.MusicNote,
-                contentDescription = "Track Art Place",
-                tint = Color.White,
-                modifier = Modifier.size(20.dp)
-            )
-        }
+            fallbackColor = colors.c1
+        )
 
         Spacer(modifier = Modifier.width(12.dp))
 

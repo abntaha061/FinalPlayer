@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.MediaViewModel
+import com.example.ui.components.TrackArtwork
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -152,12 +153,31 @@ fun BrowserScreen(
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = if (file.isDirectory) Icons.Default.Folder else Icons.Default.Audiotrack,
-                                contentDescription = "Type marker",
-                                tint = if (file.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.size(32.dp)
-                            )
+                            if (file.isDirectory) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = "Directory indicator",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            } else {
+                                val isAudio = file.name.endsWith(".mp3", ignoreCase = true) || file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".wav", ignoreCase = true) || file.name.endsWith(".ogg", ignoreCase = true)
+                                if (isAudio) {
+                                    TrackArtwork(
+                                        filePath = file.absolutePath,
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayCircle,
+                                        contentDescription = "Video indicator",
+                                        tint = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                            }
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
