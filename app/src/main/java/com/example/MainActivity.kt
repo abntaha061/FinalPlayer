@@ -168,7 +168,8 @@ fun MainNavigationRoot() {
                 PlayerScreen(
                     filePath = activePlayingFilePath!!,
                     viewModel = viewModel,
-                    onBack = { activePlayingFilePath = null }
+                    onBack = { activePlayingFilePath = null },
+                    onNavigateToVideo = { activePlayingFilePath = it }
                 )
             } else if (isFullPlayerOpen) {
                 MusicLyricsPlayerScreen(
