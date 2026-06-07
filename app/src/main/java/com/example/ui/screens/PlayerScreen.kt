@@ -35,6 +35,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.net.Uri
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -70,11 +72,76 @@ fun PlayerScreen(
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat() }
 
+    // Scan for external subtitles in the same folder
+    val detectedSubtitles = remember(filePath) {
+        val list = mutableListOf<File>()
+        val videoFile = File(filePath)
+        val parentDir = videoFile.parentFile
+        if (parentDir != null && parentDir.exists() && parentDir.isDirectory) {
+            val baseName = videoFile.nameWithoutExtension
+            val siblings = parentDir.listFiles()
+            if (siblings != null) {
+                for (sibling in siblings) {
+                    if (sibling.isFile) {
+                        val sibName = sibling.name
+                        if (sibName.startsWith(baseName) && (sibName.endsWith(".srt", ignoreCase = true) || sibName.endsWith(".vtt", ignoreCase = true))) {
+                            list.add(sibling)
+                        }
+                    }
+                }
+            }
+        }
+        list
+    }
+
+    val subtitleLanguages = remember(detectedSubtitles) {
+        detectedSubtitles.map { file ->
+            val baseName = File(filePath).nameWithoutExtension
+            val suffix = file.name.substring(baseName.length)
+                .removeSuffix(".srt").removeSuffix(".vtt")
+                .removeSuffix(".SRT").removeSuffix(".VTT")
+            if (suffix.startsWith(".")) {
+                val part = suffix.substring(1)
+                if (part.isNotEmpty()) part else "Default"
+            } else {
+                "Default"
+            }
+        }
+    }
+
+    var isSubtitleEnabled by remember { mutableStateOf(true) }
+    var selectedSubtitleLang by remember { mutableStateOf<String?>(null) }
+
     // Init player
     val player = remember {
+        val videoFile = File(filePath)
+        val uri = if (filePath.startsWith("http://") || filePath.startsWith("https://") || filePath.startsWith("content://") || filePath.startsWith("file://")) {
+            android.net.Uri.parse(filePath)
+        } else {
+            android.net.Uri.fromFile(videoFile)
+        }
+
+        val subtitleConfigs = detectedSubtitles.mapIndexed { index, file ->
+            val lang = subtitleLanguages.getOrNull(index) ?: "Default"
+            val subUri = android.net.Uri.fromFile(file)
+            val isSrt = file.name.endsWith(".srt", ignoreCase = true)
+            val mimeType = if (isSrt) "application/x-subrip" else "text/vtt"
+            
+            MediaItem.SubtitleConfiguration.Builder(subUri)
+                .setMimeType(mimeType)
+                .setLanguage(lang)
+                .setSelectionFlags(if (lang == "Default" || lang == "ar") androidx.media3.common.C.SELECTION_FLAG_DEFAULT else 0)
+                .build()
+        }
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(uri)
+            .setSubtitleConfigurations(subtitleConfigs)
+            .build()
+
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
-            setMediaItem(MediaItem.fromUri(filePath))
+            setMediaItem(mediaItem)
             prepare()
         }
     }
@@ -159,6 +226,49 @@ fun PlayerScreen(
         if (areControlsVisible && isPlayingState) {
             delay(viewModel.getHideControlsDelay() * 1000L)
             areControlsVisible = false
+        }
+    }
+
+    // Live update immersive full screen mode depending on controller visibility
+    LaunchedEffect(areControlsVisible) {
+        val window = activity?.window ?: return@LaunchedEffect
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            val controller = window.insetsController
+            if (controller != null) {
+                if (!areControlsVisible) {
+                    controller.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                    controller.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                } else {
+                    controller.show(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                }
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val flags = if (!areControlsVisible) {
+                android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
+                        android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                        android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            } else {
+                android.view.View.SYSTEM_UI_FLAG_VISIBLE
+            }
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = flags
+        }
+    }
+
+    // Restore orientation and system bars clean disclosure when player screen is closed
+    DisposableEffect(Unit) {
+        onDispose {
+            // Restore default sensor orientation
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            // Restore system bars visible
+            val window = activity?.window ?: return@onDispose
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                window.insetsController?.show(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+            } else {
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_VISIBLE
+            }
         }
     }
 
@@ -367,6 +477,37 @@ fun PlayerScreen(
                     ) {
                         Icon(Icons.Default.AspectRatio, contentDescription = "Resize Mode", tint = Color.White)
                     }
+                    // Rotation toggle button
+                    var currentOrientationState by remember { mutableStateOf(activity?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) }
+                    IconButton(
+                        onClick = {
+                            val targetOrientation = if (currentOrientationState == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            } else if (currentOrientationState == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                            } else {
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                            }
+                            activity?.requestedOrientation = targetOrientation
+                            currentOrientationState = targetOrientation
+                            gestureIndicatorText = when (targetOrientation) {
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT -> "اتجاه رأسي"
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE -> "أفقي كامل"
+                                else -> "تلقائي (حسب الحساس)"
+                            }
+                            scope.launch {
+                                isIndicatorVisible = true
+                                delay(800)
+                                isIndicatorVisible = false
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ScreenRotation,
+                            contentDescription = "اتجاه الشاشة",
+                            tint = Color.White
+                        )
+                    }
                     // PiP Switcher
                     IconButton(
                         onClick = {
@@ -538,6 +679,64 @@ fun PlayerScreen(
                                         }
                                     }
                                 )
+                            }
+                        }
+                    }
+
+                    // Subtitles selection button
+                    if (subtitleLanguages.isNotEmpty()) {
+                        Box {
+                            var isSubtitlesExpanded by remember { mutableStateOf(false) }
+                            IconButton(onClick = { isSubtitlesExpanded = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.ClosedCaption,
+                                    contentDescription = "الترجمة",
+                                    tint = if (isSubtitleEnabled) MaterialTheme.colorScheme.primary else Color.LightGray
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = isSubtitlesExpanded,
+                                onDismissRequest = { isSubtitlesExpanded = false },
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("إيقاف الترجمة", color = Color.White) },
+                                    onClick = {
+                                        isSubtitleEnabled = false
+                                        player.trackSelectionParameters = player.trackSelectionParameters
+                                            .buildUpon()
+                                            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+                                            .build()
+                                        isSubtitlesExpanded = false
+                                        gestureIndicatorText = "Subtitles: Off"
+                                        scope.launch {
+                                            isIndicatorVisible = true
+                                            delay(700)
+                                            isIndicatorVisible = false
+                                        }
+                                    }
+                                )
+                                subtitleLanguages.forEachIndexed { index, lang ->
+                                    DropdownMenuItem(
+                                        text = { Text("ترجمة: $lang", color = Color.White) },
+                                        onClick = {
+                                            isSubtitleEnabled = true
+                                            selectedSubtitleLang = lang
+                                            player.trackSelectionParameters = player.trackSelectionParameters
+                                                .buildUpon()
+                                                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+                                                .setPreferredTextLanguage(lang)
+                                                .build()
+                                            isSubtitlesExpanded = false
+                                            gestureIndicatorText = "Subtitles: $lang"
+                                            scope.launch {
+                                                isIndicatorVisible = true
+                                                delay(700)
+                                                isIndicatorVisible = false
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
