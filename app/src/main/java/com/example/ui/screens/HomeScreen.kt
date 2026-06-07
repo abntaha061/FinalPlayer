@@ -29,7 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -891,74 +893,6 @@ fun VideosAndFoldersTab(
             .padding(horizontal = 16.dp)
             .testTag("videos_and_folders_tab")
     ) {
-        // --- HORIZONTAL QUICK ACTIONS BAR ---
-        item {
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), shape = RoundedCornerShape(12.dp))
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp)
-            ) {
-                val quickActions = listOf(
-                    QuickActionItem("المنظف", Icons.Default.Brush, Color(0xFF00BCD4)) { onShowCleaner() },
-                    QuickActionItem("المجلدات", Icons.Default.Folder, Color(0xFF4CAF50)) { onViewContentModeChange("FOLDERS") },
-                    QuickActionItem("FinalPlayer", Icons.Default.PlayCircle, Color(0xFFFFC107)) { onSelectedBottomTab(1) }
-                )
-                items(quickActions) { action ->
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { action.onClick() }
-                            .padding(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(50.dp)
-                                .background(action.color, shape = CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(action.icon, contentDescription = action.label, tint = Color.White, modifier = Modifier.size(24.dp))
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(action.label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        // --- SUBTITLE STATS & ACTIONS HEADER ---
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val subLabel = when {
-                    searchQuery.isNotBlank() -> "نتائج البحث (${displayVideos.size})"
-                    viewContentMode == "FOLDERS" -> "عرض مجلدات (${derivedFoldersList.size})"
-                    viewContentMode == "FILES" -> "عرض ملفات (${displayVideos.size})"
-                    else -> "كافة المجلدات والملفات"
-                }
-                Text(
-                    text = subLabel,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                TextButton(onClick = onOptionsClick) {
-                    Icon(Icons.Default.Tune, contentDescription = "View controls", modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("ترتيب وعرض", fontSize = 12.sp)
-                }
-            }
-        }
-
         // --- CONTENT SPLITTING OR DIRECT VIEW ---
         if (viewContentMode == "FOLDERS" && selectedFolderPath == null && searchQuery.isBlank()) {
             // Folders rendering list mode
@@ -984,66 +918,62 @@ fun VideosAndFoldersTab(
                     }.sumOf { it.size }
                     val sizeString = "%.1f MB".format(totalBytes / (1024f * 1024f))
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                            .clickable { selectedFolderPath = folder.folderPath }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Folder visual representation with beautiful reddish files-count badge badge
-                        Box(
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                        Row(
                             modifier = Modifier
-                                .size(50.dp)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), shape = RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                .clickable { selectedFolderPath = folder.folderPath }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Default.Folder,
-                                contentDescription = "Folder layout",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(30.dp)
-                            )
-                            if (filesCount > 0) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .background(Color.Red, shape = CircleShape)
-                                        .align(Alignment.TopEnd),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = filesCount.toString(),
-                                        color = Color.White,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                            // Folder visual representation with beautiful reddish files-count badge badge
+                            Box(
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), shape = RoundedCornerShape(10.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Folder,
+                                    contentDescription = "Folder layout",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(30.dp)
+                                )
+                                if (filesCount > 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .background(Color.Red, shape = CircleShape)
+                                            .align(Alignment.TopEnd),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = filesCount.toString(),
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = folderName,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "$filesCount مقاطع فيديو | $sizeString",
+                                    color = Color.Gray,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = folderName,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "$filesCount مقاطع فيديو | $sizeString",
-                                color = Color.Gray,
-                                fontSize = 12.sp
-                            )
-                        }
-                        Icon(
-                            Icons.Default.ArrowForward,
-                            contentDescription = "Open",
-                            tint = Color.Gray.copy(alpha = 0.7f),
-                            modifier = Modifier.size(18.dp)
-                        )
                     }
                 }
             }
