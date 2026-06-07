@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -159,11 +160,6 @@ fun HomeScreen(
                                             Icon(Icons.Default.Tune, contentDescription = "Display options Dialog")
                                         }
                                     }
-
-                                    // Quick scan trigger
-                                    IconButton(onClick = { viewModel.launchIncrementalScan() }) {
-                                        Icon(Icons.Default.Loop, contentDescription = "Scan")
-                                    }
                                 }
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
@@ -231,7 +227,9 @@ fun HomeScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        Box(
+        PullToRefreshBox(
+            isRefreshing = isScanning,
+            onRefresh = { viewModel.launchIncrementalScan() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
