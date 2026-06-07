@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import com.example.data.local.entities.MediaFile
 import com.example.ui.MediaViewModel
+import com.example.ui.components.TrackArtwork
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
@@ -103,7 +104,7 @@ fun MusicLyricsPlayerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.45f))
+                .background(Color.Black.copy(alpha = 0.5f))
         )
 
         // Column structure
@@ -159,135 +160,177 @@ fun MusicLyricsPlayerScreen(
             }
 
             // Body Area based on Adaptive Orientation
-            if (isLandscape) {
-                // Wide Landscape Layout: Art on left, right-aligned scroll lyrics on right
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header indicating the Lyrics list
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = 24.dp),
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left Column: Artwork and Slider
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        TrackAlbumArtCard(albumArtBitmap = albumArtBitmap, colors = colors, modifier = Modifier.scale(0.85f))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        TrackMetaData(title = track.title, artist = track.artist)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        PlaybackControlsSection(
-                            progress = progress,
-                            duration = duration,
-                            isPlaying = isPlaying,
-                            onPlayPause = { viewModel.toggleAudioPlayPause() },
-                            onSeek = { viewModel.seekAudioTo(it) }
-                        )
-                    }
-
-                    // Divider
-                    Spacer(modifier = Modifier.width(24.dp))
-
-                    // Right Column: Synchronized Scrolling Lyrics
-                    Column(
-                        modifier = Modifier
-                            .weight(1.2f)
-                            .fillMaxHeight()
-                    ) {
-                        Text(
-                            text = "كلمات الأغنية (Lyrics) 📜",
-                            color = Color.White.copy(alpha = 0.5f),
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Right,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp)
-                        )
-                        SynchronizedLyricsList(
-                            lyrics = lyrics,
-                            activeIndex = activeIndex,
-                            onLineClicked = { viewModel.seekAudioTo(it.timeMs) }
-                        )
-                    }
+                    Text(
+                        text = "كلمات الأغنية (Lyrics) 📜",
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Right
+                    )
+                    Icon(
+                        imageVector = Icons.Default.FormatAlignRight,
+                        contentDescription = "RTL Lyrics",
+                        tint = Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
-            } else {
-                // Portrait Layout
-                Column(
+
+                // Highly visible synchronized lyrics taking up the main screen space
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .weight(1f)
                 ) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    TrackAlbumArtCard(albumArtBitmap = albumArtBitmap, colors = colors)
-                    Spacer(modifier = Modifier.height(24.dp))
-                    TrackMetaData(title = track.title, artist = track.artist)
+                    SynchronizedLyricsList(
+                        lyrics = lyrics,
+                        activeIndex = activeIndex,
+                        onLineClicked = { viewModel.seekAudioTo(it.timeMs) }
+                    )
+                }
+            }
 
-                    // Compact Split for Portrait: Lyrics in bottom half
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Box(
+            // Timeline slider (progress bar)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val progressSec = progress / 1000
+                val durationSec = duration / 1000
+                val progressStr = "%02d:%02d".format(progressSec / 60, progressSec % 60)
+                val durationStr = "%02d:%02d".format(durationSec / 60, durationSec % 60)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(progressStr, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Slider(
+                        value = if (duration > 0) progress.toFloat() / duration else 0f,
+                        onValueChange = { viewModel.seekAudioTo((it * duration).toLong()) },
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                        ),
                         modifier = Modifier
-                            .fillMaxWidth()
                             .weight(1f)
-                            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                            .background(Color.Black.copy(alpha = 0.35f))
-                            .padding(top = 16.dp, start = 16.dp, end = 16.dp)
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "كلمات متزامنة في اليمين (Synchronized Lyrics)",
-                                    color = Color.LightGray.copy(alpha = 0.8f),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.weight(1f),
-                                    textAlign = TextAlign.Right
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.FormatAlignRight,
-                                    contentDescription = "RTL Lyrics",
-                                    tint = Color.LightGray,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            SynchronizedLyricsList(
-                                lyrics = lyrics,
-                                activeIndex = activeIndex,
-                                onLineClicked = { viewModel.seekAudioTo(it.timeMs) }
-                            )
-                        }
+                            .padding(horizontal = 10.dp)
+                            .testTag("lyrics_player_seek")
+                    )
+                    Text(durationStr, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            // Frosted Integrated MiniPlayer Controller at the bottom
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 4.dp)
+                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(20.dp)),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.Black.copy(alpha = 0.45f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Small Track Artwork
+                    TrackArtwork(
+                        filePath = track.path,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+                        fallbackColor = colors.c1
+                    )
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Title & Artist
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = track.title,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = track.artist ?: "فنان غير معروف",
+                            color = Color.LightGray.copy(alpha = 0.7f),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
 
-                    // Bottom Control Slider Block (Portrait)
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.65f))
+                    // Backward 10s
+                    IconButton(
+                        onClick = { viewModel.seekAudioTo((progress - 10000).coerceAtLeast(0)) },
+                        modifier = Modifier.size(36.dp)
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            PlaybackControlsSection(
-                                progress = progress,
-                                duration = duration,
-                                isPlaying = isPlaying,
-                                onPlayPause = { viewModel.toggleAudioPlayPause() },
-                                onSeek = { viewModel.seekAudioTo(it) }
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Replay10,
+                            contentDescription = "Replay 10 seconds",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Play/Pause button
+                    IconButton(
+                        onClick = { viewModel.toggleAudioPlayPause() },
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape)
+                            .size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play or Pause",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Forward 10s
+                    IconButton(
+                        onClick = { viewModel.seekAudioTo((progress + 10000).coerceAtMost(duration)) },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Forward10,
+                            contentDescription = "Forward 10 seconds",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
@@ -608,8 +651,8 @@ fun AuroraBackground(
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
-                    .blur(40.dp)
-                    .graphicsLayer { alpha = 0.26f },
+                    .blur(20.dp)
+                    .graphicsLayer { alpha = 0.42f },
                 contentScale = ContentScale.Crop
             )
         }
