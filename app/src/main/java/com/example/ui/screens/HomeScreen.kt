@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.BackHandler
 import com.example.data.local.entities.MediaFile
 import com.example.data.local.entities.PlaylistEntity
 import com.example.data.local.entities.ScannedFolder
@@ -812,6 +813,9 @@ fun VideosAndFoldersTab(
     onShowCleaner: () -> Unit
 ) {
     var selectedFolderPath by rememberSaveable { mutableStateOf<String?>(null) }
+    BackHandler(enabled = selectedFolderPath != null) {
+        selectedFolderPath = null
+    }
     var videoToRename by remember { mutableStateOf<MediaFile?>(null) }
     var newNameText by remember { mutableStateOf("") }
     var videoToDelete by remember { mutableStateOf<MediaFile?>(null) }
@@ -1045,36 +1049,6 @@ fun VideosAndFoldersTab(
             }
         } else {
             // Browsing inside a folder or FLAT directory files listing helper
-            if (selectedFolderPath != null && viewContentMode == "FOLDERS") {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f))
-                            .clickable { selectedFolderPath = null }
-                            .padding(vertical = 8.dp, horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.ArrowBack,
-                            contentDescription = "Go back",
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        val currentFolderName = File(selectedFolderPath!!).name
-                        Text(
-                            text = "الرئيسية > $currentFolderName (${displayVideos.size} فيديو)",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-
             if (displayVideos.isEmpty()) {
                 item {
                     Box(
