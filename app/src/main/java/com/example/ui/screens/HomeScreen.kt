@@ -104,82 +104,73 @@ fun HomeScreen(
         topBar = {
             if (selectedBottomTab != 2) {
                 Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
-                    CenterAlignedTopAppBar(
-                        title = {
-                            if (isSearchActive && selectedBottomTab == 0 && selectedSubTabIndex == 0) {
-                                OutlinedTextField(
-                                    value = searchQuery,
-                                    onValueChange = { searchQuery = it },
-                                    placeholder = { Text("بحث عن فيديو... (Search video)", fontSize = 14.sp) },
-                                    singleLine = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(54.dp)
-                                        .padding(horizontal = 4.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                        unfocusedBorderColor = Color.Transparent,
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent
-                                    ),
-                                    leadingIcon = {
-                                        IconButton(onClick = {
-                                            isSearchActive = false
-                                            searchQuery = ""
-                                        }) {
-                                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                                        }
-                                    },
-                                    trailingIcon = {
-                                        if (searchQuery.isNotEmpty()) {
-                                            IconButton(onClick = { searchQuery = "" }) {
-                                                Icon(Icons.Default.Close, contentDescription = "Clear")
+                    CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
+                        TopAppBar(
+                            title = {
+                                if (isSearchActive && selectedBottomTab == 0 && selectedSubTabIndex == 0) {
+                                    OutlinedTextField(
+                                        value = searchQuery,
+                                        onValueChange = { searchQuery = it },
+                                        placeholder = { Text("بحث عن فيديو... (Search video)", fontSize = 14.sp) },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(54.dp)
+                                            .padding(horizontal = 4.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = Color.Transparent,
+                                            focusedContainerColor = Color.Transparent,
+                                            unfocusedContainerColor = Color.Transparent
+                                        ),
+                                        leadingIcon = {
+                                            IconButton(onClick = {
+                                                isSearchActive = false
+                                                searchQuery = ""
+                                            }) {
+                                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                                            }
+                                        },
+                                        trailingIcon = {
+                                            if (searchQuery.isNotEmpty()) {
+                                                IconButton(onClick = { searchQuery = "" }) {
+                                                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                                                }
                                             }
                                         }
-                                    }
-                                )
-                            } else {
-                                Text(
-                                    "FinalPlayer",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp
-                                )
-                            }
-                        },
-                        navigationIcon = {},
-                        actions = {
-                            if (!isSearchActive || selectedBottomTab != 0 || selectedSubTabIndex != 0) {
-                                // Search toggle button
-                                if (selectedBottomTab == 0 && selectedSubTabIndex == 0) {
-                                    IconButton(onClick = { isSearchActive = true }) {
-                                        Icon(Icons.Default.Search, contentDescription = "Search bar")
-                                    }
-                                    IconButton(onClick = { isOptionsSheetVisible = true }) {
-                                        Icon(Icons.Default.Tune, contentDescription = "Display options Dialog")
-                                    }
+                                    )
+                                } else {
+                                    Text(
+                                        "FinalPlayer",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 20.sp
+                                    )
                                 }
+                            },
+                            navigationIcon = {},
+                            actions = {
+                                if (!isSearchActive || selectedBottomTab != 0 || selectedSubTabIndex != 0) {
+                                    // Search toggle button
+                                    if (selectedBottomTab == 0 && selectedSubTabIndex == 0) {
+                                        IconButton(onClick = { isSearchActive = true }) {
+                                            Icon(Icons.Default.Search, contentDescription = "Search bar")
+                                        }
+                                        IconButton(onClick = { isOptionsSheetVisible = true }) {
+                                            Icon(Icons.Default.Tune, contentDescription = "Display options Dialog")
+                                        }
+                                    }
 
-                                // Quick scan trigger
-                                IconButton(onClick = { viewModel.launchIncrementalScan() }) {
-                                    Icon(Icons.Default.Loop, contentDescription = "Scan")
-                                }
-
-                                // Sleep Timer Indicator/Selector
-                                IconButton(onClick = { isSleepDialogVisible = true }) {
-                                    Box {
-                                        Icon(
-                                            Icons.Default.Timer,
-                                            contentDescription = "Sleep timer",
-                                            tint = if (sleepRemaining != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        )
+                                    // Quick scan trigger
+                                    IconButton(onClick = { viewModel.launchIncrementalScan() }) {
+                                        Icon(Icons.Default.Loop, contentDescription = "Scan")
                                     }
                                 }
-                            }
-                        },
-                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            )
                         )
-                    )
+                    }
 
                     // Incremental scan alert progress banner
                     AnimatedVisibility(visible = false) {
@@ -201,28 +192,6 @@ fun HomeScreen(
                                      color = MaterialTheme.colorScheme.onPrimaryContainer,
                                      fontSize = 12.sp
                                  )
-                            }
-                        }
-                    }
-
-                    // Top TabRow is only shown when Videos tab on bottom bar is selected
-                    if (selectedBottomTab == 0) {
-                        TabRow(
-                            selectedTabIndex = selectedSubTabIndex,
-                            indicator = { tabPositions ->
-                                TabRowDefaults.SecondaryIndicator(
-                                    Modifier.tabIndicatorOffset(tabPositions[selectedSubTabIndex]),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        ) {
-                            val tabs = listOf("الفيديوهات (Videos)", "المفضلة والقوائم", "الخزنة السرية (Vault)")
-                            tabs.forEachIndexed { index, title ->
-                                Tab(
-                                    selected = selectedSubTabIndex == index,
-                                    onClick = { selectedSubTabIndex = index },
-                                    text = { Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
-                                )
                             }
                         }
                     }
@@ -932,11 +901,9 @@ fun VideosAndFoldersTab(
                 contentPadding = PaddingValues(horizontal = 8.dp)
             ) {
                 val quickActions = listOf(
-                    QuickActionItem("FinalPlayer", Icons.Default.PlayCircle, Color(0xFFFFC107)) { onSelectedBottomTab(1) },
-                    QuickActionItem("المجلدات", Icons.Default.Folder, Color(0xFF4CAF50)) { onViewContentModeChange("FOLDERS") },
                     QuickActionItem("المنظف", Icons.Default.Brush, Color(0xFF00BCD4)) { onShowCleaner() },
-                    QuickActionItem("قوائمه", Icons.Default.PlaylistPlay, Color(0xFF9C27B0)) { onSelectedSubTabIndex(1) },
-                    QuickActionItem("الخزنة", Icons.Default.Shield, Color(0xFF3F51B5)) { onSelectedSubTabIndex(2) }
+                    QuickActionItem("المجلدات", Icons.Default.Folder, Color(0xFF4CAF50)) { onViewContentModeChange("FOLDERS") },
+                    QuickActionItem("FinalPlayer", Icons.Default.PlayCircle, Color(0xFFFFC107)) { onSelectedBottomTab(1) }
                 )
                 items(quickActions) { action ->
                     Column(
@@ -970,9 +937,10 @@ fun VideosAndFoldersTab(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val subLabel = when (viewContentMode) {
-                    "FOLDERS" -> "عرض مجلدات (${derivedFoldersList.size})"
-                    "FILES" -> "عرض ملفات (${displayVideos.size})"
+                val subLabel = when {
+                    searchQuery.isNotBlank() -> "نتائج البحث (${displayVideos.size})"
+                    viewContentMode == "FOLDERS" -> "عرض مجلدات (${derivedFoldersList.size})"
+                    viewContentMode == "FILES" -> "عرض ملفات (${displayVideos.size})"
                     else -> "كافة المجلدات والملفات"
                 }
                 Text(
@@ -990,7 +958,7 @@ fun VideosAndFoldersTab(
         }
 
         // --- CONTENT SPLITTING OR DIRECT VIEW ---
-        if (viewContentMode == "FOLDERS" && selectedFolderPath == null) {
+        if (viewContentMode == "FOLDERS" && selectedFolderPath == null && searchQuery.isBlank()) {
             // Folders rendering list mode
             if (derivedFoldersList.isEmpty()) {
                 item {
@@ -1151,7 +1119,7 @@ fun VideosAndFoldersTab(
                                         bitmap = thumbnail,
                                         contentDescription = "Video thumbnail",
                                         modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit
                                     )
                                 } else {
                                     Box(
@@ -1274,21 +1242,6 @@ fun VideosAndFoldersTab(
                                         onClick = {
                                             isMenuExpanded = false
                                             viewModel.setPrivateStatus(video, true)
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(if (video.isFavorite) "إزالة من المفضلة" else "إضافة إلى المفضلة", fontSize = 13.sp) },
-                                        leadingIcon = { 
-                                            Icon(
-                                                imageVector = if (video.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
-                                                contentDescription = null, 
-                                                modifier = Modifier.size(16.dp),
-                                                tint = if (video.isFavorite) Color.Red else Color.Unspecified
-                                            ) 
-                                        },
-                                        onClick = {
-                                            isMenuExpanded = false
-                                            viewModel.toggleFavorite(video)
                                         }
                                     )
                                 }
@@ -1515,7 +1468,7 @@ fun VideoGridItem(
                         bitmap = thumbnail,
                         contentDescription = "Video thumbnail",
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Fit
                     )
                 } else {
                     Box(
@@ -1645,21 +1598,6 @@ fun VideoGridItem(
                                 onClick = {
                                     isMenuExpanded = false
                                     onVaultClick()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(if (video.isFavorite) "إزالة من المفضلة" else "إضافة إلى المفضلة", fontSize = 13.sp) },
-                                leadingIcon = { 
-                                    Icon(
-                                        imageVector = if (video.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
-                                        contentDescription = null, 
-                                        modifier = Modifier.size(16.dp),
-                                        tint = if (video.isFavorite) Color.Red else Color.Unspecified
-                                    ) 
-                                },
-                                onClick = {
-                                    isMenuExpanded = false
-                                    onFavoriteClick()
                                 }
                             )
                         }
@@ -1870,7 +1808,7 @@ fun PlaylistsAndFavoritesTab(
                                     bitmap = thumbnail,
                                     contentDescription = "Video thumbnail",
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
+                                    contentScale = ContentScale.Fit
                                 )
                             } else {
                                 Box(
