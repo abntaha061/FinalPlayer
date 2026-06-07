@@ -843,13 +843,18 @@ fun VideosAndFoldersTab(
 
     // Derive folders list if database list is empty as a failover
     val derivedFoldersList = remember(videoList, scannedFolders) {
-        if (scannedFolders.isNotEmpty()) {
-            scannedFolders
+        val foldersWithVideos = videoList.mapNotNull { video ->
+            File(video.path).parentFile?.absolutePath
+        }.distinct()
+
+        val validScannedFolders = scannedFolders.filter { folder ->
+            foldersWithVideos.contains(folder.folderPath)
+        }
+
+        if (validScannedFolders.isNotEmpty()) {
+            validScannedFolders
         } else {
-            videoList.mapNotNull { video ->
-                val f = File(video.path).parentFile
-                f?.absolutePath
-            }.distinct().map { p ->
+            foldersWithVideos.map { p ->
                 val count = videoList.count { File(it.path).parentFile?.absolutePath == p }
                 ScannedFolder(
                     folderPath = p,
@@ -991,8 +996,14 @@ fun VideosAndFoldersTab(
             } else {
                 items(derivedFoldersList) { folder ->
                     val folderName = File(folder.folderPath).name
-                    val filesCount = videoList.count { File(it.path).parentFile?.absolutePath == folder.folderPath }
-                    val totalBytes = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }.sumOf { it.size }
+                    val filesCount = videoList.count { 
+                        val p = File(it.path).parentFile?.absolutePath
+                        p == folder.folderPath
+                    }
+                    val totalBytes = videoList.filter { 
+                        val p = File(it.path).parentFile?.absolutePath
+                        p == folder.folderPath
+                    }.sumOf { it.size }
                     val sizeString = "%.1f MB".format(totalBytes / (1024f * 1024f))
 
                     Row(
@@ -1078,8 +1089,9 @@ fun VideosAndFoldersTab(
                             tint = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                         Spacer(modifier = Modifier.width(12.dp))
+                        val currentFolderName = File(selectedFolderPath!!).name
                         Text(
-                            text = "الرئيسية > ${File(selectedFolderPath!!).name} (${displayVideos.size} فيديو)",
+                            text = "الرئيسية > $currentFolderName (${displayVideos.size} فيديو)",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
