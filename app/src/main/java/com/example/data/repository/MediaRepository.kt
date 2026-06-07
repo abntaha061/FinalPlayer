@@ -24,8 +24,8 @@ class MediaRepository(context: Context) {
         return mediaDao.getMediaFileByPath(path)
     }
 
-    suspend fun triggerScan(context: Context, onProgress: (String) -> Unit = {}) {
-        scanner.scanMedia(context, onProgress)
+    suspend fun triggerScan(context: Context, onProgress: (String) -> Unit = {}): Int {
+        return scanner.scanMedia(context, onProgress) ?: 0
     }
 
     suspend fun updatePlaybackPosition(path: String, position: Long) {

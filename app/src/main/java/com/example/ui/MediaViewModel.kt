@@ -12,7 +12,11 @@ import com.example.data.local.entities.HistoryEntity
 import com.example.data.local.entities.MediaFile
 import com.example.data.local.entities.PlaylistEntity
 import com.example.data.local.entities.ScannedFolder
+import com.example.data.observer.RealTimeMediaWatcher
 import com.example.data.repository.MediaRepository
+import android.util.Log
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -122,6 +126,8 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         audioPlayer?.release()
         audioPlayer = null
+        realTimeWatcher?.unregisterObservers()
+        realTimeWatcher = null
     }
 
     // --- REACTIVE STREAMS ---
@@ -151,19 +157,69 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private val _isPrivateFolderLocked = MutableStateFlow(true)
     val isPrivateFolderLocked: StateFlow<Boolean> = _isPrivateFolderLocked.asStateFlow()
 
+    private var realTimeWatcher: RealTimeMediaWatcher? = null
+
     init {
         // Run an automatic incremental scan on launch
         launchIncrementalScan()
+        // Register real-time change observers (ContentObserver & FileObservers)
+        startRealTimeWatcher()
+        // Designate periodic light scanner via WorkManager
+        schedulePeriodicLightScan()
     }
 
     fun launchIncrementalScan() {
         viewModelScope.launch {
             _isScanning.value = true
-            repository.triggerScan(context) { progress ->
+            val addedCount = repository.triggerScan(context) { progress ->
                 _scanProgress.value = progress
             }
             seedSampleTracksIfNeeded()
             _isScanning.value = false
+
+            // Notify user with elegant Toast if more than 3 files are added / detected in real time
+            if (addedCount > 3) {
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "تم إضافة $addedCount ملفات جديدة ✨", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun startRealTimeWatcher() {
+        if (realTimeWatcher == null) {
+            realTimeWatcher = RealTimeMediaWatcher(
+                context = context,
+                scope = viewModelScope,
+                repository = repository,
+                onTriggerScan = {
+                    launchIncrementalScan()
+                }
+            )
+            realTimeWatcher?.registerObservers()
+        }
+    }
+
+    private fun schedulePeriodicLightScan() {
+        try {
+            val constraints = androidx.work.Constraints.Builder()
+                .setRequiresBatteryNotLow(true)
+                .build()
+
+            val periodicWorkRequest = androidx.work.PeriodicWorkRequestBuilder<com.example.data.worker.MediaScanWorker>(
+                15, java.util.concurrent.TimeUnit.MINUTES
+            )
+                .setConstraints(constraints)
+                .build()
+
+            androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                "MediaLightCycleScan",
+                androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+                periodicWorkRequest
+            )
+            Log.d("MediaViewModel", "Scheduled 15-minute lightweight background periodic scans.")
+        } catch (e: Exception) {
+            Log.e("MediaViewModel", "Failed to schedule background periodic scan", e)
         }
     }
 
