@@ -348,21 +348,8 @@ fun MainNavigationRoot() {
                 }
             }
 
-            // Full screen overlay player is active
-            if (activePlayingFilePath != null) {
-                PlayerScreen(
-                    filePath = activePlayingFilePath!!,
-                    viewModel = viewModel,
-                    onBack = { activePlayingFilePath = null },
-                    onNavigateToVideo = { activePlayingFilePath = it }
-                )
-            } else if (isFullPlayerOpen) {
-                MusicLyricsPlayerScreen(
-                    viewModel = viewModel,
-                    onBack = { viewModel.setFullPlayerOpen(false) }
-                )
-            } else {
-                // Navigation components layout
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Navigation components layout - Kept in composition to preserve state/backstack
                 NavHost(
                     navController = navController,
                     startDestination = "home",
@@ -389,6 +376,21 @@ fun MainNavigationRoot() {
                             onBack = { navController.popBackStack() }
                         )
                     }
+                }
+
+                // Full screen overlay player is active
+                if (activePlayingFilePath != null) {
+                    PlayerScreen(
+                        filePath = activePlayingFilePath!!,
+                        viewModel = viewModel,
+                        onBack = { activePlayingFilePath = null },
+                        onNavigateToVideo = { activePlayingFilePath = it }
+                    )
+                } else if (isFullPlayerOpen) {
+                    MusicLyricsPlayerScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.setFullPlayerOpen(false) }
+                    )
                 }
             }
         }

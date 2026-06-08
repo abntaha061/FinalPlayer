@@ -416,6 +416,10 @@ fun PlayerScreen(
     var subShadowIntensity by remember { mutableStateOf(2f) }
     var subtitleDelaySeconds by remember { mutableStateOf(0.0f) }
 
+    var activeSubtitleText by remember { mutableStateOf("") }
+    val subPrefsManager = remember { com.example.data.SubtitlePrefsManager(context) }
+    val subtitlePrefsState by subPrefsManager.subtitlePreferencesFlow.collectAsState(initial = com.example.data.SubtitlePreferences())
+
     var checkedExtendedTools by remember {
         mutableStateOf(
             context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE)
@@ -499,6 +503,12 @@ fun PlayerScreen(
                 isPlayingState = isPlaying
             }
 
+            override fun onCues(cues: List<androidx.media3.common.text.Cue>) {
+                activeSubtitleText = cues
+                    .mapNotNull { it.text?.toString() }
+                    .joinToString("\n")
+            }
+
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 videoWidth = videoSize.width
                 videoHeight = videoSize.height
@@ -516,6 +526,16 @@ fun PlayerScreen(
             delay(250)
             if (!isSeekingBySwipe) {
                 currentPlayTime = player.currentPosition
+            }
+        }
+    }
+
+    // Auto-advance to next video when the current video finishes playing
+    LaunchedEffect(playbackState) {
+        if (playbackState == Player.STATE_ENDED) {
+            if (hasNextVideo) {
+                val nextPath = allVideos[currentVideoIndex + 1].path
+                onNavigateToVideo(nextPath)
             }
         }
     }
@@ -619,62 +639,45 @@ fun PlayerScreen(
             .transformable(state = transformableState)
     ) {
         // AndroidView rendering Surface Player Canvas
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    this.player = player
-                    useController = false
-                    resizeMode = when (scaleMode) {
+        key(filePath) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        this.player = player
+                        useController = false
+                        subtitleView?.visibility = android.view.View.GONE // Disable built-in caption layer
+                        resizeMode = when (scaleMode) {
+                            "FILL" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            "STRETCH" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                            "CROP" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        }
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                    }
+                },
+                update = { view ->
+                    if (view.player != player) {
+                        view.player = player
+                    }
+                    view.resizeMode = when (scaleMode) {
                         "FILL" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         "STRETCH" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                         "CROP" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                     }
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
+                    view.subtitleView?.visibility = android.view.View.GONE // Force hide built-in caption layer
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = if (isMirrorModeActive) -scale else scale,
+                        scaleY = if (isVerticalFlipActive) -scale else scale
                     )
-                }
-            },
-            update = { view ->
-                if (view.player != player) {
-                    view.player = player
-                }
-                view.resizeMode = when (scaleMode) {
-                    "FILL" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    "STRETCH" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                    "CROP" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                }
-
-                // Custom subtitle styles live update binding
-                view.subtitleView?.let { sView ->
-                    val face = when (subFontName) {
-                        "Cairo" -> android.graphics.Typeface.SANS_SERIF
-                        "Tajawal" -> android.graphics.Typeface.SERIF
-                        "Monospace" -> android.graphics.Typeface.MONOSPACE
-                        else -> android.graphics.Typeface.DEFAULT
-                    }
-                    val capStyle = androidx.media3.ui.CaptionStyleCompat(
-                        subTextColor.toArgb(),
-                        if (isSubBgTransparent) android.graphics.Color.TRANSPARENT else android.graphics.Color.BLACK,
-                        android.graphics.Color.TRANSPARENT,
-                        if (isSubShadowEnabled) androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE else androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE,
-                        android.graphics.Color.BLACK,
-                        face
-                    )
-                    sView.setStyle(capStyle)
-                    sView.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subFontSize)
-                    sView.setPadding(subPadding, subPadding, subPadding, subPadding)
-                }
-            },
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = if (isMirrorModeActive) -scale else scale,
-                    scaleY = if (isVerticalFlipActive) -scale else scale
-                )
-        )
+            )
+        }
 
         // Night mode filter overlays
         if (isNightModeActive) {
@@ -684,6 +687,46 @@ fun PlayerScreen(
                     .background(Color(0xFFE5A642).copy(alpha = 0.22f))
                     .background(Color.Black.copy(alpha = 0.18f))
             )
+        }
+
+        // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY
+        if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 100.dp, start = 32.dp, end = 32.dp), // keep safe distances from control interfaces
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight(subtitlePrefsState.verticalOffset)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    Text(
+                        text = activeSubtitleText,
+                        color = subtitlePrefsState.textColor,
+                        fontSize = subtitlePrefsState.textSize.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .background(
+                                color = subtitlePrefsState.backgroundColor,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = Color.White.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable {
+                                isSubtitleCustomizationOpen = true
+                            }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                            .testTag("custom_subtitle_text")
+                    )
+                }
+            }
         }
 
         // -----------------------------------------------------
@@ -1767,12 +1810,12 @@ fun PlayerScreen(
         }
 
         // -----------------------------------------------------
-        // SUBTITLE CUSTOMIZATION DIALOG
+        // SUBTITLE CUSTOMIZATION DIALOG (DataStore Persisted)
         // -----------------------------------------------------
         if (isSubtitleCustomizationOpen) {
             AlertDialog(
                 onDismissRequest = { isSubtitleCustomizationOpen = false },
-                title = { Text("تخصيص النصوص والترجمات ✏️", color = Color.White) },
+                title = { Text("تخصيص نصوص الترجمة (Customize Subtitles) ✏️", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
                 text = {
                     Column(
                         modifier = Modifier
@@ -1780,131 +1823,124 @@ fun PlayerScreen(
                             .height(350.dp)
                             .verticalScroll(rememberScrollState())
                     ) {
-                        Text("التصميم (Design):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("المحاذاة align:", color = Color.White, fontSize = 11.sp)
-                            Row {
-                                listOf("Left", "Center", "Right").forEach { align ->
-                                    FilterChip(
-                                        selected = subAlignment == align,
-                                        onClick = { subAlignment = align },
-                                        label = { Text(align) },
-                                        modifier = Modifier.padding(horizontal = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Text("البادئة padding: $subPadding", color = Color.White, fontSize = 11.sp)
+                        Text("التحكم بالموضع الجغرافي (Layout Placement):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("الموضع العمودي (Vertical Position): ${(subtitlePrefsState.verticalOffset * 100).toInt()}%", color = Color.White, fontSize = 11.sp)
                         Slider(
-                            value = subPadding.toFloat(),
-                            onValueChange = { subPadding = it.toInt() },
-                            valueRange = 0f..20f
+                            value = subtitlePrefsState.verticalOffset,
+                            onValueChange = { newValue ->
+                                scope.launch {
+                                    subPrefsManager.savePreferences(subtitlePrefsState.copy(verticalOffset = newValue))
+                                }
+                            },
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF00C8FF),
+                                activeTrackColor = Color(0xFF00C8FF)
+                            ),
+                            valueRange = 0.1f..0.98f
                         )
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("الخلفية ملونة خلف الكلمات:", color = Color.White, fontSize = 11.sp)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = !isSubBgTransparent,
-                                    onCheckedChange = { isSubBgTransparent = !it }
-                                )
-                                Text("تفعيل خلفية", color = Color.Gray, fontSize = 10.sp)
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("تناسب الترجمة مع حجم الفديو تلقائياً:", color = Color.White, fontSize = 11.sp)
-                            Checkbox(
-                                checked = isSubFitVideo,
-                                onCheckedChange = { isSubFitVideo = it }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("النص (Text Settings):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("الخط العربي font face:", color = Color.White, fontSize = 11.sp)
-                            Row {
-                                listOf("Cairo", "Tajawal", "Monospace", "Default").forEach { font ->
-                                    FilterChip(
-                                        selected = subFontName == font,
-                                        onClick = { subFontName = font },
-                                        label = { Text(font) },
-                                        modifier = Modifier.padding(horizontal = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Text("حجم الخط font size: ${subFontSize.toInt()}sp", color = Color.White, fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("خيارات الخط والحجم (Typography Settings):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("حجم الخط (Text Size): ${subtitlePrefsState.textSize.toInt()}sp", color = Color.White, fontSize = 11.sp)
                         Slider(
-                            value = subFontSize,
-                            onValueChange = { subFontSize = it },
-                            valueRange = 12f..40f
+                            value = subtitlePrefsState.textSize,
+                            onValueChange = { newValue ->
+                                scope.launch {
+                                    subPrefsManager.savePreferences(subtitlePrefsState.copy(textSize = newValue))
+                                }
+                            },
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF00C8FF),
+                                activeTrackColor = Color(0xFF00C8FF)
+                            ),
+                            valueRange = 12f..48f
                         )
 
-                        Text("لون خط الترجمة (Text Color):", color = Color.White, fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("لون خط الترجمة (Text Color):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val colorsList = listOf(Color.White, Color.Yellow, Color.Cyan, Color.Green, Color.Red, Color.Magenta)
+                            val colorsList = listOf(
+                                Color.White,
+                                Color.Yellow,
+                                Color.Cyan,
+                                Color.Green,
+                                Color(0xFFFF5252),
+                                Color(0xFFFFA500),
+                                Color(0xFFFFC0CB)
+                            )
                             colorsList.forEach { col ->
                                 Box(
                                     modifier = Modifier
-                                        .size(30.dp)
+                                        .size(34.dp)
                                         .clip(CircleShape)
                                         .background(col)
                                         .border(
                                             2.dp,
-                                            if (subTextColor == col) Color(0xFF00C8FF) else Color.Transparent,
+                                            if (subtitlePrefsState.textColorArgb == col.toArgb()) Color(0xFF00C8FF) else Color.Transparent,
                                             CircleShape
                                         )
-                                        .clickable { subTextColor = col }
+                                        .clickable {
+                                            scope.launch {
+                                                subPrefsManager.savePreferences(subtitlePrefsState.copy(textColorArgb = col.toArgb()))
+                                            }
+                                        }
                                 )
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text("لون خلفية نص الترجمة (Background Overlay):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("تفعيل الحدود والظل الأسود:", color = Color.White, fontSize = 11.sp)
-                            Checkbox(
-                                checked = isSubShadowEnabled,
-                                onCheckedChange = { isSubShadowEnabled = it }
+                            val bgColorsList = listOf(
+                                Color.Transparent to "شفاف",
+                                Color.Black.copy(alpha = 0.3f) to "خفيف",
+                                Color.Black.copy(alpha = 0.6f) to "متوسط",
+                                Color.Black to "داكن",
+                                Color(0xFF1C1326).copy(alpha = 0.7f) to "بنفسجي"
                             )
+                            bgColorsList.forEach { (col, label) ->
+                                Box(
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (col == Color.Transparent) Color.DarkGray.copy(alpha = 0.3f) else col)
+                                        .border(
+                                            2.dp,
+                                            if (subtitlePrefsState.backgroundColorArgb == col.toArgb()) Color(0xFF00C8FF) else Color.Transparent,
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable {
+                                            scope.launch {
+                                                subPrefsManager.savePreferences(subtitlePrefsState.copy(backgroundColorArgb = col.toArgb()))
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { isSubtitleCustomizationOpen = false }) {
-                        Text("حفظ التخصيص", color = Color(0xFF00C8FF))
+                        Text("تم الإعداد", color = Color(0xFF00C8FF), fontWeight = FontWeight.Bold)
                     }
                 },
                 containerColor = Color(0xFF141419)
             )
-        }
+
 
         // -----------------------------------------------------
         // EQUALIZER BOTTOM SHEET DIALOG
@@ -2169,6 +2205,7 @@ fun PlayerScreen(
             }
         }
     }
+}
 }
 
 // Helper formatting method
