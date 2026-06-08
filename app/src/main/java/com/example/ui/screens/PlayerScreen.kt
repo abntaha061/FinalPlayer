@@ -637,6 +637,9 @@ fun PlayerScreen(
                 }
             },
             update = { view ->
+                if (view.player != player) {
+                    view.player = player
+                }
                 view.resizeMode = when (scaleMode) {
                     "FILL" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     "STRETCH" -> AspectRatioFrameLayout.RESIZE_MODE_FILL

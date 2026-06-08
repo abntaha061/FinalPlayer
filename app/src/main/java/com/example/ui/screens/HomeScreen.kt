@@ -116,7 +116,7 @@ fun HomeScreen(
     var passcodeQueryInput by remember { mutableStateOf("") }
     var passcodeSetupInput1 by remember { mutableStateOf("") }
 
-    var selectedFolderPath by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedFolderPath by viewModel.selectedFolderPath.collectAsState()
 
     Scaffold(
         topBar = {
@@ -232,7 +232,7 @@ fun HomeScreen(
                                 navigationIcon = {
                                     val currentFolder = selectedFolderPath
                                     if (currentFolder != null && selectedBottomTab == 0 && selectedSubTabIndex == 0 && !isSearchActive) {
-                                        IconButton(onClick = { selectedFolderPath = null }) {
+                                        IconButton(onClick = { viewModel.setSelectedFolderPath(null) }) {
                                             Icon(Icons.Default.ArrowBack, contentDescription = "Back to folders")
                                         }
                                     }
@@ -476,7 +476,7 @@ fun HomeScreen(
                             onShowStatusSaver = { isStatusSaverVisible = true },
                             onShowCleaner = { isCleanerVisible = true },
                             selectedFolderPath = selectedFolderPath,
-                            onSelectedFolderPathChange = { selectedFolderPath = it },
+                            onSelectedFolderPathChange = { viewModel.setSelectedFolderPath(it) },
                             selectedPaths = selectedPaths
                         )
                         1 -> PlaylistsAndFavoritesTab(

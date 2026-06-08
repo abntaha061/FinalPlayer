@@ -151,6 +151,14 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     val sleepTimeRemaining: StateFlow<Long?> = _sleepTimeRemaining.asStateFlow()
     private var sleepTimerJob: Job? = null
 
+    // --- FOLDER NAVIGATION STATE PERSISTENCE ---
+    private val _selectedFolderPath = MutableStateFlow<String?>(null)
+    val selectedFolderPath: StateFlow<String?> = _selectedFolderPath.asStateFlow()
+
+    fun setSelectedFolderPath(path: String?) {
+        _selectedFolderPath.value = path
+    }
+
     // --- PRIVATE PASSPHRASE SECURE WALLET ---
     private val sharedPrefs = context.getSharedPreferences("finalplayer_preferences", Context.MODE_PRIVATE)
 
