@@ -99,11 +99,17 @@ fun PlayerScreen(
 
     var seekStepSeconds by remember { mutableStateOf(10) }
 
-    // Keep screen on during media playback
+    // Store original orientation on entry to restore on exit
+    val initialOrientation = remember {
+        activity?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+
+    // Keep screen on during media playback and restore original orientation on leave
     DisposableEffect(Unit) {
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity?.requestedOrientation = initialOrientation
         }
     }
 
@@ -570,6 +576,23 @@ fun PlayerScreen(
 
     var currentOrientationState by remember { 
         mutableStateOf(activity?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) 
+    }
+
+    var hasAutoRotatedForCurrentVideo by remember(filePath) { mutableStateOf(false) }
+
+    LaunchedEffect(videoWidth, videoHeight, filePath) {
+        if (!hasAutoRotatedForCurrentVideo && videoWidth > 0 && videoHeight > 0) {
+            val targetOrientation = if (videoWidth > videoHeight) {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            } else {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+            if (activity?.requestedOrientation != targetOrientation) {
+                activity?.requestedOrientation = targetOrientation
+                currentOrientationState = targetOrientation
+            }
+            hasAutoRotatedForCurrentVideo = true
+        }
     }
 
     val resolutionLabel = remember(videoWidth, videoHeight) {
