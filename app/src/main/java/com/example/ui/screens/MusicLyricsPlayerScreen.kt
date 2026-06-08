@@ -121,8 +121,10 @@ fun MusicLyricsPlayerScreen(
             .testTag("aurora_music_player_screen")
             .pointerInput(Unit) {
                 detectTapGestures {
-                    areControlsVisible = true
-                    lastInteractionTime = System.currentTimeMillis()
+                    areControlsVisible = !areControlsVisible
+                    if (areControlsVisible) {
+                        lastInteractionTime = System.currentTimeMillis()
+                    }
                 }
             }
     ) {
@@ -143,48 +145,54 @@ fun MusicLyricsPlayerScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            // Header Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            // Header Bar wrapped in animated visibility to match lower panel/seekbar
+            AnimatedVisibility(
+                visible = areControlsVisible,
+                enter = fadeIn(animationSpec = tween(400)) + slideInVertically(initialOffsetY = { -it / 3 }),
+                exit = fadeOut(animationSpec = tween(500)) + slideOutVertically(targetOffsetY = { -it / 3 })
             ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Minimize Player", tint = Color.White)
-                }
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Minimize Player", tint = Color.White)
+                    }
 
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "جاري التشغيل الآن (NOW PLAYING)",
-                        color = Color.LightGray.copy(alpha = 0.7f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = track.album ?: "ألبوم افتراضي (Default Album)",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "جاري التشغيل الآن (NOW PLAYING)",
+                            color = Color.LightGray.copy(alpha = 0.7f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = track.album ?: "ألبوم افتراضي (Default Album)",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
 
-                IconButton(
-                    onClick = { viewModel.toggleFavorite(track) },
-                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape)
-                ) {
-                    Icon(
-                        imageVector = if (track.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Favorite track",
-                        tint = if (track.isFavorite) Color.Red else Color.White
-                    )
+                    IconButton(
+                        onClick = { viewModel.toggleFavorite(track) },
+                        modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = if (track.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "Favorite track",
+                            tint = if (track.isFavorite) Color.Red else Color.White
+                        )
+                    }
                 }
             }
 
@@ -209,6 +217,12 @@ fun MusicLyricsPlayerScreen(
                         onUserInteraction = {
                             areControlsVisible = true
                             lastInteractionTime = System.currentTimeMillis()
+                        },
+                        onTapBackground = {
+                            areControlsVisible = !areControlsVisible
+                            if (areControlsVisible) {
+                                lastInteractionTime = System.currentTimeMillis()
+                            }
                         }
                     )
                 }
@@ -226,28 +240,9 @@ fun MusicLyricsPlayerScreen(
                         .padding(horizontal = 24.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // 1. Song Metadata
-                    Text(
-                        text = track.title,
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = track.artist ?: "فنان غير معروف",
-                        color = Color(0xFF00C8FF), // Elegant PureSonic cyan
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    // Removed Song Metadata (Title & Artist) per user request to hide them from the mini player/bottom control center
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // 2. PureSonic Progress seekbar + Capsule split signature
                     val progressSec = progress / 1000
@@ -405,16 +400,10 @@ fun SynchronizedLyricsList(
     lyrics: List<LyricLine>,
     activeIndex: Int,
     onLineClicked: (LyricLine) -> Unit,
-    onUserInteraction: () -> Unit
+    onUserInteraction: () -> Unit,
+    onTapBackground: () -> Unit
 ) {
     val listState = rememberLazyListState()
-
-    // Reset inactivity timer when scroll starts/stops
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) {
-            onUserInteraction()
-        }
-    }
 
     // Smooth scroll to align active lyric line in center of list viewports
     LaunchedEffect(activeIndex) {
@@ -428,7 +417,13 @@ fun SynchronizedLyricsList(
 
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures {
+                    onTapBackground()
+                }
+            },
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(bottom = 120.dp, top = 20.dp)
     ) {
