@@ -477,6 +477,9 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     fun getDefaultScaleMode(): String = sharedPrefs.getString("default_fit_scale_mode", "FIT") ?: "FIT"
     fun saveDefaultScaleMode(mode: String) = sharedPrefs.edit().putString("default_fit_scale_mode", mode).apply()
 
+    fun getAudioSortOption(): Int = sharedPrefs.getInt("audio_sort_option", 0)
+    fun saveAudioSortOption(option: Int) = sharedPrefs.edit().putInt("audio_sort_option", option).apply()
+
     // --- COPIES, MOVES, DELETES & RENAMES MANAGER ---
     fun copyPaths(paths: List<String>, targetDir: String, onFinished: () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {

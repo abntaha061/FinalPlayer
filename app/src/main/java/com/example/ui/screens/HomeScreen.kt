@@ -132,6 +132,26 @@ fun HomeScreen(
     var passcodeQueryInput by remember { mutableStateOf("") }
     var passcodeSetupInput1 by remember { mutableStateOf("") }
 
+    var lastBackPressTime by remember { mutableStateOf(0L) }
+
+    BackHandler(enabled = true) {
+        if (selectedPaths.isNotEmpty()) {
+            selectedPaths.clear()
+        } else if (selectedFolderPath != null) {
+            viewModel.setSelectedFolderPath(null)
+        } else if (selectedBottomTab == 1 || selectedBottomTab == 2) {
+            selectedBottomTab = 0
+        } else {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastBackPressTime < 2000) {
+                (context as? android.app.Activity)?.finish()
+            } else {
+                lastBackPressTime = currentTime
+                android.widget.Toast.makeText(context, "اضغط مرة أخرى للخروج من التطبيق", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             if (selectedBottomTab != 2) {
@@ -2050,7 +2070,7 @@ fun MusicPlayerTab(
     viewModel: MediaViewModel
 ) {
     var isSortMenuVisible by remember { mutableStateOf(false) }
-    var sortByOption by remember { mutableStateOf(0) } // 0 = A-Z, 1 = Z-A, 2 = Newest, 3 = Oldest
+    var sortByOption by remember { mutableStateOf(viewModel.getAudioSortOption()) } // Persisted sort options: 0 = A-Z, 1 = Z-A, 2 = Newest, 3 = Oldest
 
     var showDialogForPlaylistSelection by remember { mutableStateOf(false) }
     var selectedTrackPathForPlaylist by remember { mutableStateOf("") }
@@ -2296,6 +2316,7 @@ fun MusicPlayerTab(
                                     )
                                     .clickable {
                                         sortByOption = optionIdx
+                                        viewModel.saveAudioSortOption(optionIdx)
                                         isSortMenuVisible = false
                                     }
                                     .padding(vertical = 12.dp, horizontal = 16.dp),

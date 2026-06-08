@@ -37,6 +37,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import com.example.data.local.entities.MediaFile
@@ -58,6 +59,10 @@ fun MusicLyricsPlayerScreen(
     val duration by viewModel.audioDuration.collectAsState()
 
     val track = currentTrack ?: return
+
+    BackHandler {
+        onBack()
+    }
 
     val baseColors = remember(track.id) { getAuroraColors(track) }
     var colors by remember(track.id) { mutableStateOf(baseColors) }
