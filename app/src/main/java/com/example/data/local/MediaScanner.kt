@@ -176,6 +176,8 @@ class MediaScanner(private val mediaDao: MediaDao) {
                     val dateModified = file.lastModified()
                     val title = file.nameWithoutExtension
 
+                    if (shouldExcludeAudioFile(path, title)) continue
+
                     var duration = 0L
                     var artist: String? = null
                     var album: String? = null
@@ -205,6 +207,17 @@ class MediaScanner(private val mediaDao: MediaDao) {
                 }
             }
         }
+    }
+
+    private fun shouldExcludeAudioFile(path: String, title: String): Boolean {
+        val name = title.lowercase()
+        val lowerPath = path.lowercase()
+        return name.startsWith("aud-") || 
+               name.startsWith("aud_") || 
+               (name.startsWith("aud") && name.substring(3).all { it.isDigit() || it == '-' || it == '_' || it.isWhitespace() }) ||
+               lowerPath.contains("whatsapp") || 
+               (lowerPath.contains("voice") && lowerPath.contains("note")) ||
+               lowerPath.contains("recording")
     }
 
     private suspend fun refreshFoldersFromDb() {
@@ -314,11 +327,13 @@ class MediaScanner(private val mediaDao: MediaDao) {
                     val rawPath = cursor.getString(dataCol) ?: continue
                     val file = File(rawPath)
                     val path = try { file.canonicalPath } catch (e: Exception) { file.absolutePath }
+                    val title = cursor.getString(nameCol) ?: file.name
+                    if (shouldExcludeAudioFile(path, title)) continue
                     val dateMod = cursor.getLong(dateModCol) * 1000L
                     foundFiles.add(
                         MediaFile(
                             path = path,
-                            title = cursor.getString(nameCol) ?: file.name,
+                            title = title,
                             duration = cursor.getLong(durationCol),
                             size = cursor.getLong(sizeCol),
                             dateModified = dateMod,

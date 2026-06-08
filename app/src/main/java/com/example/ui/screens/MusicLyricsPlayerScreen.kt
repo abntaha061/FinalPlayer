@@ -37,6 +37,8 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import com.example.data.local.entities.MediaFile
 import com.example.ui.MediaViewModel
 import com.example.ui.components.TrackArtwork
@@ -95,6 +97,15 @@ fun MusicLyricsPlayerScreen(
         if (idx == -1) 0 else idx
     }
 
+    // Inactivity fade out for player control system
+    var areControlsVisible by remember { mutableStateOf(true) }
+    var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(lastInteractionTime) {
+        delay(7000L)
+        areControlsVisible = false
+    }
+
     // Adaptive orientation check
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
@@ -103,6 +114,12 @@ fun MusicLyricsPlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .testTag("aurora_music_player_screen")
+            .pointerInput(Unit) {
+                detectTapGestures {
+                    areControlsVisible = true
+                    lastInteractionTime = System.currentTimeMillis()
+                }
+            }
     ) {
         // 1. Aurora Background layer
         AuroraBackground(colors = colors, albumArtBitmap = albumArtBitmap)
@@ -207,137 +224,150 @@ fun MusicLyricsPlayerScreen(
                     SynchronizedLyricsList(
                         lyrics = lyrics,
                         activeIndex = activeIndex,
-                        onLineClicked = { viewModel.seekAudioTo(it.timeMs) }
+                        onLineClicked = { viewModel.seekAudioTo(it.timeMs) },
+                        onUserInteraction = {
+                            areControlsVisible = true
+                            lastInteractionTime = System.currentTimeMillis()
+                        }
                     )
                 }
             }
 
-            // Timeline slider (progress bar)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            // Animated visibility for secondary controls group (seekbar & bottom players panel)
+            AnimatedVisibility(
+                visible = areControlsVisible,
+                enter = fadeIn(animationSpec = tween(400)) + slideInVertically(initialOffsetY = { it / 3 }),
+                exit = fadeOut(animationSpec = tween(500)) + slideOutVertically(targetOffsetY = { it / 3 })
             ) {
-                val progressSec = progress / 1000
-                val durationSec = duration / 1000
-                val progressStr = "%02d:%02d".format(progressSec / 60, progressSec % 60)
-                val durationStr = "%02d:%02d".format(durationSec / 60, durationSec % 60)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(progressStr, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                    Slider(
-                        value = if (duration > 0) progress.toFloat() / duration else 0f,
-                        onValueChange = { viewModel.seekAudioTo((it * duration).toLong()) },
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                        ),
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Timeline slider (progress bar)
+                    Column(
                         modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 10.dp)
-                            .testTag("lyrics_player_seek")
-                    )
-                    Text(durationStr, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                }
-            }
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        val progressSec = progress / 1000
+                        val durationSec = duration / 1000
+                        val progressStr = "%02d:%02d".format(progressSec / 60, progressSec % 60)
+                        val durationStr = "%02d:%02d".format(durationSec / 60, durationSec % 60)
 
-            // Frosted Integrated MiniPlayer Controller at the bottom
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 4.dp)
-                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(20.dp)),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.Black.copy(alpha = 0.45f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Small Track Artwork
-                    TrackArtwork(
-                        filePath = track.path,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
-                        fallbackColor = colors.c1
-                    )
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    // Title & Artist
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = track.title,
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = track.artist ?: "فنان غير معروف",
-                            color = Color.LightGray.copy(alpha = 0.7f),
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(progressStr, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                            Slider(
+                                value = if (duration > 0) progress.toFloat() / duration else 0f,
+                                onValueChange = { viewModel.seekAudioTo((it * duration).toLong()) },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 10.dp)
+                                    .testTag("lyrics_player_seek")
+                            )
+                            Text(durationStr, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
 
-                    // Backward 10s
-                    IconButton(
-                        onClick = { viewModel.seekAudioTo((progress - 10000).coerceAtLeast(0)) },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Replay10,
-                            contentDescription = "Replay 10 seconds",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    // Play/Pause button
-                    IconButton(
-                        onClick = { viewModel.toggleAudioPlayPause() },
+                    // Frosted Integrated MiniPlayer Controller at the bottom
+                    Card(
                         modifier = Modifier
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape)
-                            .size(40.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = "Play or Pause",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 4.dp)
+                            .border(width = 1.dp, color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(20.dp)),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color.Black.copy(alpha = 0.45f)
                         )
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    // Forward 10s
-                    IconButton(
-                        onClick = { viewModel.seekAudioTo((progress + 10000).coerceAtMost(duration)) },
-                        modifier = Modifier.size(36.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Forward10,
-                            contentDescription = "Forward 10 seconds",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Small Track Artwork
+                            TrackArtwork(
+                                filePath = track.path,
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+                                fallbackColor = colors.c1
+                            )
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            // Title & Artist
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = track.title,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = track.artist ?: "فنان غير معروف",
+                                    color = Color.LightGray.copy(alpha = 0.7f),
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            // Backward 10s
+                            IconButton(
+                                onClick = { viewModel.seekAudioTo((progress - 10000).coerceAtLeast(0)) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Replay10,
+                                    contentDescription = "Replay 10 seconds",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            // Play/Pause button
+                            IconButton(
+                                onClick = { viewModel.toggleAudioPlayPause() },
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape)
+                                    .size(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = "Play or Pause",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            // Forward 10s
+                            IconButton(
+                                onClick = { viewModel.seekAudioTo((progress + 10000).coerceAtMost(duration)) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Forward10,
+                                    contentDescription = "Forward 10 seconds",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -377,9 +407,17 @@ fun TrackMetaData(title: String, artist: String?) {
 fun SynchronizedLyricsList(
     lyrics: List<LyricLine>,
     activeIndex: Int,
-    onLineClicked: (LyricLine) -> Unit
+    onLineClicked: (LyricLine) -> Unit,
+    onUserInteraction: () -> Unit
 ) {
     val listState = rememberLazyListState()
+
+    // Reset inactivity timer when scroll starts/stops
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            onUserInteraction()
+        }
+    }
 
     // Smooth scroll to align active lyric line in center of list viewports
     LaunchedEffect(activeIndex) {
@@ -417,7 +455,10 @@ fun SynchronizedLyricsList(
                         scaleX = scale
                         scaleY = scale
                     }
-                    .clickable { onLineClicked(line) }
+                    .clickable {
+                        onUserInteraction()
+                        onLineClicked(line)
+                    }
                     .padding(vertical = 4.dp),
                 contentAlignment = Alignment.CenterEnd // Right-aligned lyrics per user's prompt!
             ) {

@@ -24,6 +24,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.MediaViewModel
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.layout.ContentScale
 import com.example.ui.components.TrackArtwork
 import java.io.File
 
@@ -162,6 +166,7 @@ fun BrowserScreen(
                                 )
                             } else {
                                 val isAudio = file.name.endsWith(".mp3", ignoreCase = true) || file.name.endsWith(".m4a", ignoreCase = true) || file.name.endsWith(".wav", ignoreCase = true) || file.name.endsWith(".ogg", ignoreCase = true)
+                                val isVideo = file.name.endsWith(".mp4", ignoreCase = true) || file.name.endsWith(".mkv", ignoreCase = true) || file.name.endsWith(".webm", ignoreCase = true) || file.name.endsWith(".3gp", ignoreCase = true) || file.name.endsWith(".avi", ignoreCase = true)
                                 if (isAudio) {
                                     TrackArtwork(
                                         filePath = file.absolutePath,
@@ -169,11 +174,50 @@ fun BrowserScreen(
                                             .size(36.dp)
                                             .clip(RoundedCornerShape(6.dp))
                                     )
+                                } else if (isVideo) {
+                                    val videoThumbnail = rememberVideoThumbnail(file.absolutePath)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 54.dp, height = 34.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
+                                            .background(Color.Black.copy(alpha = 0.1f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (videoThumbnail != null) {
+                                            Image(
+                                                bitmap = videoThumbnail,
+                                                contentDescription = "Video thumbnail",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayCircle,
+                                                contentDescription = "Video indicator",
+                                                tint = MaterialTheme.colorScheme.secondary,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .background(Color.Black.copy(alpha = 0.45f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.PlayArrow,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(10.dp)
+                                            )
+                                        }
+                                    }
                                 } else {
                                     Icon(
-                                        imageVector = Icons.Default.PlayCircle,
-                                        contentDescription = "Video indicator",
-                                        tint = MaterialTheme.colorScheme.secondary,
+                                        imageVector = Icons.Default.InsertDriveFile,
+                                        contentDescription = "File indicator",
+                                        tint = Color.Gray,
                                         modifier = Modifier.size(32.dp)
                                     )
                                 }

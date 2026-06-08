@@ -1119,8 +1119,9 @@ fun VideosAndFoldersTab(
                                 val thumbnail = rememberVideoThumbnail(video.path)
                                 Box(
                                     modifier = Modifier
-                                        .size(width = 110.dp, height = 65.dp)
-                                        .clip(RoundedCornerShape(4.dp))
+                                        .size(width = 116.dp, height = 68.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
                                         .background(Color.Black.copy(alpha = 0.2f)),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1143,6 +1144,22 @@ fun VideosAndFoldersTab(
                                                         )
                                                     )
                                                 )
+                                        )
+                                    }
+
+                                    // Small elegant play overlay in list view
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                            .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.PlayArrow,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
                                     
@@ -1409,7 +1426,7 @@ fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.Ima
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                         loadedBitmap = android.media.ThumbnailUtils.createVideoThumbnail(
                             file,
-                            android.util.Size(320, 240),
+                            android.util.Size(640, 360), // HD 16:9 aspect ratio standard thumbnail size
                             null
                         )
                     } else {
@@ -1438,14 +1455,23 @@ fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.Ima
             }
 
             if (loadedBitmap != null) {
-                // Downscale large frames to keep memory consumption low
-                val finalBitmap = if (loadedBitmap!!.width > 640 || loadedBitmap!!.height > 480) {
-                    try {
-                        android.graphics.Bitmap.createScaledBitmap(loadedBitmap!!, 320, 240, true)
-                    } catch (e: Exception) {
+                // Downscale large frames to keep memory consumption low while preserving crisp resolution & aspect ratio
+                val finalBitmap = try {
+                    val w = loadedBitmap!!.width
+                    val h = loadedBitmap!!.height
+                    val maxTargetSide = 640
+                    if (w > maxTargetSide || h > maxTargetSide) {
+                        val ratio = w.toFloat() / h
+                        val (targetW, targetH) = if (w > h) {
+                            maxTargetSide to (maxTargetSide / ratio).toInt().coerceAtLeast(1)
+                        } else {
+                            (maxTargetSide * ratio).toInt().coerceAtLeast(1) to maxTargetSide
+                        }
+                        android.graphics.Bitmap.createScaledBitmap(loadedBitmap!!, targetW, targetH, true)
+                    } else {
                         loadedBitmap!!
                     }
-                } else {
+                } catch (e: Exception) {
                     loadedBitmap!!
                 }
                 val imageBitmap = finalBitmap.asImageBitmap()
@@ -1480,7 +1506,7 @@ fun VideoGridItem(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(105.dp)
+                    .aspectRatio(16f / 9f)
                     .background(Color.Black.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -1505,12 +1531,20 @@ fun VideoGridItem(
                             )
                     )
                 }
-                Icon(
-                    Icons.Default.PlayCircle,
-                    contentDescription = "Play video badge",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(34.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = "Play video badge",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
 
                  // Duration badge overlay
                  val totalSeconds = video.duration / 1000
@@ -1657,75 +1691,319 @@ fun MusicPlayerTab(
     onPlayFile: (String) -> Unit,
     viewModel: MediaViewModel
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .testTag("music_player_tab")
-    ) {
-        Text(
-            "الملفات الصوتية والموسيقى (Audio Music Player)",
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
+    var isSortMenuVisible by remember { mutableStateOf(false) }
+    var sortByOption by remember { mutableStateOf(0) } // 0 = A-Z, 1 = Z-A, 2 = Newest, 3 = Oldest
 
-        if (audioList.isEmpty()) {
-            Box(
+    var showDialogForPlaylistSelection by remember { mutableStateOf(false) }
+    var selectedTrackPathForPlaylist by remember { mutableStateOf("") }
+    val playlistsList by viewModel.playlists.collectAsState(initial = emptyList())
+
+    val sortedList = remember(audioList, sortByOption) {
+        when (sortByOption) {
+            0 -> audioList.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+            1 -> audioList.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title }).reversed()
+            2 -> audioList.sortedByDescending { it.dateModified }
+            3 -> audioList.sortedBy { it.dateModified }
+            else -> audioList
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .testTag("music_player_tab")
+        ) {
+            // PureSonic Header Row!
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("لا توجد ملفات موسيقية مضافة", color = Color.Gray, fontSize = 14.sp)
-            }
-        } else {
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(audioList) { track ->
-                    Row(
+                // Left Title + Sort icon
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { isSortMenuVisible = true },
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 5.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                            .clickable { onPlayFile(track.path) }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape)
+                            .size(40.dp)
                     ) {
-                        TrackArtwork(
-                            filePath = track.path,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                        Icon(
+                            imageVector = Icons.Default.Sort, // 3 lines sort icon!
+                            contentDescription = "Sort Songs Menu",
+                            tint = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = track.title,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = track.artist ?: "الفنان غير معروف (Unknown Artist)",
-                                fontSize = 11.sp,
-                                color = Color.Gray
-                            )
-                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "PureSonic",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
 
-                        // Toggle Favorites status
-                        IconButton(onClick = { viewModel.toggleFavorite(track) }) {
-                            Icon(
-                                if (track.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "Favorite status icon",
-                                tint = if (track.isFavorite) Color.Red else Color.LightGray
+                // Right Song count badge
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    modifier = Modifier.padding(6.dp)
+                ) {
+                    Text(
+                        "${audioList.size} أغنية",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            if (sortedList.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("لا توجد ملفات موسيقية مضافة", color = Color.Gray, fontSize = 14.sp)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(sortedList) { track ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                                .clickable { onPlayFile(track.path) }
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 1. Right side: Artwork
+                            TrackArtwork(
+                                filePath = track.path,
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clip(RoundedCornerShape(12.dp))
                             )
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            // 2. Center: Artist & Title
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = track.title,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = track.artist ?: "فنان غير معروف",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF00C8FF), // Beautiful cyan/teal from PureSonic screenshots!
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            // 3. Left side: Duration & Actions
+                            val durationSec = track.duration / 1000
+                            val durationStr = "%02d:%02d".format(durationSec / 60, durationSec % 60)
+                            Text(
+                                text = durationStr,
+                                fontSize = 11.sp,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(horizontal = 6.dp)
+                            )
+
+                            // Favorite toggle menu or playlist actions
+                            var isTrackMenuExpanded by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(onClick = { isTrackMenuExpanded = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "Track Actions Menu",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = isTrackMenuExpanded,
+                                    onDismissRequest = { isTrackMenuExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (track.isFavorite) "إزالة من المفضلة" else "إضافة للمفضلة") },
+                                        leadingIcon = {
+                                            Icon(
+                                                if (track.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                                contentDescription = null,
+                                                tint = if (track.isFavorite) Color.Red else Color.Gray
+                                            )
+                                        },
+                                        onClick = {
+                                            viewModel.toggleFavorite(track)
+                                            isTrackMenuExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("إضافة إلى قائمة تشغيل") },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.PlaylistAdd,
+                                                contentDescription = null
+                                            )
+                                        },
+                                        onClick = {
+                                            selectedTrackPathForPlaylist = track.path
+                                            showDialogForPlaylistSelection = true
+                                            isTrackMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+
+        // Sort songs interactive bottom overlay sheet
+        if (isSortMenuVisible) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clickable { isSortMenuVisible = false },
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable(enabled = false) {}, // prevent click-through
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp)
+                    ) {
+                        // Drag handle accent
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .size(width = 40.dp, height = 4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "ترتيب الأغاني",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        val options = listOf(
+                            "أبجديًا (من أ إلى ي)" to 0,
+                            "أبجديًا عكسيًا (من ي إلى أ)" to 1,
+                            "التاريخ (من الأحدث إلى الأقدم)" to 2,
+                            "التاريخ (من الأقدم إلى الأحدث)" to 3
+                        )
+
+                        options.forEach { (label, optionIdx) ->
+                            val isActive = sortByOption == optionIdx
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                        else Color.Transparent
+                                    )
+                                    .clickable {
+                                        sortByOption = optionIdx
+                                        isSortMenuVisible = false
+                                    }
+                                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                                if (isActive) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selected",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showDialogForPlaylistSelection) {
+            AlertDialog(
+                onDismissRequest = { showDialogForPlaylistSelection = false },
+                title = { Text("إضافة إلى قائمة تشغيل", fontWeight = FontWeight.Bold) },
+                text = {
+                    if (playlistsList.isEmpty()) {
+                        Text("لا توجد قائمة تشغيل حالية. يرجى إنشاء قائمة جديدة أولاً.")
+                    } else {
+                        LazyColumn {
+                            items(playlistsList) { playlist ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.addToPlaylist(playlist.id, selectedTrackPathForPlaylist)
+                                            showDialogForPlaylistSelection = false
+                                        }
+                                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.QueueMusic,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(playlist.name, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showDialogForPlaylistSelection = false }) {
+                        Text("إغلاق")
+                    }
+                }
+            )
         }
     }
 }
@@ -1826,8 +2104,9 @@ fun PlaylistsAndFavoritesTab(
                         val thumbnail = rememberVideoThumbnail(favorite.path)
                         Box(
                             modifier = Modifier
-                                .size(width = 60.dp, height = 40.dp)
-                                .clip(RoundedCornerShape(6.dp))
+                                .size(width = 68.dp, height = 40.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
                                 .background(Color.Black.copy(alpha = 0.3f)),
                             contentAlignment = Alignment.Center
                         ) {
@@ -1836,7 +2115,7 @@ fun PlaylistsAndFavoritesTab(
                                     bitmap = thumbnail,
                                     contentDescription = "Video thumbnail",
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Fit
+                                    contentScale = ContentScale.Crop
                                 )
                             } else {
                                 Box(
@@ -1854,15 +2133,16 @@ fun PlaylistsAndFavoritesTab(
                             }
                             Box(
                                 modifier = Modifier
-                                    .size(16.dp)
-                                    .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape),
+                                    .size(18.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
+                                    .border(0.5.dp, Color.White.copy(alpha = 0.2f), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.PlayArrow,
                                     contentDescription = "Play icon overlay",
                                     tint = Color.White,
-                                    modifier = Modifier.size(10.dp)
+                                    modifier = Modifier.size(11.dp)
                                 )
                             }
                         }
