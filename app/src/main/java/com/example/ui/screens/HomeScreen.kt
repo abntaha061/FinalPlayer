@@ -2666,78 +2666,94 @@ fun PrivateVaultTab(
 fun MiniPlayer(viewModel: MediaViewModel) {
     val currentTrack by viewModel.currentTrack.collectAsState()
     val isPlaying by viewModel.isAudioPlaying.collectAsState()
+    val progress by viewModel.audioProgress.collectAsState()
+    val duration by viewModel.audioDuration.collectAsState()
     val track = currentTrack ?: return
 
     val colors = remember(track.id) { getAuroraColors(track) }
+    val progressFraction = if (duration > 0) progress.toFloat() / duration else 0f
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(
                 brush = Brush.horizontalGradient(
-                    colors = listOf(Color(0xFF1E1E26), Color(0xFF15151B))
+                    colors = listOf(Color(0xFF13131A), Color(0xFF0F0F14))
                 )
             )
             .border(width = 0.5.dp, color = Color.White.copy(alpha = 0.08f))
             .clickable { viewModel.setFullPlayerOpen(true) }
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        TrackArtwork(
-            filePath = track.path,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
-            fallbackColor = colors.c1
+        // Ultra-thin beautiful progression line on top
+        LinearProgressIndicator(
+            progress = { progressFraction },
+            modifier = Modifier.fillMaxWidth().height(2.dp),
+            color = Color(0xFF00C8FF), // PureSonic beautiful cyan signature
+            trackColor = Color.White.copy(alpha = 0.1f)
         )
 
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title,
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = track.artist ?: "فنان غير معروف",
-                color = Color.LightGray.copy(alpha = 0.7f),
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        IconButton(
-            onClick = { viewModel.toggleAudioPlayPause() },
+        Row(
             modifier = Modifier
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), CircleShape)
-                .size(36.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = "Play/Pause audio stream",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
+            TrackArtwork(
+                filePath = track.path,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+                fallbackColor = colors.c1
             )
-        }
 
-        Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-        IconButton(
-            onClick = { viewModel.stopAudio() },
-            modifier = Modifier.size(36.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Stop stream audio",
-                tint = Color.LightGray.copy(alpha = 0.8f),
-                modifier = Modifier.size(18.dp)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = track.artist ?: "فنان غير معروف",
+                    color = Color(0xFF00C8FF), // Beautiful PureSonic cyan accent
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            IconButton(
+                onClick = { viewModel.toggleAudioPlayPause() },
+                modifier = Modifier
+                    .background(Color.White, CircleShape)
+                    .size(36.dp)
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = "Play/Pause audio stream",
+                    tint = Color.Black,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            IconButton(
+                onClick = { viewModel.stopAudio() },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Stop stream audio",
+                    tint = Color.LightGray.copy(alpha = 0.8f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }

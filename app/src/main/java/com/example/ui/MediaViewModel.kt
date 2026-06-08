@@ -61,6 +61,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                             _audioDuration.value = duration.coerceAtLeast(0L)
                         } else if (state == Player.STATE_ENDED) {
                             _isAudioPlaying.value = false
+                            playNextAudio()
                         }
                     }
                 })
@@ -116,6 +117,54 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         audioPlayer?.stop()
         _isAudioPlaying.value = false
         _currentTrack.value = null
+    }
+
+    fun playNextAudio() {
+        viewModelScope.launch {
+            try {
+                val audios = repository.audioFlow.first()
+                if (audios.isNotEmpty()) {
+                    val current = _currentTrack.value
+                    if (current != null) {
+                        val index = audios.indexOfFirst { it.path == current.path }
+                        if (index != -1 && index < audios.size - 1) {
+                            playAudio(audios[index + 1])
+                        } else {
+                            playAudio(audios[0])
+                        }
+                    } else {
+                        playAudio(audios[0])
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MediaViewModel", "Error playing next track", e)
+            }
+        }
+    }
+
+    fun playPreviousAudio() {
+        viewModelScope.launch {
+            try {
+                val audios = repository.audioFlow.first()
+                if (audios.isNotEmpty()) {
+                    val current = _currentTrack.value
+                    if (current != null) {
+                        val index = audios.indexOfFirst { it.path == current.path }
+                        if (index > 0) {
+                            playAudio(audios[index - 1])
+                        } else if (index == 0) {
+                            playAudio(audios[audios.size - 1])
+                        } else {
+                            playAudio(audios[0])
+                        }
+                    } else {
+                        playAudio(audios[0])
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MediaViewModel", "Error playing previous track", e)
+            }
+        }
     }
 
     fun setFullPlayerOpen(open: Boolean) {
