@@ -549,8 +549,8 @@ fun HomeScreen(
             if (selectedBottomTab == 0 && selectedSubTabIndex == 0 && resumeVideoFilePath != null) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(bottom = paddingValues.calculateBottomPadding() + 24.dp, start = 24.dp)
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = paddingValues.calculateBottomPadding() + 24.dp, end = 24.dp)
                 ) {
                     FloatingActionButton(
                         onClick = {

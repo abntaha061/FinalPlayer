@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -138,16 +139,34 @@ fun MusicLyricsPlayerScreen(
                 .background(Color.Black.copy(alpha = 0.5f))
         )
 
-        // Column structure
-        Column(
+        // Overlay layout: list stretches full screen, controls overlay on top
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
         ) {
+            // Highly visible synchronized lyrics taking up the main screen space
+            SynchronizedLyricsList(
+                lyrics = lyrics,
+                activeIndex = activeIndex,
+                onLineClicked = { viewModel.seekAudioTo(it.timeMs) },
+                onUserInteraction = {
+                    areControlsVisible = true
+                    lastInteractionTime = System.currentTimeMillis()
+                },
+                onTapBackground = {
+                    areControlsVisible = !areControlsVisible
+                    if (areControlsVisible) {
+                        lastInteractionTime = System.currentTimeMillis()
+                    }
+                }
+            )
+
             // Header Bar wrapped in animated visibility to match lower panel/seekbar
             AnimatedVisibility(
                 visible = areControlsVisible,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding(),
                 enter = fadeIn(animationSpec = tween(400)) + slideInVertically(initialOffsetY = { -it / 3 }),
                 exit = fadeOut(animationSpec = tween(500)) + slideOutVertically(targetOffsetY = { -it / 3 })
             ) {
@@ -196,48 +215,19 @@ fun MusicLyricsPlayerScreen(
                 }
             }
 
-            // Body Area based on Adaptive Orientation
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(horizontal = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Highly visible synchronized lyrics taking up the main screen space
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    SynchronizedLyricsList(
-                        lyrics = lyrics,
-                        activeIndex = activeIndex,
-                        onLineClicked = { viewModel.seekAudioTo(it.timeMs) },
-                        onUserInteraction = {
-                            areControlsVisible = true
-                            lastInteractionTime = System.currentTimeMillis()
-                        },
-                        onTapBackground = {
-                            areControlsVisible = !areControlsVisible
-                            if (areControlsVisible) {
-                                lastInteractionTime = System.currentTimeMillis()
-                            }
-                        }
-                    )
-                }
-            }
-
             // Animated visibility for secondary controls group (seekbar & bottom players panel) - PureSonic Style!
             AnimatedVisibility(
                 visible = areControlsVisible,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding(),
                 enter = fadeIn(animationSpec = tween(400)) + slideInVertically(initialOffsetY = { it / 3 }),
                 exit = fadeOut(animationSpec = tween(500)) + slideOutVertically(targetOffsetY = { it / 3 })
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                        .padding(horizontal = 24.dp, vertical = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // Removed Song Metadata (Title & Artist) per user request to hide them from the mini player/bottom control center
@@ -405,63 +395,72 @@ fun SynchronizedLyricsList(
 ) {
     val listState = rememberLazyListState()
 
-    // Smooth scroll to align active lyric line in center of list viewports
-    LaunchedEffect(activeIndex) {
-        if (activeIndex >= 0 && activeIndex < lyrics.size) {
-            listState.animateScrollToItem(
-                index = activeIndex,
-                scrollOffset = -180 // Subtract pixel offset to sit active item centrally
-            )
-        }
-    }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val containerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
+        val targetYOffsetPx = containerHeightPx * 0.40f // Fixed target position (40% of the screen height)
+        val scrollOffsetPx = -targetYOffsetPx + with(LocalDensity.current) { 16.dp.toPx() }
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures {
-                    onTapBackground()
-                }
-            },
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(bottom = 120.dp, top = 20.dp)
-    ) {
-        itemsIndexed(lyrics) { index, line ->
-            val isActive = index == activeIndex
-            val scale by animateFloatAsState(
-                targetValue = if (isActive) 1.05f else 0.95f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-                label = "lyric_scale"
-            )
-            val alpha by animateFloatAsState(
-                targetValue = if (isActive) 1.0f else 0.45f,
-                animationSpec = tween(durationMillis = 300),
-                label = "lyric_alpha"
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                    }
-                    .clickable {
-                        onUserInteraction()
-                        onLineClicked(line)
-                    }
-                    .padding(vertical = 4.dp),
-                contentAlignment = Alignment.CenterEnd // Right-aligned lyrics per user's prompt!
-            ) {
-                Text(
-                    text = line.text,
-                    color = if (isActive) Color.White else Color.LightGray,
-                    fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Medium,
-                    fontSize = if (isActive) 23.sp else 14.sp,
-                    textAlign = TextAlign.Right, // RTL reading flow for Arabic lyrics
-                    modifier = Modifier.fillMaxWidth().graphicsLayer { this.alpha = alpha }
+        // Smooth scroll to align active lyric line perfectly at 40% height of list viewports
+        LaunchedEffect(activeIndex) {
+            if (activeIndex >= 0 && activeIndex < lyrics.size) {
+                listState.animateScrollToItem(
+                    index = activeIndex,
+                    scrollOffset = scrollOffsetPx.toInt()
                 )
+            }
+        }
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures {
+                        onTapBackground()
+                    }
+                },
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(top = maxHeight * 0.40f, bottom = maxHeight * 0.60f + 120.dp)
+        ) {
+            itemsIndexed(lyrics) { index, line ->
+                val isActive = index == activeIndex
+                val scale by animateFloatAsState(
+                    targetValue = if (isActive) 1.05f else 0.95f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "lyric_scale"
+                )
+                val alpha by animateFloatAsState(
+                    targetValue = if (isActive) 1.0f else 0.45f,
+                    animationSpec = tween(durationMillis = 300),
+                    label = "lyric_alpha"
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onUserInteraction()
+                            onLineClicked(line)
+                        }
+                        .padding(start = 24.dp, top = 4.dp, end = 24.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(
+                        text = line.text,
+                        color = if (isActive) Color.White else Color.LightGray.copy(alpha = 0.8f),
+                        fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Medium,
+                        fontSize = if (isActive) 22.sp else 14.sp,
+                        textAlign = TextAlign.Right, // RTL reading flow for Arabic lyrics
+                        modifier = Modifier
+                            .weight(1f)
+                            .graphicsLayer {
+                                this.alpha = alpha
+                                scaleX = scale
+                                scaleY = scale
+                            }
+                    )
+                }
             }
         }
     }
@@ -601,6 +600,12 @@ fun AuroraBackground(
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "aurora_lights")
 
+    // Smoothly animate each aurora color to create beautiful transition morphs when the track changes
+    val animatedC1 by animateColorAsState(targetValue = colors.c1, animationSpec = tween(1800), label = "animated_c1")
+    val animatedC2 by animateColorAsState(targetValue = colors.c2, animationSpec = tween(1800), label = "animated_c2")
+    val animatedC3 by animateColorAsState(targetValue = colors.c3, animationSpec = tween(1800), label = "animated_c3")
+    val animatedC4 by animateColorAsState(targetValue = colors.c4, animationSpec = tween(1800), label = "animated_c4")
+
     // Slow organic floating movement vectors for the 4 colors of the fluid liquid aurora
     val tX1 by infiniteTransition.animateFloat(
         initialValue = -110f,
@@ -678,10 +683,17 @@ fun AuroraBackground(
         label = "t_y4"
     )
 
+    // Generate a deep cosmic backdrop composed of extremely dark, rich variations of the track's colors
+    val darkBaseBrush = remember(animatedC1, animatedC2) {
+        val dark1 = animatedC1.copy(red = animatedC1.red * 0.08f, green = animatedC1.green * 0.08f, blue = animatedC1.blue * 0.08f, alpha = 1.0f)
+        val dark2 = animatedC2.copy(red = animatedC2.red * 0.06f, green = animatedC2.green * 0.06f, blue = animatedC2.blue * 0.06f, alpha = 1.0f)
+        Brush.verticalGradient(listOf(dark1, dark2))
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF06060A))
+            .background(darkBaseBrush)
     ) {
         // Dynamic Blurred Album Art Background
         if (albumArtBitmap != null) {
@@ -692,7 +704,7 @@ fun AuroraBackground(
                 modifier = Modifier
                     .fillMaxSize()
                     .blur(20.dp)
-                    .graphicsLayer { alpha = 0.42f },
+                    .graphicsLayer { alpha = 0.28f },
                 contentScale = ContentScale.Crop
             )
         }
@@ -701,7 +713,7 @@ fun AuroraBackground(
         androidx.compose.foundation.Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .blur(70.dp)
+                .blur(80.dp)
         ) {
             val width = size.width
             val height = size.height
@@ -723,10 +735,10 @@ fun AuroraBackground(
                 y = height * 0.65f + tY4.dp.toPx()
             )
 
-            // Aurora metaball circles
+            // Aurora metaball circles using smoothly morphing animated colors
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(colors.c1.copy(alpha = 0.52f), Color.Transparent),
+                    colors = listOf(animatedC1.copy(alpha = 0.45f), Color.Transparent),
                     center = c1Pos,
                     radius = width * 0.95f
                 ),
@@ -736,7 +748,7 @@ fun AuroraBackground(
 
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(colors.c2.copy(alpha = 0.48f), Color.Transparent),
+                    colors = listOf(animatedC2.copy(alpha = 0.40f), Color.Transparent),
                     center = c2Pos,
                     radius = width * 1.05f
                 ),
@@ -746,7 +758,7 @@ fun AuroraBackground(
 
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(colors.c3.copy(alpha = 0.45f), Color.Transparent),
+                    colors = listOf(animatedC3.copy(alpha = 0.38f), Color.Transparent),
                     center = c3Pos,
                     radius = width * 0.9f
                 ),
@@ -756,7 +768,7 @@ fun AuroraBackground(
 
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(colors.c4.copy(alpha = 0.50f), Color.Transparent),
+                    colors = listOf(animatedC4.copy(alpha = 0.42f), Color.Transparent),
                     center = c4Pos,
                     radius = width * 1.0f
                 ),
