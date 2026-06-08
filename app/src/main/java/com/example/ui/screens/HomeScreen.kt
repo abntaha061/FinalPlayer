@@ -794,6 +794,99 @@ data class QuickActionItem(
     val onClick: () -> Unit
 )
 
+fun toEasternArabicNumerals(input: String): String {
+    val western = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".")
+    val eastern = listOf("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩", ",")
+    var result = input
+    for (i in western.indices) {
+        result = result.replace(western[i], eastern[i])
+    }
+    return result
+}
+
+fun formatFolderSizeArabic(totalBytes: Long): String {
+    val gigabytes = totalBytes / (1024.0 * 1024.0 * 1024.0)
+    val megabytes = totalBytes / (1024.0 * 1024.0)
+    return if (gigabytes >= 1.0) {
+        val formatted = "%.1f".format(gigabytes)
+        toEasternArabicNumerals(formatted) + " غيغابايت"
+    } else {
+        val formatted = "%.0f".format(megabytes)
+        toEasternArabicNumerals(formatted) + " ميغابايت"
+    }
+}
+
+fun formatVideosCountArabic(count: Int): String {
+    return when {
+         count == 1 -> "1 فيديو"
+         count in 3..10 -> "$count فيديوهات"
+         else -> "$count فيديو"
+    }
+}
+
+@Composable
+fun MXFolderIcon(folderName: String, filesCount: Int) {
+    val darkGrey = Color(0xFF4C5059) // Silver-grey/dark silver color of MX folder
+    val iconColor = Color(0xFF8E95A5) // Light grey color for camera/movie icon inside the folder
+
+    val nameLower = folderName.lowercase()
+    val innerIcon = when {
+        nameLower.contains("camera") || nameLower.contains("كاميرا") -> Icons.Filled.PhotoCamera
+        nameLower.contains("movie") || nameLower.contains("فيديو") || nameLower.contains("film") || nameLower.contains("record") || nameLower.contains("video") -> Icons.Filled.Movie
+        else -> null
+    }
+
+    Box(
+        modifier = Modifier
+            .size(width = 54.dp, height = 44.dp)
+    ) {
+        // Folder tab on the top-left of folder shape to make it look like a real folder directory silhouette!
+        Box(
+            modifier = Modifier
+                .padding(start = 2.dp)
+                .size(width = 16.dp, height = 6.dp)
+                .background(darkGrey, shape = RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+        )
+        // Bottom/Main Folder body container
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 4.dp)
+                .background(darkGrey, shape = RoundedCornerShape(3.dp))
+                .padding(6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (innerIcon != null) {
+                Icon(
+                    imageVector = innerIcon,
+                    contentDescription = null,
+                    tint = iconColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        // Red count badge at the top-right of the folder icon, overlapping exactly like MX Player
+        if (filesCount > 0) {
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .background(Color(0xFFFF3333), shape = CircleShape)
+                    .align(Alignment.TopEnd)
+                    .offset(x = 4.dp, y = (-2).dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = filesCount.toString(),
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun VideosAndFoldersTab(
@@ -916,62 +1009,47 @@ fun VideosAndFoldersTab(
                         val p = File(it.path).parentFile?.absolutePath
                         p == folder.folderPath
                     }.sumOf { it.size }
-                    val sizeString = "%.1f MB".format(totalBytes / (1024f * 1024f))
 
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                                 .clickable { selectedFolderPath = folder.folderPath }
-                                .padding(12.dp),
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Folder visual representation with beautiful reddish files-count badge badge
-                            Box(
-                                modifier = Modifier
-                                    .size(50.dp)
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), shape = RoundedCornerShape(10.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.Folder,
-                                    contentDescription = "Folder layout",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(30.dp)
-                                )
-                                if (filesCount > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(18.dp)
-                                            .background(Color.Red, shape = CircleShape)
-                                            .align(Alignment.TopEnd),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = filesCount.toString(),
-                                            color = Color.White,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
+                            MXFolderIcon(folderName = folderName, filesCount = filesCount)
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = folderName,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 13.5.sp,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "$filesCount مقاطع فيديو | $sizeString",
-                                    color = Color.Gray,
-                                    fontSize = 12.sp
-                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = formatVideosCountArabic(filesCount),
+                                        color = Color(0xFF8E94A0),
+                                        fontSize = 11.5.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .background(Color(0xFF242730), shape = RoundedCornerShape(3.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = formatFolderSizeArabic(totalBytes),
+                                            color = Color(0xFFA6ABB6),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
