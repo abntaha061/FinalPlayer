@@ -83,14 +83,16 @@ fun HomeScreen(
 
     val resumeVideoFilePath = remember(historyList, selectedFolderPath, videoList) {
         if (selectedFolderPath != null) {
-            historyList.firstOrNull { entry ->
+            val inHistory = historyList.firstOrNull { entry ->
                 val f = File(entry.mediaFilePath)
                 f.parentFile?.absolutePath == selectedFolderPath && videoList.any { it.path == entry.mediaFilePath }
             }?.mediaFilePath
+            inHistory ?: videoList.firstOrNull { File(it.path).parentFile?.absolutePath == selectedFolderPath }?.path
         } else {
-            historyList.firstOrNull { entry ->
+            val inHistory = historyList.firstOrNull { entry ->
                 videoList.any { it.path == entry.mediaFilePath }
             }?.mediaFilePath
+            inHistory ?: videoList.firstOrNull()?.path
         }
     }
 
