@@ -78,6 +78,22 @@ fun HomeScreen(
     val sleepRemaining by viewModel.sleepTimeRemaining.collectAsState()
     val isPrivateLocked by viewModel.isPrivateFolderLocked.collectAsState()
 
+    val historyList by viewModel.history.collectAsState(initial = emptyList())
+    val selectedFolderPath by viewModel.selectedFolderPath.collectAsState()
+
+    val resumeVideoFilePath = remember(historyList, selectedFolderPath, videoList) {
+        if (selectedFolderPath != null) {
+            historyList.firstOrNull { entry ->
+                val f = File(entry.mediaFilePath)
+                f.parentFile?.absolutePath == selectedFolderPath && videoList.any { it.path == entry.mediaFilePath }
+            }?.mediaFilePath
+        } else {
+            historyList.firstOrNull { entry ->
+                videoList.any { it.path == entry.mediaFilePath }
+            }?.mediaFilePath
+        }
+    }
+
     var selectedBottomTab by remember { mutableStateOf(0) } // 0 = Videos, 1 = Music, 2 = Settings
     var selectedSubTabIndex by remember { mutableStateOf(0) } // 0 = Videos, 1 = Favorites/Playlists, 2 = Vault
 
@@ -115,8 +131,6 @@ fun HomeScreen(
     var isPasscodeUnlockDialogVisible by remember { mutableStateOf(false) }
     var passcodeQueryInput by remember { mutableStateOf("") }
     var passcodeSetupInput1 by remember { mutableStateOf("") }
-
-    val selectedFolderPath by viewModel.selectedFolderPath.collectAsState()
 
     Scaffold(
         topBar = {
@@ -447,64 +461,104 @@ fun HomeScreen(
             )
         }
 
-        PullToRefreshBox(
-            isRefreshing = isScanning,
-            onRefresh = { viewModel.launchIncrementalScan() },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            // Main dynamic content switcher depending on selected bottom or sub tabs
-            when (selectedBottomTab) {
-                0 -> {
-                    when (selectedSubTabIndex) {
-                        0 -> VideosAndFoldersTab(
-                            videoList = videoList,
-                            scannedFolders = scannedFolders,
-                            onPlayFile = onPlayFile,
-                            viewModel = viewModel,
-                            layoutMode = layoutMode,
-                            viewContentMode = viewContentMode,
-                            onViewContentModeChange = { viewContentMode = it },
-                            sortOption = sortOption,
-                            sortDirection = sortDirection,
-                            searchQuery = searchQuery,
-                            onSelectedBottomTab = { selectedBottomTab = it },
-                            onSelectedSubTabIndex = { selectedSubTabIndex = it },
-                            onOptionsClick = { isOptionsSheetVisible = true },
-                            onShowTransfer = { isTransferDialogVisible = true },
-                            onShowStatusSaver = { isStatusSaverVisible = true },
-                            onShowCleaner = { isCleanerVisible = true },
-                            selectedFolderPath = selectedFolderPath,
-                            onSelectedFolderPathChange = { viewModel.setSelectedFolderPath(it) },
-                            selectedPaths = selectedPaths
-                        )
-                        1 -> PlaylistsAndFavoritesTab(
-                            playlists = playlistsList,
-                            favorites = favoritesList,
-                            onPlayFile = onPlayFile,
-                            onCreatePlaylist = { isPlaylistModalVisible = true },
-                            viewModel = viewModel
-                        )
-                        2 -> PrivateVaultTab(
-                            privateFiles = privateFilesList,
-                            isLocked = isPrivateLocked,
-                            onPlayFile = onPlayFile,
-                            onGoSetup = { isPasscodeSetupDialogVisible = true },
-                            onGoUnlock = { isPasscodeUnlockDialogVisible = true },
-                            viewModel = viewModel
-                        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            PullToRefreshBox(
+                isRefreshing = isScanning,
+                onRefresh = { viewModel.launchIncrementalScan() },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                // Main dynamic content switcher depending on selected bottom or sub tabs
+                when (selectedBottomTab) {
+                    0 -> {
+                        when (selectedSubTabIndex) {
+                            0 -> VideosAndFoldersTab(
+                                videoList = videoList,
+                                scannedFolders = scannedFolders,
+                                onPlayFile = onPlayFile,
+                                viewModel = viewModel,
+                                layoutMode = layoutMode,
+                                viewContentMode = viewContentMode,
+                                onViewContentModeChange = { viewContentMode = it },
+                                sortOption = sortOption,
+                                sortDirection = sortDirection,
+                                searchQuery = searchQuery,
+                                onSelectedBottomTab = { selectedBottomTab = it },
+                                onSelectedSubTabIndex = { selectedSubTabIndex = it },
+                                onOptionsClick = { isOptionsSheetVisible = true },
+                                onShowTransfer = { isTransferDialogVisible = true },
+                                onShowStatusSaver = { isStatusSaverVisible = true },
+                                onShowCleaner = { isCleanerVisible = true },
+                                selectedFolderPath = selectedFolderPath,
+                                onSelectedFolderPathChange = { viewModel.setSelectedFolderPath(it) },
+                                selectedPaths = selectedPaths
+                            )
+                            1 -> PlaylistsAndFavoritesTab(
+                                playlists = playlistsList,
+                                favorites = favoritesList,
+                                onPlayFile = onPlayFile,
+                                onCreatePlaylist = { isPlaylistModalVisible = true },
+                                viewModel = viewModel
+                            )
+                            2 -> PrivateVaultTab(
+                                privateFiles = privateFilesList,
+                                isLocked = isPrivateLocked,
+                                onPlayFile = onPlayFile,
+                                onGoSetup = { isPasscodeSetupDialogVisible = true },
+                                onGoUnlock = { isPasscodeUnlockDialogVisible = true },
+                                viewModel = viewModel
+                            )
+                        }
+                    }
+                    1 -> MusicPlayerTab(
+                        audioList = audioList,
+                        onPlayFile = onPlayFile,
+                        viewModel = viewModel
+                    )
+                    2 -> SettingsScreen(
+                        viewModel = viewModel,
+                        onBack = { selectedBottomTab = 0 }
+                    )
+                }
+            }
+
+            // Floating Resume Button placed at bottom-right corner
+            if (selectedBottomTab == 0 && selectedSubTabIndex == 0 && resumeVideoFilePath != null) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = paddingValues.calculateBottomPadding() + 24.dp, end = 24.dp)
+                    ) {
+                        FloatingActionButton(
+                            onClick = {
+                                resumeVideoFilePath?.let { onPlayFile(it) }
+                            },
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.testTag("resume_playback_fab")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "استئناف التشغيل",
+                                    tint = MaterialTheme.colorScheme.onPrimary
+                                )
+                                Text(
+                                    text = "استئناف التشغيل",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
                     }
                 }
-                1 -> MusicPlayerTab(
-                    audioList = audioList,
-                    onPlayFile = onPlayFile,
-                    viewModel = viewModel
-                )
-                2 -> SettingsScreen(
-                    viewModel = viewModel,
-                    onBack = { selectedBottomTab = 0 }
-                )
             }
         }
     }

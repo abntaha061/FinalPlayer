@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.map
 
 data class SubtitlePreferences(
     val textSize: Float = 18f,
-    val verticalOffset: Float = 0.85f, // Position vertical offset ratio from top (0.0 to 1.0)
+    val verticalOffset: Float = 0.95f, // Position vertical offset ratio from top (0.0 to 1.0)
     val textColorArgb: Int = Color.White.toArgb(),
     val backgroundColorArgb: Int = Color.Black.copy(alpha = 0.6f).toArgb()
 ) {
@@ -36,7 +36,7 @@ class SubtitlePrefsManager(private val context: Context) {
     val subtitlePreferencesFlow: Flow<SubtitlePreferences> = context.subtitleDataStore.data.map { preferences ->
         SubtitlePreferences(
             textSize = preferences[TEXT_SIZE] ?: 18f,
-            verticalOffset = preferences[VERTICAL_OFFSET] ?: 0.85f,
+            verticalOffset = preferences[VERTICAL_OFFSET] ?: 0.95f,
             textColorArgb = preferences[TEXT_COLOR_ARGB] ?: Color.White.toArgb(),
             backgroundColorArgb = preferences[BACKGROUND_COLOR_ARGB] ?: Color.Black.copy(alpha = 0.6f).toArgb()
         )

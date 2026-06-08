@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -354,6 +355,16 @@ fun PlayerScreen(
     var videoDuration by remember { mutableStateOf(0L) }
     var currentPlayTime by remember { mutableStateOf(0L) }
 
+    // Seek to last played position upon initial video load
+    LaunchedEffect(player, filePath) {
+        val dbMedia = viewModel.getMediaByPath(filePath)
+        val initialPosition = dbMedia?.lastPlayPosition ?: 0L
+        if (initialPosition > 0) {
+            player.seekTo(initialPosition)
+            currentPlayTime = initialPosition
+        }
+    }
+
     // Pinch-to-zoom parameters
     var scale by remember { mutableStateOf(1f) }
     val transformableState = rememberTransformableState { zoomChange, _, _ ->
@@ -428,6 +439,11 @@ fun PlayerScreen(
     var localSubtitleOffset by remember { mutableStateOf<Float?>(null) }
     var parentHeightPx by remember { mutableStateOf(1000f) }
     var isDraggingSubtitle by remember { mutableStateOf(false) }
+
+    val bottomPaddingAnim by animateDpAsState(
+        targetValue = if (areControlsVisible) 110.dp else 0.dp,
+        label = "subtitle_bottom_padding"
+    )
 
     var checkedExtendedTools by remember {
         mutableStateOf(
@@ -707,7 +723,7 @@ fun PlayerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .onSizeChanged { parentHeightPx = it.height.toFloat() }
-                    .padding(bottom = 100.dp, start = 32.dp, end = 32.dp),
+                    .padding(bottom = bottomPaddingAnim, start = 32.dp, end = 32.dp),
                 contentAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = verticalBias)
             ) {
                 Text(
@@ -926,8 +942,17 @@ fun PlayerScreen(
                 // Progress Slider (SeekBar with visual parameters)
                 val totalSecs = videoDuration / 1000
                 val curSecs = currentPlayTime / 1000
-                val totalStr = "%02d:%02d".format(totalSecs / 60, totalSecs % 60)
-                val curStr = "%02d:%02d".format(curSecs / 60, curSecs % 60)
+
+                val totalHours = totalSecs / 3600
+                val totalMinutes = (totalSecs % 3600) / 60
+                val totalSeconds = totalSecs % 60
+
+                val curHours = curSecs / 3600
+                val curMinutes = (curSecs % 3600) / 60
+                val curSeconds = curSecs % 60
+
+                val totalStr = "%02d:%02d:%02d".format(totalHours, totalMinutes, totalSeconds)
+                val curStr = "%02d:%02d:%02d".format(curHours, curMinutes, curSeconds)
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1514,7 +1539,7 @@ fun PlayerScreen(
                             Pair("🔖", "إشارة مرجعية") to {
                                 val bookPos = player.currentPosition
                                 val totalSec = bookPos / 1000
-                                val curStr = "%02d:%02d".format(totalSec / 60, totalSec % 60)
+                                val curStr = "%02d:%02d:%02d".format(totalSec / 3600, (totalSec % 3600) / 60, totalSec % 60)
                                 Toast.makeText(context, "تم حفظ الإشارة المرجعية عند $curStr", Toast.LENGTH_SHORT).show()
                             },
                             Pair("✂️", "قص الفيديو") to {
@@ -1527,10 +1552,12 @@ fun PlayerScreen(
                                 Toast.makeText(context, "محدد قوائم التشغيل متاح", Toast.LENGTH_SHORT).show()
                             },
                             Pair("ℹ️", "معلومات") to {
-                                val infoStr = "الملف: ${currentMediaFile.name}\nالدقة: $videoWidth x $videoHeight\nالحجم: %.2f MB\nالمدة: %d:%02d".format(
+                                val durationSec = player.duration / 1000
+                                val infoStr = "الملف: ${currentMediaFile.name}\nالدقة: $videoWidth x $videoHeight\nالحجم: %.2f MB\nالمدة: %02d:%02d:%02d".format(
                                     currentMediaFile.length() / (1024f * 1024f),
-                                    (player.duration / 1000) / 60,
-                                    (player.duration / 1000) % 60
+                                    durationSec / 3600,
+                                    (durationSec % 3600) / 60,
+                                    durationSec % 60
                                 )
                                 Toast.makeText(context, infoStr, Toast.LENGTH_LONG).show()
                             },
