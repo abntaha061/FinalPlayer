@@ -419,4 +419,182 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getDefaultScaleMode(): String = sharedPrefs.getString("default_fit_scale_mode", "FIT") ?: "FIT"
     fun saveDefaultScaleMode(mode: String) = sharedPrefs.edit().putString("default_fit_scale_mode", mode).apply()
+
+    // --- COPIES, MOVES, DELETES & RENAMES MANAGER ---
+    fun copyPaths(paths: List<String>, targetDir: String, onFinished: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            paths.forEach { path ->
+                val srcFile = File(path)
+                if (srcFile.exists()) {
+                    val destFile = File(targetDir, srcFile.name)
+                    copyFileOrDirectory(srcFile, destFile)
+                }
+            }
+            withContext(Dispatchers.Main) {
+                onFinished()
+                launchIncrementalScan()
+            }
+        }
+    }
+
+    private fun copyFileOrDirectory(src: File, dest: File) {
+        if (src.isDirectory) {
+            if (!dest.exists()) {
+                dest.mkdirs()
+            }
+            val children = src.listFiles()
+            if (children != null) {
+                for (child in children) {
+                    copyFileOrDirectory(child, File(dest, child.name))
+                }
+            }
+        } else {
+            val parent = dest.parentFile
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs()
+            }
+            src.copyTo(dest, overwrite = true)
+        }
+    }
+
+    fun movePaths(paths: List<String>, targetDir: String, onFinished: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = com.example.data.local.MediaDatabase.getDatabase(context).mediaDao()
+            paths.forEach { path ->
+                val srcFile = File(path)
+                if (srcFile.exists()) {
+                    val destFile = File(targetDir, srcFile.name)
+                    if (srcFile.renameTo(destFile)) {
+                        dao.deleteFolder(path)
+                        dao.deleteMediaFileByPath(path)
+                    } else {
+                        copyFileOrDirectory(srcFile, destFile)
+                        deleteFileOrDirectory(srcFile)
+                        dao.deleteFolder(path)
+                        dao.deleteMediaFileByPath(path)
+                    }
+                }
+            }
+            val allMedia = dao.getAllMediaFilesFlow().first()
+            val pathsToDelete = mutableListOf<String>()
+            paths.forEach { movedPath ->
+                allMedia.forEach { media ->
+                    if (media.path == movedPath || media.path.startsWith(movedPath + File.separator)) {
+                        pathsToDelete.add(media.path)
+                    }
+                }
+            }
+            if (pathsToDelete.isNotEmpty()) {
+                dao.deleteMediaFilesByPaths(pathsToDelete)
+            }
+            withContext(Dispatchers.Main) {
+                onFinished()
+                launchIncrementalScan()
+            }
+        }
+    }
+
+    fun deletePaths(paths: List<String>, onFinished: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = com.example.data.local.MediaDatabase.getDatabase(context).mediaDao()
+            paths.forEach { path ->
+                val file = File(path)
+                if (file.exists()) {
+                    deleteFileOrDirectory(file)
+                }
+                dao.deleteFolder(path)
+                dao.deleteMediaFileByPath(path)
+            }
+            val allMedia = dao.getAllMediaFilesFlow().first()
+            val pathsToDelete = mutableListOf<String>()
+            paths.forEach { deletedPath ->
+                allMedia.forEach { media ->
+                    if (media.path == deletedPath || media.path.startsWith(deletedPath + File.separator)) {
+                        pathsToDelete.add(media.path)
+                    }
+                }
+            }
+            if (pathsToDelete.isNotEmpty()) {
+                dao.deleteMediaFilesByPaths(pathsToDelete)
+            }
+            withContext(Dispatchers.Main) {
+                onFinished()
+                launchIncrementalScan()
+            }
+        }
+    }
+
+    private fun deleteFileOrDirectory(file: File) {
+        if (file.isDirectory) {
+            val children = file.listFiles()
+            if (children != null) {
+                for (child in children) {
+                    deleteFileOrDirectory(child)
+                }
+            }
+        }
+        file.delete()
+    }
+
+    fun renamePath(oldPath: String, newName: String, onFinished: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = com.example.data.local.MediaDatabase.getDatabase(context).mediaDao()
+            val oldFile = File(oldPath)
+            if (oldFile.exists()) {
+                if (oldFile.isDirectory) {
+                    val parent = oldFile.parentFile
+                    if (parent != null) {
+                        val newFile = File(parent, newName)
+                        if (oldFile.renameTo(newFile)) {
+                            dao.deleteFolder(oldPath)
+                            dao.insertFolder(
+                                ScannedFolder(
+                                    folderPath = newFile.absolutePath,
+                                    lastModifiedTs = System.currentTimeMillis(),
+                                    fileCount = 0,
+                                    lastScannedAt = System.currentTimeMillis()
+                                )
+                            )
+                            val allMedia = dao.getAllMediaFilesFlow().first()
+                            allMedia.forEach { media ->
+                                if (media.path.startsWith(oldPath + File.separator)) {
+                                    val relPath = media.path.substring(oldPath.length)
+                                    val newPath = newFile.absolutePath + relPath
+                                    dao.deleteMediaFileByPath(media.path)
+                                    dao.insertMediaFile(
+                                        media.copy(
+                                            id = 0,
+                                            path = newPath
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    val parent = oldFile.parentFile
+                    if (parent != null) {
+                        val newFile = File(parent, newName)
+                        if (oldFile.renameTo(newFile)) {
+                            val oldMedia = dao.getMediaFileByPath(oldPath)
+                            if (oldMedia != null) {
+                                dao.deleteMediaFileByPath(oldPath)
+                                dao.insertMediaFile(
+                                    oldMedia.copy(
+                                        id = 0,
+                                        path = newFile.absolutePath,
+                                        title = newFile.name
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            withContext(Dispatchers.Main) {
+                onFinished()
+                launchIncrementalScan()
+            }
+        }
+    }
 }

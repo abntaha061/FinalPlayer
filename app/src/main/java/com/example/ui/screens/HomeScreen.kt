@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -61,6 +63,7 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
+    val selectedPaths = remember { mutableStateListOf<String>() }
 
     // Observe DB States
     val videoList by viewModel.videos.collectAsState(initial = emptyList())
@@ -87,6 +90,14 @@ fun HomeScreen(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
 
+    var isMovePickerOpen by remember { mutableStateOf(false) }
+    var isCopyPickerOpen by remember { mutableStateOf(false) }
+    var isRenameDialogOpen by remember { mutableStateOf(false) }
+    var isDeleteConfirmOpen by remember { mutableStateOf(false) }
+                    
+    var renameOldPath by remember { mutableStateOf<String?>(null) }
+    var renameNewName by remember { mutableStateOf("") }
+
     // Quick Action dialog states
     var isTransferDialogVisible by remember { mutableStateOf(false) }
     var isStatusSaverVisible by remember { mutableStateOf(false) }
@@ -111,93 +122,139 @@ fun HomeScreen(
         topBar = {
             if (selectedBottomTab != 2) {
                 Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
-                    CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
-                        TopAppBar(
-                            title = {
-                                if (isSearchActive && selectedBottomTab == 0 && selectedSubTabIndex == 0) {
-                                    OutlinedTextField(
-                                        value = searchQuery,
-                                        onValueChange = { searchQuery = it },
-                                        placeholder = { Text("بحث عن فيديو... (Search video)", fontSize = 14.sp) },
-                                        singleLine = true,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(54.dp)
-                                            .padding(horizontal = 4.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                            unfocusedBorderColor = Color.Transparent,
-                                            focusedContainerColor = Color.Transparent,
-                                            unfocusedContainerColor = Color.Transparent
-                                        ),
-                                        leadingIcon = {
-                                            IconButton(onClick = {
-                                                isSearchActive = false
-                                                searchQuery = ""
-                                            }) {
-                                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                     CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
+                        if (selectedPaths.isNotEmpty()) {
+                            TopAppBar(
+                                title = {
+                                    Text(
+                                        text = "${selectedPaths.size} محدد",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 18.sp
+                                    )
+                                },
+                                navigationIcon = {
+                                    IconButton(onClick = { selectedPaths.clear() }) {
+                                        Icon(Icons.Default.Close, contentDescription = "إلغاء التحديد")
+                                    }
+                                },
+                                actions = {
+                                    IconButton(onClick = {
+                                        val allPaths = mutableListOf<String>()
+                                        if (viewContentMode == "FOLDERS" && selectedFolderPath == null) {
+                                            val foldersWithVideos = videoList.mapNotNull { video ->
+                                                File(video.path).parentFile?.absolutePath
+                                            }.distinct()
+                                            allPaths.addAll(foldersWithVideos)
+                                        } else {
+                                            val currentFolder = selectedFolderPath
+                                            val filteredVideos = if (currentFolder == null) videoList else videoList.filter {
+                                                File(it.path).parentFile?.absolutePath == currentFolder
                                             }
-                                        },
-                                        trailingIcon = {
-                                            if (searchQuery.isNotEmpty()) {
-                                                IconButton(onClick = { searchQuery = "" }) {
-                                                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                                            filteredVideos.forEach { allPaths.add(it.path) }
+                                        }
+
+                                        if (selectedPaths.size == allPaths.size) {
+                                            selectedPaths.clear()
+                                        } else {
+                                            selectedPaths.clear()
+                                            selectedPaths.addAll(allPaths)
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.SelectAll, contentDescription = "تحديد الكل")
+                                    }
+                                },
+                                colors = TopAppBarDefaults.topAppBarColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                )
+                            )
+                        } else {
+                            TopAppBar(
+                                title = {
+                                    if (isSearchActive && selectedBottomTab == 0 && selectedSubTabIndex == 0) {
+                                        OutlinedTextField(
+                                            value = searchQuery,
+                                            onValueChange = { searchQuery = it },
+                                            placeholder = { Text("بحث عن فيديو... (Search video)", fontSize = 14.sp) },
+                                            singleLine = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(54.dp)
+                                                .padding(horizontal = 4.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                                unfocusedBorderColor = Color.Transparent,
+                                                focusedContainerColor = Color.Transparent,
+                                                unfocusedContainerColor = Color.Transparent
+                                            ),
+                                            leadingIcon = {
+                                                IconButton(onClick = {
+                                                    isSearchActive = false
+                                                    searchQuery = ""
+                                                }) {
+                                                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                                                }
+                                            },
+                                            trailingIcon = {
+                                                if (searchQuery.isNotEmpty()) {
+                                                    IconButton(onClick = { searchQuery = "" }) {
+                                                        Icon(Icons.Default.Close, contentDescription = "Clear")
+                                                    }
                                                 }
                                             }
-                                        }
-                                    )
-                                } else {
-                                    val currentFolder = selectedFolderPath
-                                    if (currentFolder != null && selectedBottomTab == 0 && selectedSubTabIndex == 0) {
-                                        Column {
-                                            Text(
-                                                text = java.io.File(currentFolder).name,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 18.sp
-                                            )
-                                            val filesCount = videoList.count { 
-                                                java.io.File(it.path).parentFile?.absolutePath == currentFolder 
-                                            }
-                                            Text(
-                                                text = formatVideosCountArabic(filesCount),
-                                                fontSize = 11.sp,
-                                                color = Color.Gray
-                                            )
-                                        }
-                                    } else {
-                                        Text(
-                                            "FinalPlayer",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 20.sp
                                         )
-                                    }
-                                }
-                            },
-                            navigationIcon = {
-                                val currentFolder = selectedFolderPath
-                                if (currentFolder != null && selectedBottomTab == 0 && selectedSubTabIndex == 0 && !isSearchActive) {
-                                    IconButton(onClick = { selectedFolderPath = null }) {
-                                        Icon(Icons.Default.ArrowBack, contentDescription = "Back to folders")
-                                    }
-                                }
-                            },
-                            actions = {
-                                if (!isSearchActive || selectedBottomTab != 0 || selectedSubTabIndex != 0) {
-                                    // Search toggle button
-                                    if (selectedBottomTab == 0 && selectedSubTabIndex == 0) {
-                                        IconButton(onClick = { isSearchActive = true }) {
-                                            Icon(Icons.Default.Search, contentDescription = "Search bar")
+                                    } else {
+                                        val currentFolder = selectedFolderPath
+                                        if (currentFolder != null && selectedBottomTab == 0 && selectedSubTabIndex == 0) {
+                                            Column {
+                                                Text(
+                                                    text = java.io.File(currentFolder).name,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 18.sp
+                                                )
+                                                val filesCount = videoList.count { 
+                                                    java.io.File(it.path).parentFile?.absolutePath == currentFolder 
+                                                }
+                                                Text(
+                                                    text = formatVideosCountArabic(filesCount),
+                                                    fontSize = 11.sp,
+                                                    color = Color.Gray
+                                                )
+                                            }
+                                        } else {
+                                            Text(
+                                                "FinalPlayer",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 20.sp
+                                            )
                                         }
-                                        IconButton(onClick = { isOptionsSheetVisible = true }) {
-                                            Icon(Icons.Default.Tune, contentDescription = "Display options Dialog")
+                                    }
+                                },
+                                navigationIcon = {
+                                    val currentFolder = selectedFolderPath
+                                    if (currentFolder != null && selectedBottomTab == 0 && selectedSubTabIndex == 0 && !isSearchActive) {
+                                        IconButton(onClick = { selectedFolderPath = null }) {
+                                            Icon(Icons.Default.ArrowBack, contentDescription = "Back to folders")
                                         }
                                     }
-                                }
-                            },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.surface
+                                },
+                                actions = {
+                                    if (!isSearchActive || selectedBottomTab != 0 || selectedSubTabIndex != 0) {
+                                        // Search toggle button
+                                        if (selectedBottomTab == 0 && selectedSubTabIndex == 0) {
+                                            IconButton(onClick = { isSearchActive = true }) {
+                                                Icon(Icons.Default.Search, contentDescription = "Search bar")
+                                            }
+                                            IconButton(onClick = { isOptionsSheetVisible = true }) {
+                                                Icon(Icons.Default.Tune, contentDescription = "Display options Dialog")
+                                            }
+                                        }
+                                    }
+                                },
+                                colors = TopAppBarDefaults.topAppBarColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                )
                             )
-                        )
+                        }
                     }
 
                     // Incremental scan alert progress banner
@@ -232,33 +289,164 @@ fun HomeScreen(
                 if (currentTrack != null) {
                     MiniPlayer(viewModel = viewModel)
                 }
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    windowInsets = WindowInsets.navigationBars
-                ) {
-                    NavigationBarItem(
-                        selected = selectedBottomTab == 0,
-                        onClick = { selectedBottomTab = 0 },
-                        icon = { RedCircleIcon(Icons.Default.VideoLibrary, selectedBottomTab == 0, "Videos") },
-                        label = { Text("الفيديوهات") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedBottomTab == 1,
-                        onClick = { selectedBottomTab = 1 },
-                        icon = { RedCircleIcon(Icons.Default.MusicNote, selectedBottomTab == 1, "Music") },
-                        label = { Text("الموسيقى") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedBottomTab == 2,
-                        onClick = { selectedBottomTab = 2 },
-                        icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 2, "Settings") },
-                        label = { Text("الإعدادات") }
-                    )
+                
+                if (selectedPaths.isNotEmpty()) {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        windowInsets = WindowInsets.navigationBars
+                    ) {
+                        NavigationBarItem(
+                            selected = false,
+                            onClick = { isMovePickerOpen = true },
+                            icon = { Icon(Icons.Default.DriveFileMove, contentDescription = "نقل") },
+                            label = { Text("نقل", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = false,
+                            onClick = { isCopyPickerOpen = true },
+                            icon = { Icon(Icons.Default.ContentCopy, contentDescription = "نسخ") },
+                            label = { Text("نسخ", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = false,
+                            enabled = selectedPaths.size == 1,
+                            onClick = {
+                                if (selectedPaths.size == 1) {
+                                    renameOldPath = selectedPaths.first()
+                                    renameNewName = File(renameOldPath!!).name
+                                    isRenameDialogOpen = true
+                                }
+                            },
+                            icon = { Icon(Icons.Default.Edit, contentDescription = "إعادة تسمية") },
+                            label = { Text("تسمية", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = false,
+                            onClick = { isDeleteConfirmOpen = true },
+                            icon = { Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color.Red) },
+                            label = { Text("حذف", fontSize = 11.sp, color = Color.Red, fontWeight = FontWeight.Bold) }
+                        )
+                    }
+                } else {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        windowInsets = WindowInsets.navigationBars
+                    ) {
+                        NavigationBarItem(
+                            selected = selectedBottomTab == 0,
+                            onClick = { selectedBottomTab = 0 },
+                            icon = { RedCircleIcon(Icons.Default.VideoLibrary, selectedBottomTab == 0, "Videos") },
+                            label = { Text("الفيديوهات") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedBottomTab == 1,
+                            onClick = { selectedBottomTab = 1 },
+                            icon = { RedCircleIcon(Icons.Default.MusicNote, selectedBottomTab == 1, "Music") },
+                            label = { Text("الموسيقى") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedBottomTab == 2,
+                            onClick = { selectedBottomTab = 2 },
+                            icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 2, "Settings") },
+                            label = { Text("الإعدادات") }
+                        )
+                    }
                 }
             }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
+        // Multi-select operation dialog overlays
+        if (isMovePickerOpen) {
+            FolderPickerDialog(
+                onDismiss = { isMovePickerOpen = false },
+                onFolderSelected = { targetDir ->
+                    isMovePickerOpen = false
+                    viewModel.movePaths(selectedPaths.toList(), targetDir) {
+                        selectedPaths.clear()
+                    }
+                }
+            )
+        }
+        if (isCopyPickerOpen) {
+            FolderPickerDialog(
+                onDismiss = { isCopyPickerOpen = false },
+                onFolderSelected = { targetDir ->
+                    isCopyPickerOpen = false
+                    viewModel.copyPaths(selectedPaths.toList(), targetDir) {
+                        selectedPaths.clear()
+                    }
+                }
+            )
+        }
+        if (isRenameDialogOpen) {
+            val oldPath = renameOldPath
+            if (oldPath != null) {
+                AlertDialog(
+                    onDismissRequest = { isRenameDialogOpen = false },
+                    title = { Text("إعادة التسمية", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+                    text = {
+                        Column {
+                            Text("أدخل الاسم الجديد:", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = renameNewName,
+                                onValueChange = { renameNewName = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                isRenameDialogOpen = false
+                                if (renameNewName.isNotBlank()) {
+                                    viewModel.renamePath(oldPath, renameNewName) {
+                                        selectedPaths.clear()
+                                    }
+                                }
+                            }
+                        ) {
+                            Text("تعديل")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { isRenameDialogOpen = false }) {
+                            Text("إلغاء")
+                        }
+                    }
+                )
+            }
+        }
+        if (isDeleteConfirmOpen) {
+            AlertDialog(
+                onDismissRequest = { isDeleteConfirmOpen = false },
+                title = { Text("حذف العناصر", fontWeight = FontWeight.Bold, color = Color.Red, fontSize = 16.sp) },
+                text = {
+                    Text("هل أنت متأكد من رغبتك في حذف العناصر المحددة (${selectedPaths.size}) بشكل نهائي من جهازك؟", fontSize = 14.sp)
+                },
+                confirmButton = {
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        onClick = {
+                            isDeleteConfirmOpen = false
+                            viewModel.deletePaths(selectedPaths.toList()) {
+                                selectedPaths.clear()
+                            }
+                        }
+                    ) {
+                        Text("حذف نهائي", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { isDeleteConfirmOpen = false }) {
+                        Text("إلغاء")
+                    }
+                }
+            )
+        }
+
         PullToRefreshBox(
             isRefreshing = isScanning,
             onRefresh = { viewModel.launchIncrementalScan() },
@@ -288,7 +476,8 @@ fun HomeScreen(
                             onShowStatusSaver = { isStatusSaverVisible = true },
                             onShowCleaner = { isCleanerVisible = true },
                             selectedFolderPath = selectedFolderPath,
-                            onSelectedFolderPathChange = { selectedFolderPath = it }
+                            onSelectedFolderPathChange = { selectedFolderPath = it },
+                            selectedPaths = selectedPaths
                         )
                         1 -> PlaylistsAndFavoritesTab(
                             playlists = playlistsList,
@@ -856,7 +1045,7 @@ fun formatVideosCountArabic(count: Int): String {
 }
 
 @Composable
-fun MXFolderIcon(folderName: String, filesCount: Int) {
+fun MXFolderIcon(folderName: String, filesCount: Int, isSelected: Boolean = false) {
     val darkGrey = Color(0xFF4C5059) // Silver-grey/dark silver color of MX folder
     val iconColor = Color(0xFF8E95A5) // Light grey color for camera/movie icon inside the folder
 
@@ -871,34 +1060,50 @@ fun MXFolderIcon(folderName: String, filesCount: Int) {
         modifier = Modifier
             .size(width = 54.dp, height = 44.dp)
     ) {
-        // Folder tab on the top-left of folder shape to make it look like a real folder directory silhouette!
-        Box(
-            modifier = Modifier
-                .padding(start = 2.dp)
-                .size(width = 16.dp, height = 6.dp)
-                .background(darkGrey, shape = RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
-        )
-        // Bottom/Main Folder body container
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 4.dp)
-                .background(darkGrey, shape = RoundedCornerShape(3.dp))
-                .padding(6.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            if (innerIcon != null) {
+        if (isSelected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(6.dp)),
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(
-                    imageVector = innerIcon,
-                    contentDescription = null,
-                    tint = iconColor,
-                    modifier = Modifier.size(18.dp)
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
                 )
+            }
+        } else {
+            // Folder tab on the top-left of folder shape to make it look like a real folder directory silhouette!
+            Box(
+                modifier = Modifier
+                    .padding(start = 2.dp)
+                    .size(width = 16.dp, height = 6.dp)
+                    .background(darkGrey, shape = RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+            )
+            // Bottom/Main Folder body container
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 4.dp)
+                    .background(darkGrey, shape = RoundedCornerShape(3.dp))
+                    .padding(6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (innerIcon != null) {
+                    Icon(
+                        imageVector = innerIcon,
+                        contentDescription = null,
+                        tint = iconColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
 
         // Red count badge at the top-right of the folder icon, overlapping exactly like MX Player
-        if (filesCount > 0) {
+        if (filesCount > 0 && !isSelected) {
             Box(
                 modifier = Modifier
                     .size(18.dp)
@@ -918,7 +1123,7 @@ fun MXFolderIcon(folderName: String, filesCount: Int) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun VideosAndFoldersTab(
     videoList: List<MediaFile>,
@@ -938,10 +1143,15 @@ fun VideosAndFoldersTab(
     onShowStatusSaver: () -> Unit,
     onShowCleaner: () -> Unit,
     selectedFolderPath: String?,
-    onSelectedFolderPathChange: (String?) -> Unit
+    onSelectedFolderPathChange: (String?) -> Unit,
+    selectedPaths: MutableList<String>
 ) {
-    BackHandler(enabled = selectedFolderPath != null) {
-        onSelectedFolderPathChange(null)
+    BackHandler(enabled = selectedFolderPath != null || selectedPaths.isNotEmpty()) {
+        if (selectedPaths.isNotEmpty()) {
+            selectedPaths.clear()
+        } else {
+            onSelectedFolderPathChange(null)
+        }
     }
     var videoToRename by remember { mutableStateOf<MediaFile?>(null) }
     var newNameText by remember { mutableStateOf("") }
@@ -1046,11 +1256,30 @@ fun VideosAndFoldersTab(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onSelectedFolderPathChange(folder.folderPath) }
+                                .combinedClickable(
+                                    onClick = {
+                                        if (selectedPaths.isNotEmpty()) {
+                                            if (selectedPaths.contains(folder.folderPath)) {
+                                                selectedPaths.remove(folder.folderPath)
+                                            } else {
+                                                selectedPaths.add(folder.folderPath)
+                                            }
+                                        } else {
+                                            onSelectedFolderPathChange(folder.folderPath)
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (selectedPaths.contains(folder.folderPath)) {
+                                            selectedPaths.remove(folder.folderPath)
+                                        } else {
+                                            selectedPaths.add(folder.folderPath)
+                                        }
+                                    }
+                                )
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            MXFolderIcon(folderName = folderName, filesCount = filesCount)
+                            MXFolderIcon(folderName = folderName, filesCount = filesCount, isSelected = selectedPaths.contains(folder.folderPath))
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
@@ -1112,7 +1341,26 @@ fun VideosAndFoldersTab(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onPlayFile(video.path) }
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (selectedPaths.isNotEmpty()) {
+                                                if (selectedPaths.contains(video.path)) {
+                                                    selectedPaths.remove(video.path)
+                                                } else {
+                                                    selectedPaths.add(video.path)
+                                                }
+                                            } else {
+                                                onPlayFile(video.path)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            if (selectedPaths.contains(video.path)) {
+                                                selectedPaths.remove(video.path)
+                                            } else {
+                                                selectedPaths.add(video.path)
+                                            }
+                                        }
+                                    )
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -1186,6 +1434,22 @@ fun VideosAndFoldersTab(
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold
                                         )
+                                    }
+
+                                    if (selectedPaths.contains(video.path)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.5f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "Selected",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(32.dp)
+                                            )
+                                        }
                                     }
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
@@ -1299,7 +1563,17 @@ fun VideosAndFoldersTab(
                                 chunk.forEach { video ->
                                     VideoGridItem(
                                         video = video,
-                                        onClick = { onPlayFile(video.path) },
+                                        onClick = {
+                                            if (selectedPaths.isNotEmpty()) {
+                                                if (selectedPaths.contains(video.path)) {
+                                                    selectedPaths.remove(video.path)
+                                                } else {
+                                                    selectedPaths.add(video.path)
+                                                }
+                                            } else {
+                                                onPlayFile(video.path)
+                                            }
+                                        },
                                         onFavoriteClick = { viewModel.toggleFavorite(video) },
                                         onVaultClick = { viewModel.setPrivateStatus(video, true) },
                                         onRenameClick = {
@@ -1308,6 +1582,14 @@ fun VideosAndFoldersTab(
                                         },
                                         onDeleteClick = {
                                             videoToDelete = video
+                                        },
+                                        isSelected = selectedPaths.contains(video.path),
+                                        onLongClick = {
+                                            if (selectedPaths.contains(video.path)) {
+                                                selectedPaths.remove(video.path)
+                                            } else {
+                                                selectedPaths.add(video.path)
+                                            }
                                         },
                                         modifier = Modifier.weight(1f)
                                     )
@@ -1483,6 +1765,7 @@ fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.Ima
     return bitmap
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun VideoGridItem(
     video: MediaFile,
@@ -1491,13 +1774,18 @@ fun VideoGridItem(
     onVaultClick: () -> Unit,
     onRenameClick: () -> Unit,
     onDeleteClick: () -> Unit,
+    isSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val thumbnail = rememberVideoThumbnail(video.path)
     Card(
         modifier = modifier
             .padding(vertical = 6.dp)
-            .clickable { onClick() },
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { onLongClick?.invoke() }
+            ),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
     ) {
@@ -1569,6 +1857,22 @@ fun VideoGridItem(
                          fontSize = 10.sp,
                          fontWeight = FontWeight.Bold
                      )
+                 }
+
+                 if (isSelected) {
+                     Box(
+                         modifier = Modifier
+                             .fillMaxSize()
+                             .background(Color.Black.copy(alpha = 0.5f)),
+                         contentAlignment = Alignment.Center
+                     ) {
+                         Icon(
+                             imageVector = Icons.Default.CheckCircle,
+                             contentDescription = "Selected",
+                             tint = MaterialTheme.colorScheme.primary,
+                             modifier = Modifier.size(36.dp)
+                         )
+                     }
                  }
             }
 
@@ -2412,4 +2716,128 @@ fun RedCircleIcon(
             modifier = Modifier.size(20.dp)
         )
     }
+}
+
+@Composable
+fun FolderPickerDialog(
+    onDismiss: () -> Unit,
+    onFolderSelected: (String) -> Unit
+) {
+    var currentDir by remember { mutableStateOf(java.io.File("/storage/emulated/0")) }
+    val directories = remember(currentDir) {
+        try {
+            val list = currentDir.listFiles()?.filter { it.isDirectory && !it.name.startsWith(".") } ?: emptyList()
+            list.sortedBy { it.name.lowercase() }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(
+                    text = "اختر مجلد الوجهة",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = currentDir.absolutePath.replace("/storage/emulated/0", "المساحة الداخلية"),
+                    color = Color.Gray,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        text = {
+            Column(modifier = Modifier.height(280.dp)) {
+                // Back button if we are not at absolute root of simulated storage
+                if (currentDir.absolutePath != "/storage/emulated/0" && currentDir.parentFile != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { currentDir = currentDir.parentFile!! }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = ".. (المجلد السابق)",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                    HorizontalDivider(color = Color.Gray.copy(alpha = 0.2f))
+                }
+
+                if (directories.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "لا توجد مجلدات فرعية هنا",
+                            color = Color.LightGray,
+                            fontSize = 13.sp
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        items(directories) { dir ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { currentDir = dir }
+                                    .padding(vertical = 12.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = "Folder",
+                                    tint = Color(0xFFFFC107),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = dir.name,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onFolderSelected(currentDir.absolutePath) }
+            ) {
+                Text("اختر هذا المجلد")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إلغاء")
+            }
+        }
+    )
 }
