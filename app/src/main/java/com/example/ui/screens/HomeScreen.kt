@@ -998,111 +998,119 @@ fun VideosAndFoldersTab(
                 // Determine whether to show LIST layout or GRID layout in chunked rows
                 if (layoutMode == "LIST") {
                     items(displayVideos) { video ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                                .clickable { onPlayFile(video.path) }
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val thumbnail = rememberVideoThumbnail(video.path)
-                            Box(
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                            Row(
                                 modifier = Modifier
-                                    .size(width = 110.dp, height = 65.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.Black.copy(alpha = 0.3f)),
-                                contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .clickable { onPlayFile(video.path) }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (thumbnail != null) {
-                                    Image(
-                                        bitmap = thumbnail,
-                                        contentDescription = "Video thumbnail",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Fit
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(
-                                                brush = Brush.verticalGradient(
-                                                    colors = listOf(
-                                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
-                                                    )
-                                                )
-                                            )
-                                    )
-                                }
+                                val thumbnail = rememberVideoThumbnail(video.path)
                                 Box(
                                     modifier = Modifier
-                                        .size(24.dp)
-                                        .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape),
+                                        .size(width = 110.dp, height = 65.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color.Black.copy(alpha = 0.2f)),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.PlayArrow,
-                                        contentDescription = "Play icon overlay",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                    if (thumbnail != null) {
+                                        Image(
+                                            bitmap = thumbnail,
+                                            contentDescription = "Video thumbnail",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(
+                                                    brush = Brush.verticalGradient(
+                                                        colors = listOf(
+                                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                                                        )
+                                                    )
+                                                )
+                                        )
+                                    }
+                                    
+                                    // Duration badge overlay on bottom right
+                                    val totalSeconds = video.duration / 1000
+                                    val hours = totalSeconds / 3600
+                                    val minutes = (totalSeconds % 3600) / 60
+                                    val seconds = totalSeconds % 60
+                                    val durationText = if (hours > 0) {
+                                        "%d:%02d:%02d".format(hours, minutes, seconds)
+                                    } else {
+                                        "%d:%02d".format(minutes, seconds)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(4.dp)
+                                            .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(2.dp))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(
+                                            text = durationText,
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                             Column(modifier = Modifier.weight(1f)) {
-                                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                     Text(
-                                         text = video.title,
-                                         fontSize = 14.sp,
-                                         fontWeight = FontWeight.SemiBold,
-
-
-                                         modifier = Modifier.weight(1f, fill = false)
-                                     )
-                                     val hasSubtitles = remember(video.path) {
-                                         try {
-                                             val vf = java.io.File(video.path)
-                                             val parent = vf.parentFile
-                                             if (parent != null && parent.exists()) {
-                                                 val baseName = vf.nameWithoutExtension
-                                                 parent.listFiles()?.any { sib ->
-                                                     val sName = sib.name
-                                                     sName.startsWith(baseName) && (sName.endsWith(".srt", ignoreCase = true) || sName.endsWith(".vtt", ignoreCase = true))
-                                                 } ?: false
-                                             } else false
-                                         } catch (e: Exception) { false }
-                                     }
-                                     if (hasSubtitles) {
-                                         Spacer(modifier = Modifier.width(6.dp))
-                                         Box(
-                                             modifier = Modifier
-                                                 .background(Color(0xFF007AFF).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                                 .border(0.5.dp, Color(0xFF007AFF), RoundedCornerShape(4.dp))
-                                                 .padding(horizontal = 4.dp, vertical = 1.dp)
-                                         ) {
-                                             Text(
-                                                 text = "SRT",
-                                                 color = Color(0xFF007AFF),
-                                                 fontSize = 9.sp,
-                                                 fontWeight = FontWeight.Bold
-                                             )
-                                         }
-                                     }
-
-                                  }
-                                 Spacer(modifier = Modifier.height(4.dp))
-                                val secs = video.duration / 1000
-                                Text(
-                                    text = "المدة: %d:%02d | الحجم: %.1f MB".format(
-                                        secs / 60, secs % 60, video.size / (1024f * 1024f)
-                                    ),
-                                    fontSize = 11.sp,
-                                    color = Color.Gray
-                                )
-                            }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = video.title,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        lineHeight = 16.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    val hasSubtitles = remember(video.path) {
+                                        try {
+                                            val vf = java.io.File(video.path)
+                                            val parent = vf.parentFile
+                                            if (parent != null && parent.exists()) {
+                                                val baseName = vf.nameWithoutExtension
+                                                parent.listFiles()?.any { sib ->
+                                                    val sName = sib.name
+                                                    sName.startsWith(baseName) && (sName.endsWith(".srt", ignoreCase = true) || sName.endsWith(".vtt", ignoreCase = true))
+                                                } ?: false
+                                            } else false
+                                        } catch (e: Exception) { false }
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        if (hasSubtitles) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            ) {
+                                                Text(
+                                                    text = "SRT",
+                                                    color = Color.White,
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                        val sizeString = "%.1f MB".format(video.size / (1024f * 1024f))
+                                        Text(
+                                            text = sizeString,
+                                            fontSize = 11.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
+                                }
 
                             // Offset 3-dots actions menu
                             var isMenuExpanded by remember { mutableStateOf(false) }
@@ -1149,6 +1157,7 @@ fun VideosAndFoldersTab(
                                 }
                             }
                         }
+                    }
                     }
                 } else {
                     // Modern 2-Column Grid Layout Chunk implementation avoiding nested lists error
@@ -1393,22 +1402,30 @@ fun VideoGridItem(
                     modifier = Modifier.size(34.dp)
                 )
 
-                // Duration badge overlay
-                val secs = video.duration / 1000
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                        .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(4.dp))
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "%02d:%02d".format(secs / 60, secs % 60),
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                 // Duration badge overlay
+                 val totalSeconds = video.duration / 1000
+                 val hours = totalSeconds / 3600
+                 val minutes = (totalSeconds % 3600) / 60
+                 val seconds = totalSeconds % 60
+                 val durationText = if (hours > 0) {
+                     "%d:%02d:%02d".format(hours, minutes, seconds)
+                 } else {
+                     "%d:%02d".format(minutes, seconds)
+                 }
+                 Box(
+                     modifier = Modifier
+                         .align(Alignment.BottomEnd)
+                         .padding(6.dp)
+                         .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(4.dp))
+                         .padding(horizontal = 4.dp, vertical = 2.dp)
+                 ) {
+                     Text(
+                         text = durationText,
+                         color = Color.White,
+                         fontSize = 10.sp,
+                         fontWeight = FontWeight.Bold
+                     )
+                 }
             }
 
             // Information elements
@@ -1437,7 +1454,7 @@ fun VideoGridItem(
                         Text(
                             text = video.title,
                             fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.Normal,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
@@ -1446,13 +1463,12 @@ fun VideoGridItem(
                             Spacer(modifier = Modifier.width(4.dp))
                             Box(
                                 modifier = Modifier
-                                    .background(Color(0xFF007AFF).copy(alpha = 0.15f), RoundedCornerShape(3.dp))
-                                    .border(0.5.dp, Color(0xFF007AFF), RoundedCornerShape(3.dp))
-                                    .padding(horizontal = 3.dp, vertical = 0.5.dp)
+                                    .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
                             ) {
                                 Text(
                                     text = "SRT",
-                                    color = Color(0xFF007AFF),
+                                    color = Color.White,
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.Bold
                                 )
