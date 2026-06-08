@@ -116,6 +116,18 @@ fun PlayerScreen(
         onDispose {
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.requestedOrientation = initialOrientation
+            val window = activity?.window
+            if (window != null) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    val controller = window.insetsController
+                    if (controller != null) {
+                        controller.show(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_VISIBLE
+                }
+            }
         }
     }
 
@@ -420,6 +432,15 @@ fun PlayerScreen(
     var isToolbarCustomizerDialogOpen by remember { mutableStateOf(false) }
     var isTutorialOverlayVisible by remember { mutableStateOf(false) }
 
+    // Interactive gestures and swipe visual states in player
+    var isDraggingRightSide by remember { mutableStateOf(false) }
+    var draggedVolRatio by remember { mutableStateOf(0f) }
+    var draggedBrightness by remember { mutableStateOf(0.5f) }
+    var showVolumeIndicator by remember { mutableStateOf(false) }
+    var showBrightnessIndicator by remember { mutableStateOf(false) }
+    var showRewindOverlay by remember { mutableStateOf(false) }
+    var showForwardOverlay by remember { mutableStateOf(false) }
+
     // Subtitle customization details
     var subAlignment by remember { mutableStateOf("Center") }
     var subPadding by remember { mutableStateOf(8) }
@@ -652,13 +673,107 @@ fun PlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null
-            ) {
-                areControlsVisible = !areControlsVisible
-                if (!areControlsVisible) {
-                    isBrightnessSliderVisible = false
+            .pointerInput(videoDuration, isLockedMode) {
+                if (!isLockedMode) {
+                    detectTapGestures(
+                        onDoubleTap = { offset: androidx.compose.ui.geometry.Offset ->
+                            val screenWidth = size.width
+                            val x = offset.x
+                            val fraction = x / screenWidth
+                            if (fraction < 0.35f) {
+                                // Double tap Left side: Rewind 10s
+                                val target = (player.currentPosition - 10000).coerceAtLeast(0)
+                                player.seekTo(target)
+                                currentPlayTime = target
+                                showRewindOverlay = true
+                                scope.launch {
+                                    delay(700)
+                                    showRewindOverlay = false
+                                }
+                            } else if (fraction > 0.65f) {
+                                // Double tap Right side: Forward 10s
+                                val target = (player.currentPosition + 10000).coerceAtMost(videoDuration)
+                                player.seekTo(target)
+                                currentPlayTime = target
+                                showForwardOverlay = true
+                                scope.launch {
+                                    delay(700)
+                                    showForwardOverlay = false
+                                }
+                            } else {
+                                // Double tap Center: Toggle play/pause
+                                if (player.isPlaying) {
+                                    player.pause()
+                                } else {
+                                    player.play()
+                                }
+                            }
+                        },
+                        onTap = {
+                            areControlsVisible = !areControlsVisible
+                            if (!areControlsVisible) {
+                                isBrightnessSliderVisible = false
+                            }
+                        }
+                    )
+                } else {
+                    detectTapGestures(
+                        onTap = {
+                            areControlsVisible = !areControlsVisible
+                            if (!areControlsVisible) {
+                                isBrightnessSliderVisible = false
+                            }
+                        }
+                    )
+                }
+            }
+            .pointerInput(videoDuration, isLockedMode) {
+                if (!isLockedMode) {
+                    detectDragGestures(
+                        onDragStart = { offset: androidx.compose.ui.geometry.Offset ->
+                            val screenWidth = size.width
+                            isDraggingRightSide = offset.x > screenWidth / 2f
+                            if (isDraggingRightSide) {
+                                val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                draggedVolRatio = currentVol.toFloat() / maxVolume
+                                showVolumeIndicator = true
+                            } else {
+                                val currentBright = activity?.window?.attributes?.screenBrightness ?: 0.5f
+                                val realBright = if (currentBright < 0f) 0.5f else currentBright
+                                draggedBrightness = realBright
+                                showBrightnessIndicator = true
+                            }
+                        },
+                        onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
+                            change.consume()
+                            val deltaY = -dragAmount.y
+                            val screenHeight = size.height
+                            val deltaRatio = deltaY / screenHeight
+                            
+                            if (isDraggingRightSide) {
+                                val newRatio = (draggedVolRatio + deltaRatio * 1.5f).coerceIn(0f, 1f)
+                                draggedVolRatio = newRatio
+                                val targetVol = (newRatio * maxVolume).toInt()
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                            } else {
+                                val newBrightness = (draggedBrightness + deltaRatio * 1.5f).coerceIn(0.01f, 1.0f)
+                                draggedBrightness = newBrightness
+                                val layoutParams = activity?.window?.attributes
+                                if (layoutParams != null) {
+                                    layoutParams.screenBrightness = newBrightness
+                                    activity?.window?.attributes = layoutParams
+                                }
+                            }
+                        },
+                        onDragEnd = {
+                            showVolumeIndicator = false
+                            showBrightnessIndicator = false
+                        },
+                        onDragCancel = {
+                            showVolumeIndicator = false
+                            showBrightnessIndicator = false
+                        }
+                    )
                 }
             }
             .transformable(state = transformableState)
@@ -712,6 +827,105 @@ fun PlayerScreen(
                     .background(Color(0xFFE5A642).copy(alpha = 0.22f))
                     .background(Color.Black.copy(alpha = 0.18f))
             )
+        }
+
+        // ----------------------------------------------------------------------
+        // GESTURES VISUAL FEEDBACK OVERLAYS
+        // ----------------------------------------------------------------------
+        // ⏪ Rewind overlay indicator (shows on left double tap)
+        if (showRewindOverlay) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.5f)
+                    .align(Alignment.CenterStart)
+                    .background(Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(topStartPercent = 0, topEndPercent = 50, bottomEndPercent = 50, bottomStartPercent = 0)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Replay10,
+                        contentDescription = "Rewind",
+                        tint = Color.White,
+                        modifier = Modifier.size(54.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("10- ثوانٍ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
+        }
+
+        // ⏩ Forward overlay indicator (shows on right double tap)
+        if (showForwardOverlay) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.5f)
+                    .align(Alignment.CenterEnd)
+                    .background(Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(topStartPercent = 50, topEndPercent = 0, bottomEndPercent = 0, bottomStartPercent = 50)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Forward10,
+                        contentDescription = "Forward",
+                        tint = Color.White,
+                        modifier = Modifier.size(54.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("10+ ثوانٍ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
+        }
+
+        // AudioManager / Volume Gesture visual slider cards (center-right card)
+        if (showVolumeIndicator) {
+            val volumePercentage = (draggedVolRatio * 100).toInt()
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 48.dp)
+                    .background(Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(12.dp))
+                    .padding(vertical = 16.dp, horizontal = 24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.VolumeUp,
+                        contentDescription = "Volume",
+                        tint = Color(0xFF00C8FF),
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("الصوت", color = Color.LightGray, fontSize = 12.sp)
+                    Text("$volumePercentage%", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
+        }
+
+        // Brightness Gesture visual slider cards (center-left card)
+        if (showBrightnessIndicator) {
+            val brightnessPercentage = (draggedBrightness * 100).toInt()
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 48.dp)
+                    .background(Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(12.dp))
+                    .padding(vertical = 16.dp, horizontal = 24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Brightness5,
+                        contentDescription = "Brightness",
+                        tint = Color(0xFFFFD54F),
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("السطوع", color = Color.LightGray, fontSize = 12.sp)
+                    Text("$brightnessPercentage%", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
         }
 
         // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY

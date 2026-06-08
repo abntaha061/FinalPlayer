@@ -543,40 +543,28 @@ fun HomeScreen(
                 }
             }
 
-            // Floating Resume Button placed at bottom-right corner
+            // Floating Resume Button placed at bottom-right corner (circular & play video symbol)
             if (selectedBottomTab == 0 && selectedSubTabIndex == 0 && resumeVideoFilePath != null) {
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(bottom = paddingValues.calculateBottomPadding() + 24.dp, end = 24.dp)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(bottom = paddingValues.calculateBottomPadding() + 24.dp, start = 24.dp)
+                ) {
+                    FloatingActionButton(
+                        onClick = {
+                            resumeVideoFilePath?.let { onPlayFile(it) }
+                        },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shape = CircleShape,
+                        modifier = Modifier.size(56.dp).testTag("resume_playback_fab")
                     ) {
-                        FloatingActionButton(
-                            onClick = {
-                                resumeVideoFilePath?.let { onPlayFile(it) }
-                            },
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.testTag("resume_playback_fab")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = "استئناف التشغيل",
-                                    tint = MaterialTheme.colorScheme.onPrimary
-                                )
-                                Text(
-                                    text = "استئناف التشغيل",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                        }
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "استئناف التشغيل",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(28.dp)
+                        )
                     }
                 }
             }
