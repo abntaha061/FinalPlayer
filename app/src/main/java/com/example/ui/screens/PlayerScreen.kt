@@ -7,6 +7,8 @@ import android.net.Uri
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -36,6 +38,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -130,22 +134,37 @@ fun PlayerScreen(
     }
 
     val subtitleLanguages = remember(detectedSubtitles) {
-        detectedSubtitles.map { file ->
+        detectedSubtitles.mapIndexed { index, file ->
+            val nameLower = file.name.lowercase()
             val baseName = File(filePath).nameWithoutExtension
-            val suffix = file.name.substring(baseName.length)
-                .removeSuffix(".srt").removeSuffix(".vtt")
-                .removeSuffix(".SRT").removeSuffix(".VTT")
-            if (suffix.startsWith(".")) {
-                val part = suffix.substring(1)
-                if (part.isNotEmpty()) part else "Default"
+            val suffix = if (file.name.length >= baseName.length) {
+                file.name.substring(baseName.length)
+                    .removeSuffix(".srt").removeSuffix(".vtt")
+                    .removeSuffix(".SRT").removeSuffix(".VTT")
             } else {
-                "Default"
+                ""
+            }
+            val extractedLang = if (suffix.startsWith(".")) {
+                val part = suffix.substring(1).lowercase()
+                if (part.isNotEmpty()) part else ""
+            } else {
+                ""
+            }
+            when {
+                extractedLang == "ar" || extractedLang == "ara" || nameLower.contains("arabic") || nameLower.contains("عربي") -> "ar"
+                extractedLang == "en" || extractedLang == "eng" || nameLower.contains("english") || nameLower.contains("انجليزي") -> "en"
+                extractedLang == "de" || extractedLang == "ger" || nameLower.contains("german") || nameLower.contains("الماني") -> "de"
+                extractedLang.isNotEmpty() && extractedLang.length in 2..3 -> extractedLang
+                else -> {
+                    // Unique fallback subtag for ExoPlayer matching
+                    "x-sub-$index"
+                }
             }
         }
     }
 
     var isSubtitleEnabled by remember { mutableStateOf(true) }
-    var selectedSubtitleLang by remember { mutableStateOf<String?>(null) }
+    var selectedSubtitleLang by remember { mutableStateOf<String?>(subtitleLanguages.firstOrNull()) }
 
     // Init player
     val player = remember(filePath) {
@@ -157,7 +176,7 @@ fun PlayerScreen(
         }
 
         val subtitleConfigs = detectedSubtitles.mapIndexed { index, file ->
-            val lang = subtitleLanguages.getOrNull(index) ?: "Default"
+            val lang = subtitleLanguages.getOrNull(index) ?: "ar"
             val subUri = Uri.fromFile(file)
             val isSrt = file.name.endsWith(".srt", ignoreCase = true)
             val mimeType = if (isSrt) "application/x-subrip" else "text/vtt"
@@ -165,7 +184,7 @@ fun PlayerScreen(
             MediaItem.SubtitleConfiguration.Builder(subUri)
                 .setMimeType(mimeType)
                 .setLanguage(lang)
-                .setSelectionFlags(if (lang == "Default" || lang == "ar") C.SELECTION_FLAG_DEFAULT else 0)
+                .setSelectionFlags(if (index == 0) C.SELECTION_FLAG_DEFAULT else 0)
                 .build()
         }
 
@@ -176,8 +195,116 @@ fun PlayerScreen(
 
         ExoPlayer.Builder(context).build().also {
             it.setMediaItem(mediaItem)
+            val firstLang = subtitleLanguages.firstOrNull() ?: "ar"
+            it.trackSelectionParameters = it.trackSelectionParameters
+                .buildUpon()
+                .setPreferredTextLanguage(firstLang)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !isSubtitleEnabled)
+                .build()
             it.prepare()
             it.playWhenReady = true
+        }
+    }
+
+    val manualSubs = remember { mutableStateListOf<Pair<String, Uri>>() }
+
+    val subtitlePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                // Ignore. In Android some folder providers are not persistable, we can still read
+            }
+            
+            var dispName = "External_Sub.srt"
+            try {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIdx != -1 && cursor.moveToFirst()) {
+                        dispName = cursor.getString(nameIdx)
+                    }
+                }
+            } catch (e: Exception) {
+                uri.lastPathSegment?.let { dispName = it }
+            }
+            
+            // Build dynamic combined media track configuration
+            val currentPos = player.currentPosition
+            val isPlaying = player.isPlaying
+            
+            val compositeConfigs = mutableListOf<MediaItem.SubtitleConfiguration>()
+            detectedSubtitles.forEachIndexed { idx, file ->
+                val lang = subtitleLanguages.getOrNull(idx) ?: "ar"
+                val subUri = Uri.fromFile(file)
+                val isSrt = file.name.endsWith(".srt", ignoreCase = true)
+                val mimeType = if (isSrt) "application/x-subrip" else "text/vtt"
+                compositeConfigs.add(
+                    MediaItem.SubtitleConfiguration.Builder(subUri)
+                        .setMimeType(mimeType)
+                        .setLanguage(lang)
+                        .setSelectionFlags(if (idx == 0) C.SELECTION_FLAG_DEFAULT else 0)
+                        .build()
+                )
+            }
+            
+            manualSubs.forEachIndexed { idx, pair ->
+                val subUri = pair.second
+                val isSrt = pair.first.endsWith(".srt", ignoreCase = true)
+                val mimeType = if (isSrt) "application/x-subrip" else "text/vtt"
+                val lang = "manual_${idx}_${pair.first}"
+                compositeConfigs.add(
+                    MediaItem.SubtitleConfiguration.Builder(subUri)
+                        .setMimeType(mimeType)
+                        .setLanguage(lang)
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                        .build()
+                )
+            }
+            
+            val newIsSrt = dispName.endsWith(".srt", ignoreCase = true)
+            val newMimeType = if (newIsSrt) "application/x-subrip" else "text/vtt"
+            val newLang = "manual_${manualSubs.size}_$dispName"
+            
+            val newConfig = MediaItem.SubtitleConfiguration.Builder(uri)
+                .setMimeType(newMimeType)
+                .setLanguage(newLang)
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+            compositeConfigs.add(newConfig)
+            
+            manualSubs.add(Pair(dispName, uri))
+            
+            val videoFile = File(filePath)
+            val videoUri = if (filePath.startsWith("http://") || filePath.startsWith("https://") || filePath.startsWith("content://") || filePath.startsWith("file://")) {
+                Uri.parse(filePath)
+            } else {
+                Uri.fromFile(videoFile)
+            }
+            
+            val newMediaItem = MediaItem.Builder()
+                .setUri(videoUri)
+                .setSubtitleConfigurations(compositeConfigs)
+                .build()
+                
+            player.setMediaItem(newMediaItem)
+            player.prepare()
+            player.seekTo(currentPos)
+            
+            isSubtitleEnabled = true
+            selectedSubtitleLang = newLang
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setPreferredTextLanguage(newLang)
+                .build()
+                
+            player.playWhenReady = isPlaying
+            Toast.makeText(context, "تم تحميل ملف الترجمة: $dispName", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -659,7 +786,8 @@ fun PlayerScreen(
                     .statusBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Column {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Column {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
@@ -879,6 +1007,7 @@ fun PlayerScreen(
                         }
                     }
                 }
+                } // End of CompositionLocalProvider Ltr
             }
         }
 
@@ -1118,17 +1247,18 @@ fun PlayerScreen(
             exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                            )
                         )
-                    )
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
-            ) {
+                        .navigationBarsPadding()
+                        .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
+                ) {
                 // Progress Slider (SeekBar with visual parameters)
                 val totalSecs = videoDuration / 1000
                 val curSecs = currentPlayTime / 1000
@@ -1376,6 +1506,7 @@ fun PlayerScreen(
                     }
                 }
             }
+            } // End of CompositionLocalProvider Ltr
         }
 
         // -----------------------------------------------------
@@ -1804,11 +1935,7 @@ fun PlayerScreen(
                         Text("الترجمات (Subtitles)", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         IconButton(onClick = {
                             try {
-                                val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
-                                    addCategory(android.content.Intent.CATEGORY_OPENABLE)
-                                    type = "*/*"
-                                }
-                                activity?.startActivityForResult(intent, 1002)
+                                subtitlePickerLauncher.launch(arrayOf("*/*"))
                             } catch (e: Exception) {
                                 Toast.makeText(context, "جاري فتح مستكشف الملفات الفرعية", Toast.LENGTH_SHORT).show()
                             }
@@ -1903,6 +2030,45 @@ fun PlayerScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(file.name, color = Color.White, fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
+
+                        // Render manually added subtitle items
+                        manualSubs.forEachIndexed { index, pair ->
+                            val lang = "manual_${index}_${pair.first}"
+                            val isChecked = isSubtitleEnabled && selectedSubtitleLang == lang
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        isSubtitleEnabled = true
+                                        selectedSubtitleLang = lang
+                                        player.trackSelectionParameters = player.trackSelectionParameters
+                                            .buildUpon()
+                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                            .setPreferredTextLanguage(lang)
+                                            .build()
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = {
+                                        if (it) {
+                                            isSubtitleEnabled = true
+                                            selectedSubtitleLang = lang
+                                        } else {
+                                            isSubtitleEnabled = false
+                                        }
+                                        player.trackSelectionParameters = player.trackSelectionParameters
+                                            .buildUpon()
+                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !isSubtitleEnabled)
+                                            .build()
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("📁 ${pair.first}", color = Color(0xFF00C8FF), fontSize = 11.sp, maxLines = 1)
                             }
                         }
 

@@ -24,6 +24,7 @@ import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -104,6 +105,8 @@ fun HomeScreen(
     var passcodeQueryInput by remember { mutableStateOf("") }
     var passcodeSetupInput1 by remember { mutableStateOf("") }
 
+    var selectedFolderPath by rememberSaveable { mutableStateOf<String?>(null) }
+
     Scaffold(
         topBar = {
             if (selectedBottomTab != 2) {
@@ -144,14 +147,40 @@ fun HomeScreen(
                                         }
                                     )
                                 } else {
-                                    Text(
-                                        "FinalPlayer",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 20.sp
-                                    )
+                                    val currentFolder = selectedFolderPath
+                                    if (currentFolder != null && selectedBottomTab == 0 && selectedSubTabIndex == 0) {
+                                        Column {
+                                            Text(
+                                                text = java.io.File(currentFolder).name,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 18.sp
+                                            )
+                                            val filesCount = videoList.count { 
+                                                java.io.File(it.path).parentFile?.absolutePath == currentFolder 
+                                            }
+                                            Text(
+                                                text = formatVideosCountArabic(filesCount),
+                                                fontSize = 11.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    } else {
+                                        Text(
+                                            "FinalPlayer",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 20.sp
+                                        )
+                                    }
                                 }
                             },
-                            navigationIcon = {},
+                            navigationIcon = {
+                                val currentFolder = selectedFolderPath
+                                if (currentFolder != null && selectedBottomTab == 0 && selectedSubTabIndex == 0 && !isSearchActive) {
+                                    IconButton(onClick = { selectedFolderPath = null }) {
+                                        Icon(Icons.Default.ArrowBack, contentDescription = "Back to folders")
+                                    }
+                                }
+                            },
                             actions = {
                                 if (!isSearchActive || selectedBottomTab != 0 || selectedSubTabIndex != 0) {
                                     // Search toggle button
@@ -257,7 +286,9 @@ fun HomeScreen(
                             onOptionsClick = { isOptionsSheetVisible = true },
                             onShowTransfer = { isTransferDialogVisible = true },
                             onShowStatusSaver = { isStatusSaverVisible = true },
-                            onShowCleaner = { isCleanerVisible = true }
+                            onShowCleaner = { isCleanerVisible = true },
+                            selectedFolderPath = selectedFolderPath,
+                            onSelectedFolderPathChange = { selectedFolderPath = it }
                         )
                         1 -> PlaylistsAndFavoritesTab(
                             playlists = playlistsList,
@@ -905,11 +936,12 @@ fun VideosAndFoldersTab(
     onOptionsClick: () -> Unit,
     onShowTransfer: () -> Unit,
     onShowStatusSaver: () -> Unit,
-    onShowCleaner: () -> Unit
+    onShowCleaner: () -> Unit,
+    selectedFolderPath: String?,
+    onSelectedFolderPathChange: (String?) -> Unit
 ) {
-    var selectedFolderPath by rememberSaveable { mutableStateOf<String?>(null) }
     BackHandler(enabled = selectedFolderPath != null) {
-        selectedFolderPath = null
+        onSelectedFolderPathChange(null)
     }
     var videoToRename by remember { mutableStateOf<MediaFile?>(null) }
     var newNameText by remember { mutableStateOf("") }
@@ -1014,7 +1046,7 @@ fun VideosAndFoldersTab(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedFolderPath = folder.folderPath }
+                                .clickable { onSelectedFolderPathChange(folder.folderPath) }
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1457,7 +1489,7 @@ fun VideoGridItem(
                         bitmap = thumbnail,
                         contentDescription = "Video thumbnail",
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit
+                        contentScale = ContentScale.Crop
                     )
                 } else {
                     Box(

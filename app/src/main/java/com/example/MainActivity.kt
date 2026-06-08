@@ -40,6 +40,14 @@ import com.example.ui.screens.MusicLyricsPlayerScreen
 import com.example.data.local.entities.MediaFile
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,21 +81,71 @@ fun MainNavigationRoot() {
         list
     }
 
+    // Helper functions for checking permissions status
+    val checkAllFilesAccess = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.os.Environment.isExternalStorageManager()
+        } else {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    val checkStandardPermissions = {
+        requiredPermissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    val checkAllGranted = {
+        checkStandardPermissions() && checkAllFilesAccess()
+    }
+
     // Permission Verification status flow
     var hasGrantedPermissions by remember {
-        mutableStateOf(
-            requiredPermissions.all {
-                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-            }
-        )
+        mutableStateOf(checkAllGranted())
     }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { resultMap ->
-        hasGrantedPermissions = resultMap.values.all { it }
-        if (hasGrantedPermissions) {
-            viewModel.launchIncrementalScan()
+        val standardGranted = resultMap.values.all { it }
+        val allFilesGranted = checkAllFilesAccess()
+        if (standardGranted) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !allFilesGranted) {
+                // Request All Files Access
+                try {
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = android.net.Uri.parse("package:${context.packageName}")
+                    }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    context.startActivity(intent)
+                }
+            } else {
+                hasGrantedPermissions = true
+                viewModel.launchIncrementalScan()
+            }
+        }
+    }
+
+    // ON_RESUME lifecycle observer to automatically re-evaluate status
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val granted = checkAllGranted()
+                if (granted != hasGrantedPermissions) {
+                    hasGrantedPermissions = granted
+                    if (granted) {
+                        viewModel.launchIncrementalScan()
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -99,41 +157,165 @@ fun MainNavigationRoot() {
     ) {
         if (!hasGrantedPermissions) {
             // High fidelity permission setup onboarding view
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(32.dp)
-                    .testTag("permissions_request_view"),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                    .background(MaterialTheme.colorScheme.background)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
             ) {
-                Icon(
-                    Icons.Default.FolderSpecial,
-                    contentDescription = "Storage permissions setup logo",
-                    modifier = Modifier.size(72.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "صلاحيات الوصول للتخزين مطلوبة",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "يحتاج تطبيق FinalPlayer لتصفح الذاكرة وتعميم الفيديوهات والمقاطع الصوتية لتقديم تجربة تشغيل مثالية",
-                    fontSize = 13.sp,
-                    color = Color.Gray,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(30.dp))
-                Button(
-                    onClick = { launcher.launch(requiredPermissions.toTypedArray()) },
-                    modifier = Modifier.fillMaxWidth().testTag("grant_permissions_button")
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(24.dp)
+                        .testTag("permissions_request_view"),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Top
                 ) {
-                    Text("منح الصلاحيات الآن (Grant storage access)")
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    // Circular Glowing Icon Background Container
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(32.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.FolderSpecial,
+                            contentDescription = "Storage permissions setup logo",
+                            modifier = Modifier.size(54.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Text(
+                        text = "صلاحيات الوصول والتشغيل الكامل",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Text(
+                        text = "يحتاج تطبيق FinalPlayer إلى منح هذه الصلاحيات لتقديم تجربة تشغيل مثالية للفيديوهات والمقاطع الصوتية وقراءة الترجمات المصاحبة تلقائياً",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(28.dp))
+                    
+                    // Direct interactive permissions status overview items
+                    val allFilesGranted = checkAllFilesAccess()
+                    val videoPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                    }
+                    val audioPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                    }
+                    val notificationsGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        true
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Card 1: All Files Access
+                        PermissionStatusCard(
+                            icon = Icons.Default.Folder,
+                            title = "الوصول إلى كل الملفات (All Files)",
+                            description = "لتصفح الذاكرة وعرض ملفات الترجمة والوسائط في جميع المجلدات",
+                            isGranted = allFilesGranted
+                        )
+
+                        // Card 2: Video Library
+                        PermissionStatusCard(
+                            icon = Icons.Default.VideoLibrary,
+                            title = "مقاطع الفيديو والصور (Video Library)",
+                            description = "لقراءة وتنسيق وتحسين عرض الفيديوهات داخل التطبيق",
+                            isGranted = videoPermissionGranted
+                        )
+
+                        // Card 3: Audio Tracks
+                        PermissionStatusCard(
+                            icon = Icons.Default.Audiotrack,
+                            title = "الموسيقى والملفات الصوتية (Audio Tracks)",
+                            description = "لتشغيل الأغاني والملفات الصوتية وعرض كلمات الأغاني المدمجة",
+                            isGranted = audioPermissionGranted
+                        )
+
+                        // Card 4: Notifications (for 13+ only)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            PermissionStatusCard(
+                                icon = Icons.Default.Notifications,
+                                title = "التحكم وشريط الإشعارات (Notifications)",
+                                description = "لعرض أداة التحكم بالتشغيل في الخلفية والمشغل العائم بسلاسة",
+                                isGranted = notificationsGranted
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(36.dp))
+
+                    Button(
+                        onClick = {
+                            val standardGranted = checkStandardPermissions()
+                            if (!standardGranted) {
+                                launcher.launch(requiredPermissions.toTypedArray())
+                            } else {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !allFilesGranted) {
+                                    try {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                            data = android.net.Uri.parse("package:${context.packageName}")
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                                        context.startActivity(intent)
+                                    }
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .testTag("grant_permissions_button")
+                    ) {
+                        val buttonText = if (!checkStandardPermissions()) {
+                            "منح الصلاحيات الآن (Grant Access)"
+                        } else {
+                            "السماح بالوصول لكافة الملفات (Allow All Files Access)"
+                        }
+                        Text(
+                            text = buttonText,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
                 }
             }
         } else {
@@ -204,6 +386,121 @@ fun MainNavigationRoot() {
                             onBack = { navController.popBackStack() }
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PermissionStatusCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String,
+    isGranted: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isGranted) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.08f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            }
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isGranted) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+            }
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(
+                        color = if (isGranted) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        } else {
+                            Color.Gray.copy(alpha = 0.15f)
+                        },
+                        shape = RoundedCornerShape(10.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (isGranted) MaterialTheme.colorScheme.primary else Color.Gray,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(14.dp))
+            
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.Start
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = description,
+                    fontSize = 10.5.sp,
+                    color = Color.Gray,
+                    lineHeight = 14.sp
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(10.dp))
+            
+            // Status Indicator Badge
+            if (isGranted) {
+                Box(
+                    modifier = Modifier
+                        .background(
+                            color = Color(0xFF2E7D32).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "مفعل ✅",
+                        color = Color(0xFF4CAF50),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .background(
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "مطلوب 🔑",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
