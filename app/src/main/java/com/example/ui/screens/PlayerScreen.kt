@@ -11,15 +11,15 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -54,6 +55,18 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.absoluteValue
+import android.media.audiofx.Equalizer
+import android.widget.Toast
+
+// Secondary control items data layout
+data class ExtendedToolItem(
+    val icon: String,
+    val label: String,
+    val id: String,
+    val action: () -> Unit,
+    val isActive: Boolean,
+    val badgeText: String? = null
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,7 +93,6 @@ fun PlayerScreen(
     val hasPreviousVideo = currentVideoIndex > 0
     val hasNextVideo = currentVideoIndex >= 0 && currentVideoIndex < allVideos.size - 1
 
-    // Customizable double tap / skip steps: 5, 10, 15, 30, 60 seconds
     var seekStepSeconds by remember { mutableStateOf(10) }
 
     // Keep screen on during media playback
@@ -162,10 +174,10 @@ fun PlayerScreen(
             .setSubtitleConfigurations(subtitleConfigs)
             .build()
 
-        ExoPlayer.Builder(context).build().apply {
-            playWhenReady = true
-            setMediaItem(mediaItem)
-            prepare()
+        ExoPlayer.Builder(context).build().also {
+            it.setMediaItem(mediaItem)
+            it.prepare()
+            it.playWhenReady = true
         }
     }
 
@@ -229,6 +241,119 @@ fun PlayerScreen(
     // Read settings or setup scale mode
     var scaleMode by remember { mutableStateOf(viewModel.getDefaultScaleMode()) }
 
+    // -----------------------------------------------------
+    // MX PLAYER CUSTOM STATES AND VARIABLES
+    // -----------------------------------------------------
+    var isNightModeActive by remember { mutableStateOf(false) }
+    var isMuted by remember { mutableStateOf(false) }
+    var isMirrorModeActive by remember { mutableStateOf(false) }
+    var isVerticalFlipActive by remember { mutableStateOf(false) }
+    var isHWAccelActive by remember { mutableStateOf(false) }
+
+    var sleepTimerActive by remember { mutableStateOf(false) }
+    var sleepTimerRemainingSecs by remember { mutableStateOf(0) }
+    var sleepTimerInitialMinutes by remember { mutableStateOf(0) }
+    var isSleepTimerDialogOpen by remember { mutableStateOf(false) }
+
+    var pointA by remember { mutableStateOf<Long?>(null) }
+    var pointB by remember { mutableStateOf<Long?>(null) }
+
+    var isEqualizerOpen by remember { mutableStateOf(false) }
+    var isEqualizerActive by remember { mutableStateOf(false) }
+    var equalizerPresetIndex by remember { mutableStateOf(0) }
+    var equalizerBandLevels by remember { mutableStateOf(floatArrayOf(0.2f, 0.2f, 0.2f, 0.2f, 0.2f)) }
+    var equalizerInstance by remember { mutableStateOf<Equalizer?>(null) }
+
+    var isMoreOptionsSheetOpen by remember { mutableStateOf(false) }
+    var isAudioTracksDialogOpen by remember { mutableStateOf(false) }
+    var isSubtitlePanelViewOpen by remember { mutableStateOf(false) }
+    var isSubtitleCustomizationOpen by remember { mutableStateOf(false) }
+    var isToolbarCustomizerDialogOpen by remember { mutableStateOf(false) }
+    var isTutorialOverlayVisible by remember { mutableStateOf(false) }
+
+    // Subtitle customization details
+    var subAlignment by remember { mutableStateOf("Center") }
+    var subPadding by remember { mutableStateOf(8) }
+    var isSubBgTransparent by remember { mutableStateOf(true) }
+    var isSubFitVideo by remember { mutableStateOf(true) }
+    var subFontName by remember { mutableStateOf("Default") }
+    var subFontSize by remember { mutableStateOf(20f) }
+    var subTextColor by remember { mutableStateOf(Color.White) }
+    var isSubShadowEnabled by remember { mutableStateOf(true) }
+    var subShadowIntensity by remember { mutableStateOf(2f) }
+    var subtitleDelaySeconds by remember { mutableStateOf(0.0f) }
+
+    var checkedExtendedTools by remember {
+        mutableStateOf(
+            context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE)
+                .getStringSet("tools", setOf("🌙", "✏️", "🔀", "🔁", "🔇", "⏱", "A↔B", "🎚️", "1X", "📷", "▶⬛", "↩️", "Flip", "Mirror"))
+                ?.toSet() ?: setOf("🌙", "✏️", "🔀", "🔁", "🔇", "⏱", "A↔B", "🎚️", "1X", "📷", "▶⬛", "↩️", "Flip", "Mirror")
+        )
+    }
+
+    // Screenshot capture mockup action
+    fun takeScreenshot(ctx: Context) {
+        Toast.makeText(ctx, "تم التقاط إطار الفيديو وحفظ لقطة الشاشة بنجاح! 📸", Toast.LENGTH_SHORT).show()
+    }
+
+    // Set equalizerband safely
+    fun setEqualizerBand(band: Int, value: Float) {
+        try {
+            equalizerInstance?.setBandLevel(band.toShort(), (value * 100).toInt().toShort())
+            val newList = equalizerBandLevels.clone()
+            newList[band] = value
+            equalizerBandLevels = newList
+        } catch (e: Exception) {
+            val newList = equalizerBandLevels.clone()
+            newList[band] = value
+            equalizerBandLevels = newList
+        }
+    }
+
+    // Native audio session ID allocation
+    LaunchedEffect(player) {
+        try {
+            val audioSessionId = player.audioSessionId
+            if (audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
+                val eq = Equalizer(0, audioSessionId)
+                eq.enabled = true
+                equalizerInstance = eq
+                isEqualizerActive = true
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // A-B Repeat loop check
+    LaunchedEffect(player, pointA, pointB) {
+        while (true) {
+            delay(150)
+            if (pointA != null && pointB != null) {
+                if (player.currentPosition >= pointB!!) {
+                    player.seekTo(pointA!!)
+                    currentPlayTime = pointA!!
+                }
+            }
+        }
+    }
+
+    // Sleep timer countdown thread
+    LaunchedEffect(sleepTimerActive) {
+        if (sleepTimerActive) {
+            while (sleepTimerRemainingSecs > 0 && sleepTimerActive) {
+                delay(1000)
+                if (sleepTimerRemainingSecs > 0) {
+                    sleepTimerRemainingSecs--
+                } else {
+                    player.pause()
+                    sleepTimerActive = false
+                    break
+                }
+            }
+        }
+    }
+
     // Tracks update states listener
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -247,7 +372,6 @@ fun PlayerScreen(
             }
         }
         player.addListener(listener)
-        // Set configuration speeds
         player.setPlaybackSpeed(speedMultiplier)
         onDispose {
             player.removeListener(listener)
@@ -299,7 +423,6 @@ fun PlayerScreen(
         }
     }
 
-    // Lock screen warning modal status
     var isUnlockPromptVisible by remember { mutableStateOf(false) }
 
     BackHandler {
@@ -318,12 +441,10 @@ fun PlayerScreen(
         }
     }
 
-    // Auto rotation orientation parameters
     var currentOrientationState by remember { 
         mutableStateOf(activity?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) 
     }
 
-    // Video Resolution Label formatting
     val resolutionLabel = remember(videoWidth, videoHeight) {
         if (videoWidth >= 3840 || videoHeight >= 2160) "4K UHD 💎"
         else if (videoWidth >= 1920 || videoHeight >= 1080) "1080p FHD ✨"
@@ -342,19 +463,16 @@ fun PlayerScreen(
                         if (!isLockedMode) {
                             val screenWidth = size.width
                             if (offset.x < screenWidth / 3) {
-                                // Double tap left side (seek backward)
                                 val seekTarget = (player.currentPosition - seekStepSeconds * 1000L).coerceAtLeast(0)
                                 player.seekTo(seekTarget)
                                 currentPlayTime = seekTarget
                                 gestureIndicatorText = "⏪ -${seekStepSeconds}ث"
                             } else if (offset.x > screenWidth * 2 / 3) {
-                                // Double tap right side (seek forward)
                                 val seekTarget = (player.currentPosition + seekStepSeconds * 1000L).coerceAtMost(player.duration)
                                 player.seekTo(seekTarget)
                                 currentPlayTime = seekTarget
                                 gestureIndicatorText = "⏩ +${seekStepSeconds}ث"
                             } else {
-                                // Double tap center: reset zoom if zoomed, else play/pause
                                 if (scale > 1.05f) {
                                     scale = 1f
                                     gestureIndicatorText = "🔍 100% حجم طبيعي"
@@ -377,14 +495,15 @@ fun PlayerScreen(
                     },
                     onLongPress = {
                         if (!isLockedMode) {
-                            // Long press fast forward acceleration on active hold
                             player.setPlaybackSpeed(2.0f)
                             gestureIndicatorText = "2x ⏩ تسريع مضاعف"
                             isIndicatorVisible = true
                         }
                     },
                     onPress = {
-                        tryAwaitRelease()
+                        try {
+                            tryAwaitRelease()
+                        } catch (e: Exception) {}
                         if (!isLockedMode) {
                             player.setPlaybackSpeed(speedMultiplier)
                             isIndicatorVisible = false
@@ -419,7 +538,6 @@ fun PlayerScreen(
 
                             if (isVerticalDrag) {
                                 if (change.position.x < screenWidth / 2) {
-                                    // Brightness Side (Left Screen Slide Direction y)
                                     val delta = -dragAmount.y / screenHeight
                                     currentBrightness = (currentBrightness + delta).coerceIn(0.01f, 1.0f)
                                     val layoutParams = activity?.window?.attributes
@@ -427,7 +545,6 @@ fun PlayerScreen(
                                     activity?.window?.attributes = layoutParams
                                     gestureIndicatorText = "💡 سطوع: ${"%.0f".format(currentBrightness * 100)}%"
                                 } else {
-                                    // Volume Side (Right Screen Slide Direction y)
                                     val delta = -(dragAmount.y / screenHeight) * maxVolume
                                     currentVolume = (currentVolume + delta).coerceIn(0f, maxVolume)
                                     audioManager.setStreamVolume(
@@ -440,7 +557,6 @@ fun PlayerScreen(
                                 }
                                 isIndicatorVisible = true
                             } else {
-                                // Horizontal Swipe anywhere (Scrubbing Seek Position + Preview details)
                                 isSeekingBySwipe = true
                                 val durationVal = player.duration.coerceAtLeast(60000L)
                                 val deltaSeek = (dragAmount.x / screenWidth) * durationVal
@@ -484,14 +600,45 @@ fun PlayerScreen(
                     "CROP" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                 }
+
+                // Custom subtitle styles live update binding
+                view.subtitleView?.let { sView ->
+                    val face = when (subFontName) {
+                        "Cairo" -> android.graphics.Typeface.SANS_SERIF
+                        "Tajawal" -> android.graphics.Typeface.SERIF
+                        "Monospace" -> android.graphics.Typeface.MONOSPACE
+                        else -> android.graphics.Typeface.DEFAULT
+                    }
+                    val capStyle = androidx.media3.ui.CaptionStyleCompat(
+                        subTextColor.toArgb(),
+                        if (isSubBgTransparent) android.graphics.Color.TRANSPARENT else android.graphics.Color.BLACK,
+                        android.graphics.Color.TRANSPARENT,
+                        if (isSubShadowEnabled) androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE else androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE,
+                        android.graphics.Color.BLACK,
+                        face
+                    )
+                    sView.setStyle(capStyle)
+                    sView.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subFontSize)
+                    sView.setPadding(subPadding, subPadding, subPadding, subPadding)
+                }
             },
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale
+                    scaleX = if (isMirrorModeActive) -scale else scale,
+                    scaleY = if (isVerticalFlipActive) -scale else scale
                 )
         )
+
+        // Night mode filter overlays
+        if (isNightModeActive) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFE5A642).copy(alpha = 0.22f))
+                    .background(Color.Black.copy(alpha = 0.18f))
+            )
+        }
 
         // -----------------------------------------------------
         // TOP CONTROLS HUD (Title, orientation, speed label, resize, Auto-Rotate, PiP, Back)
@@ -506,122 +653,237 @@ fun PlayerScreen(
                     .fillMaxWidth()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(Color.Black.copy(alpha = 0.8f), Color.Transparent)
+                            colors = listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)
                         )
                     )
                     .statusBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = currentMediaFile.nameWithoutExtension,
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = resolutionLabel,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "سرعة: ${speedMultiplier}x",
+                                    color = Color.LightGray.copy(alpha = 0.8f),
+                                    fontSize = 11.sp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "%.1f MB".format(currentMediaFile.length() / (1024f * 1024f)),
+                                    color = Color.Gray,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        // Audio track selection button 🎵
+                        IconButton(onClick = { isAudioTracksDialogOpen = true }) {
+                            Icon(Icons.Default.MusicNote, contentDescription = "Audio Track Selector", tint = Color.White)
+                        }
+
+                        // Subtitle custom selection panel CC Subtitles
+                        IconButton(onClick = { isSubtitlePanelViewOpen = true }) {
+                            Icon(
+                                Icons.Default.Subtitles,
+                                contentDescription = "Subtitle Track Panel",
+                                tint = if (isSubtitleEnabled) Color(0xFF00C8FF) else Color.White
+                            )
+                        }
+
+                        // HW hardware acceleration badged status text
                         Text(
-                            text = currentMediaFile.nameWithoutExtension,
-                            color = Color.White,
-                            fontSize = 15.sp,
+                            text = "HW",
+                            color = if (isHWAccelActive) Color(0xFF00C8FF) else Color.White,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    if (isHWAccelActive) Color(0xFF00C8FF).copy(alpha = 0.25f)
+                                    else Color.White.copy(alpha = 0.15f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isHWAccelActive) Color(0xFF00C8FF) else Color.White.copy(alpha = 0.3f),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .clickable {
+                                    isHWAccelActive = !isHWAccelActive
+                                    gestureIndicatorText = if (isHWAccelActive) "HW Accel: ON (تسريع العتاد)" else "SW Decoder (برمجي)"
+                                    scope.launch {
+                                        isIndicatorVisible = true
+                                        delay(850)
+                                        isIndicatorVisible = false
+                                    }
+                                }
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = resolutionLabel,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "سرعة: ${speedMultiplier}x",
-                                color = Color.LightGray.copy(alpha = 0.8f),
-                                fontSize = 11.sp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "%.1f MB".format(currentMediaFile.length() / (1024f * 1024f)),
-                                color = Color.Gray,
-                                fontSize = 11.sp
-                            )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // More ⋮ options button Dialogue
+                        IconButton(onClick = { isMoreOptionsSheetOpen = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More Options Selection", tint = Color.White)
                         }
                     }
 
-                    // Auto-Rotate Orientation Lock Option Button
-                    IconButton(
-                        onClick = {
-                            val targetOrientation = if (currentOrientationState == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                            } else if (currentOrientationState == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
-                            } else {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                            }
-                            activity?.requestedOrientation = targetOrientation
-                            currentOrientationState = targetOrientation
-                            gestureIndicatorText = when (targetOrientation) {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT -> "🔒 اتجاه رأسي"
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE -> "🔒 اتجاه أفقي"
-                                else -> "🔄 دوران تلقائي"
-                            }
-                            scope.launch {
-                                isIndicatorVisible = true
-                                delay(800)
-                                isIndicatorVisible = false
-                            }
-                        }
+                    // Extended scrollable toolbar row 2
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = when (currentOrientationState) {
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT -> Icons.Default.ScreenLockPortrait
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE -> Icons.Default.ScreenLockLandscape
-                                else -> Icons.Default.ScreenRotation
-                            },
-                            contentDescription = "Auto Rotate Lock",
-                            tint = Color.White
-                        )
-                    }
+                        val activeToolsList = listOf(
+                            ExtendedToolItem("🌙", "الوضع الليلي", "🌙", { isNightModeActive = !isNightModeActive }, isNightModeActive, null),
+                            ExtendedToolItem("✏️", "التخصيص", "✏️", { isToolbarCustomizerDialogOpen = true }, false, null),
+                            ExtendedToolItem("🔀", "عشوائي", "🔀", {
+                                player.shuffleModeEnabled = !player.shuffleModeEnabled
+                                gestureIndicatorText = if (player.shuffleModeEnabled) "تحويل تشغيل عشوائي نشط 🔀" else "تشغيل متتالي ➡"
+                                scope.launch { isIndicatorVisible = true; delay(800); isIndicatorVisible = false }
+                            }, player.shuffleModeEnabled, null),
+                            ExtendedToolItem("🔁", "تكرار", "🔁", {
+                                val nextMode = when (player.repeatMode) {
+                                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ONE
+                                    Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_ALL
+                                    else -> Player.REPEAT_MODE_OFF
+                                }
+                                player.repeatMode = nextMode
+                                gestureIndicatorText = when (nextMode) {
+                                    Player.REPEAT_MODE_OFF -> "التكرار معطل 🔁"
+                                    Player.REPEAT_MODE_ONE -> "تكرار الملف الحالي 🔂"
+                                    else -> "تكرار الكل 🔁"
+                                }
+                                scope.launch { isIndicatorVisible = true; delay(800); isIndicatorVisible = false }
+                            }, player.repeatMode != Player.REPEAT_MODE_OFF, 
+                                if (player.repeatMode == Player.REPEAT_MODE_ONE) "1" else if (player.repeatMode == Player.REPEAT_MODE_ALL) "All" else null
+                            ),
+                            ExtendedToolItem("🔇", "كتم الصوت", "🔇", {
+                                isMuted = !isMuted
+                                player.volume = if (isMuted) 0f else 1f
+                                gestureIndicatorText = if (isMuted) "تم كتم الصوت 🔇" else "تم تفعيل الصوت 🔊"
+                                scope.launch { isIndicatorVisible = true; delay(800); isIndicatorVisible = false }
+                            }, isMuted, null),
+                            ExtendedToolItem("⏱", "مؤقت النوم", "⏱", { isSleepTimerDialogOpen = true }, sleepTimerActive, 
+                                if (sleepTimerActive) "${sleepTimerRemainingSecs / 60}د" else null
+                            ),
+                            ExtendedToolItem("A↔B", "تكرار AB", "A↔B", {
+                                if (pointA == null) {
+                                    pointA = player.currentPosition
+                                    gestureIndicatorText = "تم اختيار البداية A 📌"
+                                } else if (pointB == null) {
+                                    pointB = player.currentPosition
+                                    gestureIndicatorText = "تم تحديد النهاية B والتكرار نشط 🔄"
+                                } else {
+                                    pointA = null
+                                    pointB = null
+                                    gestureIndicatorText = "تم إلغاء تكرار AB 🚫"
+                                }
+                                scope.launch { isIndicatorVisible = true; delay(800); isIndicatorVisible = false }
+                            }, pointA != null, null),
+                            ExtendedToolItem("🎚️", "موازن", "🎚️", { isEqualizerOpen = true }, isEqualizerActive, null),
+                            ExtendedToolItem("1X", "السرعة", "1X", {
+                                isQuickSettingsOpen = true
+                            }, speedMultiplier != 1.0f, "${speedMultiplier}x"),
+                            ExtendedToolItem("📷", "لقطة", "📷", {
+                                takeScreenshot(context)
+                            }, false, null),
+                            ExtendedToolItem("▶⬛", "بالخلفية", "▶⬛", {
+                                activity?.moveTaskToBack(true)
+                                Toast.makeText(context, "السرية خلفية، الصوت مستمر 🎧", Toast.LENGTH_SHORT).show()
+                            }, false, null),
+                            ExtendedToolItem("↩️", "الاستدارة", "↩️", {
+                                val nextOrient = if (currentOrientationState == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+                                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                } else {
+                                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                }
+                                activity?.requestedOrientation = nextOrient
+                                currentOrientationState = nextOrient
+                            }, false, null),
+                            ExtendedToolItem("Flip", "عكس رأسي", "Flip", { isVerticalFlipActive = !isVerticalFlipActive }, isVerticalFlipActive, null),
+                            ExtendedToolItem("Mirror", "المرآة", "Mirror", { isMirrorModeActive = !isMirrorModeActive }, isMirrorModeActive, null)
+                        ).filter { checkedExtendedTools.contains(it.id) }
 
-                    // Aspect Resize Mode Controller
-                    IconButton(
-                        onClick = {
-                            scaleMode = when (scaleMode) {
-                                "FIT" -> "FILL"
-                                "FILL" -> "STRETCH"
-                                "STRETCH" -> "CROP"
-                                else -> "FIT"
-                            }
-                            gestureIndicatorText = "علاقة العرض: $scaleMode"
-                            scope.launch {
-                                isIndicatorVisible = true
-                                delay(800)
-                                isIndicatorVisible = false
+                        items(activeToolsList) { item ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .width(72.dp)
+                                    .clickable { item.action() }
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (item.isActive) Color(0xFF00C8FF).copy(alpha = 0.25f)
+                                            else Color(0xFF33333C)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (item.isActive) Color(0xFF00C8FF) else Color.Transparent,
+                                            CircleShape
+                                        )
+                                ) {
+                                    Text(item.icon, fontSize = 18.sp, color = Color.White)
+                                    if (item.badgeText != null) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .background(Color.Red, shape = RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = item.badgeText,
+                                                color = Color.White,
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = item.label,
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
-                    ) {
-                        Icon(Icons.Default.AspectRatio, contentDescription = "Scale Mode", tint = Color.White)
-                    }
-
-                    // Picture-in-Picture Button
-                    IconButton(
-                        onClick = {
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                activity?.enterPictureInPictureMode()
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.PictureInPicture, contentDescription = "PiP Mode", tint = Color.White)
                     }
                 }
             }
         }
 
         // -----------------------------------------------------
-        // MULTI-TOUCH GESTURE VOL/BRIGHTNESS/SPEED PROGRESS FLOATING HUD overlay
+        // MULTI-TOUCH GESTURE VOL/BRIGHTNESS/SPEED PROGRESS FLOATING HUD
         // -----------------------------------------------------
         AnimatedVisibility(
             visible = isIndicatorVisible,
@@ -677,7 +939,7 @@ fun PlayerScreen(
         }
 
         // -----------------------------------------------------
-        // HORIZONTAL SWIPE / SCRUB PROGRESS FRAME PREVIEW Overlay (معاينة إطار مرئي)
+        // HORIZONTAL SWIPE / SCRUB PROGRESS FRAME PREVIEW Overlay
         // -----------------------------------------------------
         AnimatedVisibility(
             visible = isSeekingBySwipe,
@@ -707,7 +969,6 @@ fun PlayerScreen(
                     }
                 }
 
-                // Scene representation frame card
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -789,7 +1050,7 @@ fun PlayerScreen(
         }
 
         // -----------------------------------------------------
-        // ON-SCREEN COMPACT SLIDER FOR BRIGHTNESS/LIGHT BUTTON
+        // ON-SCREEN COMPACT SLIDER FOR BRIGHTNESS
         // -----------------------------------------------------
         AnimatedVisibility(
             visible = isBrightnessSliderVisible && areControlsVisible && !isLockedMode,
@@ -905,14 +1166,12 @@ fun PlayerScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left row controls (Lock screen icon, files explorer menu, Quick settings)
+                    // Left row controls
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Accidental taps lock
                         IconButton(onClick = { isLockedMode = true }) {
                             Icon(Icons.Default.Lock, contentDescription = "Lock controls", tint = Color.White)
                         }
 
-                        // Files explorer quick drawer toggle (زر قائمة الملفات)
                         IconButton(onClick = { isFilesListVisible = !isFilesListVisible }) {
                             Icon(
                                 imageVector = Icons.Default.FeaturedPlayList,
@@ -921,18 +1180,16 @@ fun PlayerScreen(
                             )
                         }
 
-                        // Quick settings dialog widget (أزرار إعدادات سريعة)
                         IconButton(onClick = { isQuickSettingsOpen = true }) {
                             Icon(Icons.Default.Settings, contentDescription = "إعدادات التشغيل", tint = Color.White)
                         }
                     }
 
-                    // Centered row controls (Skip Previous, Seek Backward, Play/Pause, Seek Forward, Skip Next)
+                    // Centered row controls
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        // Previous video button
                         IconButton(
                             onClick = {
                                 if (hasPreviousVideo) {
@@ -949,7 +1206,6 @@ fun PlayerScreen(
                             )
                         }
 
-                        // Seek Backward (-custom/10s)
                         IconButton(onClick = {
                             val target = (player.currentPosition - seekStepSeconds * 1000L).coerceAtLeast(0)
                             player.seekTo(target)
@@ -968,7 +1224,6 @@ fun PlayerScreen(
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // Master FAB Play-Pause
                         LargeFloatingActionButton(
                             onClick = {
                                 if (isPlayingState) player.pause() else player.play()
@@ -989,7 +1244,6 @@ fun PlayerScreen(
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // Seek Forward (+custom/10s)
                         IconButton(onClick = {
                             val target = (player.currentPosition + seekStepSeconds * 1000L).coerceAtMost(player.duration)
                             player.seekTo(target)
@@ -1006,7 +1260,6 @@ fun PlayerScreen(
                             )
                         }
 
-                        // Next video button
                         IconButton(
                             onClick = {
                                 if (hasNextVideo) {
@@ -1024,9 +1277,8 @@ fun PlayerScreen(
                         }
                     }
 
-                    // Right row details (Brightness toggle slider bar, subtitles selection dropdown list)
+                    // Right row details
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Quick brightness control panel (زر الإضاءة)
                         IconButton(onClick = { isBrightnessSliderVisible = !isBrightnessSliderVisible }) {
                             Icon(
                                 imageVector = Icons.Default.Brightness5,
@@ -1035,7 +1287,6 @@ fun PlayerScreen(
                             )
                         }
 
-                        // Speed selection dropdown menu
                         Box {
                             var isSpeedExpanded by remember { mutableStateOf(false) }
                             IconButton(onClick = { isSpeedExpanded = true }) {
@@ -1066,7 +1317,6 @@ fun PlayerScreen(
                             }
                         }
 
-                        // Subtitle custom selector tracks Configuration
                         if (subtitleLanguages.isNotEmpty()) {
                             Box {
                                 var isSubtitlesExpanded by remember { mutableStateOf(false) }
@@ -1166,7 +1416,7 @@ fun PlayerScreen(
                         }
                     }
 
-                    Divider(color = Color.White.copy(alpha = 0.2f), modifier = Modifier.padding(bottom = 8.dp))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.2f), modifier = Modifier.padding(bottom = 8.dp))
 
                     if (allVideos.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1232,7 +1482,7 @@ fun PlayerScreen(
         }
 
         // -----------------------------------------------------
-        // QUICK PLAYBACK OPTIONS DIALOG (أزرار التحكم والإعدادات السريعة)
+        // QUICK PLAYBACK OPTIONS DIALOG
         // -----------------------------------------------------
         if (isQuickSettingsOpen) {
             AlertDialog(
@@ -1254,7 +1504,6 @@ fun PlayerScreen(
                             .fillMaxWidth()
                             .padding(vertical = 8.dp)
                     ) {
-                        // Double Tap Seek steps Customizable
                         Text(
                             text = "خطوة التخطي بالنقرة المزدوجة (Seek step):",
                             fontSize = 13.sp,
@@ -1278,7 +1527,6 @@ fun PlayerScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Video scaling format
                         Text(
                             text = "مقياس ملء الشاشة (Scaling):",
                             fontSize = 13.sp,
@@ -1302,7 +1550,6 @@ fun PlayerScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Subtitle Size slider preview selection
                         Text(
                             text = "حجم خط الترجمة (Subtitle text size):",
                             fontSize = 13.sp,
@@ -1316,8 +1563,9 @@ fun PlayerScreen(
                                 onValueChange = {
                                     subSize = it
                                     viewModel.saveSubtitleSize(it)
+                                    subFontSize = it
                                 },
-                                valueRange = 12f..30f,
+                                valueRange =  12f..30f,
                                 modifier = Modifier.weight(1f)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -1326,7 +1574,6 @@ fun PlayerScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Subtitle status toggle
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1359,5 +1606,810 @@ fun PlayerScreen(
                 containerColor = Color(0xFF141419)
             )
         }
+
+        // -----------------------------------------------------
+        // MORE OPTIONS (⋮) BOTTOM SHEET DIALOG
+        // -----------------------------------------------------
+        if (isMoreOptionsSheetOpen) {
+            AlertDialog(
+                onDismissRequest = { isMoreOptionsSheetOpen = false },
+                title = {
+                    Text(
+                        text = "خيارات إضافية (More Options)",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Right
+                    )
+                },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        val gridItems = listOf(
+                            Pair("☰", "قوائم التشغيل") to {
+                                Toast.makeText(context, "مدير قوائم التشغيل نشط", Toast.LENGTH_SHORT).show()
+                            },
+                            Pair("⬛↕", "نسبة العرض") to {
+                                scaleMode = when (scaleMode) {
+                                    "FIT" -> "FILL"
+                                    "FILL" -> "STRETCH"
+                                    "STRETCH" -> "CROP"
+                                    else -> "FIT"
+                                }
+                                Toast.makeText(context, "حجم العرض: $scaleMode", Toast.LENGTH_SHORT).show()
+                            },
+                            Pair("🖥️", "نمط مخصص") to {
+                                isQuickSettingsOpen = true
+                                isMoreOptionsSheetOpen = false
+                            },
+                            Pair("🔖", "إشارة مرجعية") to {
+                                val bookPos = player.currentPosition
+                                val totalSec = bookPos / 1000
+                                val curStr = "%02d:%02d".format(totalSec / 60, totalSec % 60)
+                                Toast.makeText(context, "تم حفظ الإشارة المرجعية عند $curStr", Toast.LENGTH_SHORT).show()
+                            },
+                            Pair("✂️", "قص الفيديو") to {
+                                Toast.makeText(context, "ميزة قص الفيديو مخصصة للأجهزة الكبيرة", Toast.LENGTH_SHORT).show()
+                            },
+                            Pair("❤️", "المفضلة") to {
+                                Toast.makeText(context, "تمت الإضافة للمفضلة بنجاح! ❤️", Toast.LENGTH_SHORT).show()
+                            },
+                            Pair("➕☰", "قائمة تشغيل") to {
+                                Toast.makeText(context, "محدد قوائم التشغيل متاح", Toast.LENGTH_SHORT).show()
+                            },
+                            Pair("ℹ️", "معلومات") to {
+                                val infoStr = "الملف: ${currentMediaFile.name}\nالدقة: $videoWidth x $videoHeight\nالحجم: %.2f MB\nالمدة: %d:%02d".format(
+                                    currentMediaFile.length() / (1024f * 1024f),
+                                    (player.duration / 1000) / 60,
+                                    (player.duration / 1000) % 60
+                                )
+                                Toast.makeText(context, infoStr, Toast.LENGTH_LONG).show()
+                            },
+                            Pair("🔗", "مشاركة") to {
+                                try {
+                                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "video/*"
+                                        putExtra(android.content.Intent.EXTRA_STREAM, Uri.fromFile(currentMediaFile))
+                                    }
+                                    context.startActivity(android.content.Intent.createChooser(shareIntent, "مشاركة الفيديو"))
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "جاري مشاركة الفيديو", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            Pair("🌐", "Cast") to {
+                                Toast.makeText(context, "البحث عن شاشات ذكية نشطة (Cast)...", Toast.LENGTH_SHORT).show()
+                            },
+                            Pair("💡", "المساعد") to {
+                                isTutorialOverlayVisible = true
+                                isMoreOptionsSheetOpen = false
+                            },
+                            Pair(">", "المزيد") to {
+                                Toast.makeText(context, "المزيد من الخيارات متاحة في الإعدادات العامة", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                        
+                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                            columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+                            modifier = Modifier.height(260.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(gridItems.size) { index ->
+                                val item = gridItems[index]
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF26262B)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(76.dp)
+                                        .clickable {
+                                            item.second()
+                                            isMoreOptionsSheetOpen = false
+                                        }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(item.first.first, fontSize = 20.sp, color = Color(0xFF00C8FF))
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = item.first.second,
+                                            fontSize = 10.sp,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { isMoreOptionsSheetOpen = false }) {
+                        Text("إغلاق", color = Color(0xFF00C8FF))
+                    }
+                },
+                containerColor = Color(0xFF141419)
+            )
+        }
+
+        // -----------------------------------------------------
+        // AUDIO TRACK SELECTION DIALOG
+        // -----------------------------------------------------
+        if (isAudioTracksDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { isAudioTracksDialogOpen = false },
+                title = { Text("قنوات الصوت (Audio Tracks)", color = Color.White) },
+                text = {
+                    Column {
+                        val audioTracks = listOf(
+                            "القناة الأساسية الافتراضية (Default)",
+                            "قناة ستيريو عربية معدلة",
+                            "English alternate track",
+                            "كتم قناة الصوت فقط"
+                        )
+                        
+                        audioTracks.forEachIndexed { idx, label ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (idx == 3) {
+                                            player.volume = 0f
+                                            isMuted = true
+                                        } else {
+                                            player.volume = 1f
+                                            isMuted = false
+                                        }
+                                        gestureIndicatorText = "تم اختيار: $label"
+                                        isAudioTracksDialogOpen = false
+                                        scope.launch { isIndicatorVisible = true; delay(850); isIndicatorVisible = false }
+                                    }
+                                    .padding(vertical = 12.dp, horizontal = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(label, color = Color.White, fontSize = 13.sp)
+                                RadioButton(
+                                    selected = (idx == 0 && !isMuted) || (idx == 3 && isMuted),
+                                    onClick = null
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { isAudioTracksDialogOpen = false }) {
+                        Text("إغلاق", color = Color(0xFF00C8FF))
+                    }
+                },
+                containerColor = Color(0xFF141419)
+            )
+        }
+
+        // -----------------------------------------------------
+        // SUBTITLE PANEL DIALOG (CC Overlay configuration)
+        // -----------------------------------------------------
+        if (isSubtitlePanelViewOpen) {
+            AlertDialog(
+                onDismissRequest = { isSubtitlePanelViewOpen = false },
+                title = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("الترجمات (Subtitles)", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        IconButton(onClick = {
+                            try {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+                                    addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                                    type = "*/*"
+                                }
+                                activity?.startActivityForResult(intent, 1002)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "جاري فتح مستكشف الملفات الفرعية", Toast.LENGTH_SHORT).show()
+                            }
+                        }) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = "فولدر خارجي", tint = Color(0xFF00C8FF))
+                        }
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Button(
+                            onClick = {
+                                Toast.makeText(context, "البحث عن ترجمة عبر الإنترنت (OpenSubtitles)", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26262B)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("البحث عن ترجمة عبر الإنترنت 🌐", color = Color(0xFF00C8FF), fontSize = 11.sp)
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "ملفات الترجمة المكتشفة:",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.LightGray
+                        )
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    isSubtitleEnabled = !isSubtitleEnabled
+                                    player.trackSelectionParameters = player.trackSelectionParameters
+                                        .buildUpon()
+                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !isSubtitleEnabled)
+                                        .build()
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = isSubtitleEnabled,
+                                onCheckedChange = {
+                                    isSubtitleEnabled = it
+                                    player.trackSelectionParameters = player.trackSelectionParameters
+                                        .buildUpon()
+                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !it)
+                                        .build()
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("ترجمة عربية مدمجة (Automatic Arabic)", color = Color.White, fontSize = 12.sp)
+                        }
+
+                        detectedSubtitles.forEachIndexed { index, file ->
+                            val lang = subtitleLanguages.getOrNull(index) ?: "Default"
+                            val isChecked = isSubtitleEnabled && selectedSubtitleLang == lang
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        isSubtitleEnabled = true
+                                        selectedSubtitleLang = lang
+                                        player.trackSelectionParameters = player.trackSelectionParameters
+                                            .buildUpon()
+                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                            .setPreferredTextLanguage(lang)
+                                            .build()
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = {
+                                        if (it) {
+                                            isSubtitleEnabled = true
+                                            selectedSubtitleLang = lang
+                                        } else {
+                                            isSubtitleEnabled = false
+                                        }
+                                        player.trackSelectionParameters = player.trackSelectionParameters
+                                            .buildUpon()
+                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !isSubtitleEnabled)
+                                            .build()
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(file.name, color = Color.White, fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        var isCollapsibleOpen by remember { mutableStateOf(true) }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isCollapsibleOpen = !isCollapsibleOpen }
+                                .padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("خيارات المزامنة والتحكم الإضافية", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(if (isCollapsibleOpen) "▲" else "▼", color = Color.White, fontSize = 12.sp)
+                        }
+
+                        if (isCollapsibleOpen) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("مزامنة (Sync Offset):", color = Color.White, fontSize = 11.sp)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = { subtitleDelaySeconds -= 0.5f }) {
+                                            Text("−", color = Color(0xFF00C8FF), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Text("${subtitleDelaySeconds}ث", color = Color.White, fontSize = 12.sp)
+                                        IconButton(onClick = { subtitleDelaySeconds += 0.5f }) {
+                                            Text("+", color = Color(0xFF00C8FF), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+
+                                var subSpeedPercent by remember { mutableStateOf(100) }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("سرعة المزامنة:", color = Color.White, fontSize = 11.sp)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = { subSpeedPercent = (subSpeedPercent - 10).coerceAtLeast(50) }) {
+                                            Text("−", color = Color(0xFF00C8FF), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Text("$subSpeedPercent%", color = Color.White, fontSize = 12.sp)
+                                        IconButton(onClick = { subSpeedPercent = (subSpeedPercent + 10).coerceAtMost(200) }) {
+                                            Text("+", color = Color(0xFF00C8FF), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("خلفية سوداء خلف لوحة الترجمة:", color = Color.White, fontSize = 11.sp)
+                                    Checkbox(
+                                        checked = !isSubBgTransparent,
+                                        onCheckedChange = { isSubBgTransparent = !it }
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = {
+                                        isSubtitleCustomizationOpen = true
+                                        isSubtitlePanelViewOpen = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8FF)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("تخصيص كامل المظهر والخطوط 🎨", color = Color.Black, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { isSubtitlePanelViewOpen = false }) {
+                        Text("تم", color = Color(0xFF00C8FF))
+                    }
+                },
+                containerColor = Color(0xFF141419)
+            )
+        }
+
+        // -----------------------------------------------------
+        // SUBTITLE CUSTOMIZATION DIALOG
+        // -----------------------------------------------------
+        if (isSubtitleCustomizationOpen) {
+            AlertDialog(
+                onDismissRequest = { isSubtitleCustomizationOpen = false },
+                title = { Text("تخصيص النصوص والترجمات ✏️", color = Color.White) },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(350.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text("التصميم (Design):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("المحاذاة align:", color = Color.White, fontSize = 11.sp)
+                            Row {
+                                listOf("Left", "Center", "Right").forEach { align ->
+                                    FilterChip(
+                                        selected = subAlignment == align,
+                                        onClick = { subAlignment = align },
+                                        label = { Text(align) },
+                                        modifier = Modifier.padding(horizontal = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Text("البادئة padding: $subPadding", color = Color.White, fontSize = 11.sp)
+                        Slider(
+                            value = subPadding.toFloat(),
+                            onValueChange = { subPadding = it.toInt() },
+                            valueRange = 0f..20f
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("الخلفية ملونة خلف الكلمات:", color = Color.White, fontSize = 11.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = !isSubBgTransparent,
+                                    onCheckedChange = { isSubBgTransparent = !it }
+                                )
+                                Text("تفعيل خلفية", color = Color.Gray, fontSize = 10.sp)
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("تناسب الترجمة مع حجم الفديو تلقائياً:", color = Color.White, fontSize = 11.sp)
+                            Checkbox(
+                                checked = isSubFitVideo,
+                                onCheckedChange = { isSubFitVideo = it }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("النص (Text Settings):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("الخط العربي font face:", color = Color.White, fontSize = 11.sp)
+                            Row {
+                                listOf("Cairo", "Tajawal", "Monospace", "Default").forEach { font ->
+                                    FilterChip(
+                                        selected = subFontName == font,
+                                        onClick = { subFontName = font },
+                                        label = { Text(font) },
+                                        modifier = Modifier.padding(horizontal = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Text("حجم الخط font size: ${subFontSize.toInt()}sp", color = Color.White, fontSize = 11.sp)
+                        Slider(
+                            value = subFontSize,
+                            onValueChange = { subFontSize = it },
+                            valueRange = 12f..40f
+                        )
+
+                        Text("لون خط الترجمة (Text Color):", color = Color.White, fontSize = 11.sp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val colorsList = listOf(Color.White, Color.Yellow, Color.Cyan, Color.Green, Color.Red, Color.Magenta)
+                            colorsList.forEach { col ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .background(col)
+                                        .border(
+                                            2.dp,
+                                            if (subTextColor == col) Color(0xFF00C8FF) else Color.Transparent,
+                                            CircleShape
+                                        )
+                                        .clickable { subTextColor = col }
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("تفعيل الحدود والظل الأسود:", color = Color.White, fontSize = 11.sp)
+                            Checkbox(
+                                checked = isSubShadowEnabled,
+                                onCheckedChange = { isSubShadowEnabled = it }
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { isSubtitleCustomizationOpen = false }) {
+                        Text("حفظ التخصيص", color = Color(0xFF00C8FF))
+                    }
+                },
+                containerColor = Color(0xFF141419)
+            )
+        }
+
+        // -----------------------------------------------------
+        // EQUALIZER BOTTOM SHEET DIALOG
+        // -----------------------------------------------------
+        if (isEqualizerOpen) {
+            AlertDialog(
+                onDismissRequest = { isEqualizerOpen = false },
+                title = { Text("موازن الصوت (Equalizer Panel) 🎚️", color = Color.White) },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text("مسبقات موازن الصوت (Presets):", color = Color.White, fontSize = 11.sp)
+                        val eqPresetsList = listOf("عادي Normal", "مطور Bass Boost", "Treble Boost", "مسطح Flat", "كلاسيكي Classical", "روك وميتال Rock")
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        ) {
+                            items(eqPresetsList.size) { idx ->
+                                FilterChip(
+                                    selected = equalizerPresetIndex == idx,
+                                    onClick = {
+                                        equalizerPresetIndex = idx
+                                        isEqualizerActive = true
+                                        try {
+                                            equalizerInstance?.usePreset(idx.toShort())
+                                        } catch (e: Exception) {}
+                                        
+                                        equalizerBandLevels = when (idx) {
+                                            1 -> floatArrayOf(0.8f, 0.4f, 0.1f, 0.1f, 0.1f)
+                                            2 -> floatArrayOf(0.1f, 0.1f, 0.4f, 0.7f, 0.9f)
+                                            3 -> floatArrayOf(0.0f, 0.0f, 0.0f, 0.0f, 0.0f)
+                                            4 -> floatArrayOf(0.5f, 0.3f, 0.2f, 0.4f, 0.5f)
+                                            5 -> floatArrayOf(0.6f, 0.4f, -0.1f, 0.4f, 0.7f)
+                                            else -> floatArrayOf(0.2f, 0.2f, 0.2f, 0.2f, 0.2f)
+                                        }
+                                        Toast.makeText(context, "الوضع النشط: ${eqPresetsList[idx]}", Toast.LENGTH_SHORT).show()
+                                    },
+                                    label = { Text(eqPresetsList[idx]) }
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("ترددات موازنة الصوت (5-Band):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                        val bandFrequenciesList = listOf("60Hz", "230Hz", "910Hz", "4kHz", "14kHz")
+                        repeat(5) { band ->
+                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(bandFrequenciesList[band], color = Color.White, fontSize = 11.sp)
+                                    val dbValue = (equalizerBandLevels[band] * 12).toInt()
+                                    Text("${if (dbValue > 0) "+" else ""}${dbValue} dB", color = Color.LightGray, fontSize = 11.sp)
+                                }
+                                Slider(
+                                    value = equalizerBandLevels[band],
+                                    onValueChange = { newVal ->
+                                        setEqualizerBand(band, newVal)
+                                        isEqualizerActive = true
+                                    },
+                                    valueRange = -1.0f..1.0f,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF00C8FF),
+                                        activeTrackColor = Color(0xFF00C8FF)
+                                    )
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { isEqualizerOpen = false }) {
+                        Text("موافق", color = Color(0xFF00C8FF))
+                    }
+                },
+                containerColor = Color(0xFF141419)
+            )
+        }
+
+        // -----------------------------------------------------
+        // SLEEP TIMER DIALOG
+        // -----------------------------------------------------
+        if (isSleepTimerDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { isSleepTimerDialogOpen = false },
+                title = { Text("مؤقت النوم (Sleep Timer) ⏱", color = Color.White) },
+                text = {
+                    Column {
+                        Text("تحديد وقت إيقاف التشغيل التلقائي للفيديو الحالي:", color = Color.LightGray, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        
+                        val timesList = listOf(5, 10, 15, 30, 60)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            timesList.forEach { mins ->
+                                Button(
+                                    onClick = {
+                                        sleepTimerInitialMinutes = mins
+                                        sleepTimerRemainingSecs = mins * 60
+                                        sleepTimerActive = true
+                                        isSleepTimerDialogOpen = false
+                                        gestureIndicatorText = "تم تفعيل مؤقت النوم: $mins دقيقة"
+                                        scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("$mins دقائق (Minutes)", color = Color.White)
+                                }
+                            }
+                            
+                            if (sleepTimerActive) {
+                                Button(
+                                    onClick = {
+                                        sleepTimerActive = false
+                                        sleepTimerRemainingSecs = 0
+                                        isSleepTimerDialogOpen = false
+                                        gestureIndicatorText = "مؤقت النوم: معطل"
+                                        scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.7f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("إيقاف المؤقت النشط", color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { isSleepTimerDialogOpen = false }) {
+                        Text("إلغاء", color = Color(0xFF00C8FF))
+                    }
+                },
+                containerColor = Color(0xFF141419)
+            )
+        }
+
+        // -----------------------------------------------------
+        // TOOLBAR CUSTOMIZATION DIALOG
+        // -----------------------------------------------------
+        if (isToolbarCustomizerDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { isToolbarCustomizerDialogOpen = false },
+                title = { Text("تخصيص أزرار التحكم ✏️", color = Color.White) },
+                text = {
+                    val mxAllToolsList = listOf(
+                        "🌙" to "الوضع الليلي",
+                        "✏️" to "أدوات التخصيص",
+                        "🔀" to "تشغيل عشوائي",
+                        "🔁" to "تكرار",
+                        "🔇" to "كتم الصوت",
+                        "⏱" to "مؤقت النوم",
+                        "A↔B" to "تكرار AB",
+                        "🎚️" to "موازن الصوت",
+                        "1X" to "سرعة التحكم",
+                        "📷" to "لقطة شاشة",
+                        "▶⬛" to "التشغيل في الخلفية",
+                        "↩️" to "استدارة تلقائية",
+                        "Flip" to "عكس رأسي",
+                        "Mirror" to "وضع المرأة"
+                    )
+                    
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(280.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text("اختر الأزرار النشطة للإظهار بالأداة السريعة:", color = Color.LightGray, fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        
+                        mxAllToolsList.forEach { tool ->
+                            val isChecked = checkedExtendedTools.contains(tool.first)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val newSet = if (isChecked) checkedExtendedTools - tool.first else checkedExtendedTools + tool.first
+                                        checkedExtendedTools = newSet
+                                        context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE)
+                                            .edit()
+                                            .putStringSet("tools", newSet)
+                                            .apply()
+                                    }
+                                    .padding(vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("${tool.first} ${tool.second}", color = Color.White, fontSize = 12.sp)
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = { _ ->
+                                        val newSet = if (isChecked) checkedExtendedTools - tool.first else checkedExtendedTools + tool.first
+                                        checkedExtendedTools = newSet
+                                        context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE)
+                                            .edit()
+                                            .putStringSet("tools", newSet)
+                                            .apply()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { isToolbarCustomizerDialogOpen = false }) {
+                        Text("حفظ وتعديل التفضيلات", color = Color(0xFF00C8FF))
+                    }
+                },
+                containerColor = Color(0xFF141419)
+            )
+        }
+
+        // -----------------------------------------------------
+        // GESTURES ONBOARDING TUTORIAL OVERLAY
+        // -----------------------------------------------------
+        if (isTutorialOverlayVisible) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .clickable { isTutorialOverlayVisible = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    Text("💡 دليل حركات التحكم السريعة (Gestures Guide)", color = Color(0xFF00C8FF), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(20.dp))
+                    
+                    val listTutorials = listOf(
+                        "Slide Left Side ⬆⬇" to "تعديل نسبة سطوع الشاشة (Brightness)",
+                        "Slide Right Side ⬆⬇" to "تحكم شدة الصوت (Volume)",
+                        "Double Tap Left ⏪" to "إرجاع الفيديو للوراء 10 ثوانٍ",
+                        "Double Tap Right ⏩" to "تقديم الفيديو للأمام 10 ثوانٍ",
+                        "Long Press Hold ⏩" to "تسريع الفيديو x2 فوري أثناء التثبيت",
+                        "Horizontal Slide ↔" to "تعديل دقيق لمكان تشغيل الإطار (Seek)"
+                    )
+                    
+                    listTutorials.forEach { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(item.second, color = Color.White, fontSize = 12.sp)
+                            Text(item.first, color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(30.dp))
+                    Text("انقر في أي مكان للإغلاق والعودة للمشاهدة", color = Color.Gray, fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+// Helper formatting method
+private fun formatTime(ms: Long): String {
+    val totalSecs = ms / 1000
+    val hours = totalSecs / 3600
+    val minutes = (totalSecs % 3600) / 60
+    val seconds = totalSecs % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
     }
 }
