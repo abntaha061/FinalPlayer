@@ -9,6 +9,9 @@ import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -30,6 +33,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -38,6 +42,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -420,6 +425,10 @@ fun PlayerScreen(
     val subPrefsManager = remember { com.example.data.SubtitlePrefsManager(context) }
     val subtitlePrefsState by subPrefsManager.subtitlePreferencesFlow.collectAsState(initial = com.example.data.SubtitlePreferences())
 
+    var localSubtitleOffset by remember { mutableStateOf<Float?>(null) }
+    var parentHeightPx by remember { mutableStateOf(1000f) }
+    var isDraggingSubtitle by remember { mutableStateOf(false) }
+
     var checkedExtendedTools by remember {
         mutableStateOf(
             context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE)
@@ -691,41 +700,69 @@ fun PlayerScreen(
 
         // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY
         if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
+            val currentOffset = localSubtitleOffset ?: subtitlePrefsState.verticalOffset
+            val verticalBias = -1.0f + (currentOffset * 2.0f)
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 100.dp, start = 32.dp, end = 32.dp), // keep safe distances from control interfaces
-                contentAlignment = Alignment.BottomCenter
+                    .onSizeChanged { parentHeightPx = it.height.toFloat() }
+                    .padding(bottom = 100.dp, start = 32.dp, end = 32.dp),
+                contentAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = verticalBias)
             ) {
-                Box(
+                Text(
+                    text = activeSubtitleText,
+                    color = subtitlePrefsState.textColor,
+                    fontSize = subtitlePrefsState.textSize.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier
-                        .fillMaxHeight(subtitlePrefsState.verticalOffset)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    Text(
-                        text = activeSubtitleText,
-                        color = subtitlePrefsState.textColor,
-                        fontSize = subtitlePrefsState.textSize.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .background(
-                                color = subtitlePrefsState.backgroundColor,
-                                shape = RoundedCornerShape(8.dp)
+                        .background(
+                            color = if (isDraggingSubtitle) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                            } else {
+                                subtitlePrefsState.backgroundColor
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .border(
+                            width = if (isDraggingSubtitle) 2.dp else 1.dp,
+                            color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .pointerInput(parentHeightPx, subtitlePrefsState.verticalOffset) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    isDraggingSubtitle = true
+                                    localSubtitleOffset = subtitlePrefsState.verticalOffset
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val delta = dragAmount.y / parentHeightPx
+                                    val current = localSubtitleOffset ?: subtitlePrefsState.verticalOffset
+                                    localSubtitleOffset = (current + delta).coerceIn(0.01f, 0.99f)
+                                },
+                                onDragEnd = {
+                                    isDraggingSubtitle = false
+                                    localSubtitleOffset?.let { finalOffset ->
+                                        scope.launch {
+                                            subPrefsManager.savePreferences(subtitlePrefsState.copy(verticalOffset = finalOffset))
+                                        }
+                                    }
+                                    localSubtitleOffset = null
+                                },
+                                onDragCancel = {
+                                    isDraggingSubtitle = false
+                                    localSubtitleOffset = null
+                                }
                             )
-                            .border(
-                                width = 1.dp,
-                                color = Color.White.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            .clickable {
-                                isSubtitleCustomizationOpen = true
-                            }
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
-                            .testTag("custom_subtitle_text")
-                    )
-                }
+                        }
+                        .clickable {
+                            isSubtitleCustomizationOpen = true
+                        }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                        .testTag("custom_subtitle_text")
+                )
             }
         }
 
@@ -767,26 +804,6 @@ fun PlayerScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = resolutionLabel,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "سرعة: ${speedMultiplier}x",
-                                    color = Color.LightGray.copy(alpha = 0.8f),
-                                    fontSize = 11.sp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "%.1f MB".format(currentMediaFile.length() / (1024f * 1024f)),
-                                    color = Color.Gray,
-                                    fontSize = 11.sp
-                                )
-                            }
                         }
 
                     }
@@ -914,26 +931,73 @@ fun PlayerScreen(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                 ) {
                     Text(curStr, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Slider(
-                        value = if (videoDuration > 0) currentPlayTime.toFloat() / videoDuration else 0f,
-                        onValueChange = { percent ->
-                            val target = (percent * videoDuration).toLong()
-                            currentPlayTime = target
-                            player.seekTo(target)
-                        },
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                        ),
+                    BoxWithConstraints(
                         modifier = Modifier
                             .weight(1f)
                             .padding(horizontal = 10.dp)
+                            .height(18.dp)
                             .testTag("player_seek_bar")
-                    )
+                            .pointerInput(videoDuration) {
+                                detectTapGestures(
+                                    onPress = { offset ->
+                                        if (videoDuration > 0) {
+                                            val percent = (offset.x / size.width).coerceIn(0f, 1f)
+                                            val target = (percent * videoDuration).toLong()
+                                            currentPlayTime = target
+                                            player.seekTo(target)
+                                        }
+                                    }
+                                )
+                            }
+                            .pointerInput(videoDuration) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    if (videoDuration > 0) {
+                                        val percent = (change.position.x / size.width).coerceIn(0f, 1f)
+                                        val target = (percent * videoDuration).toLong()
+                                        currentPlayTime = target
+                                        player.seekTo(target)
+                                    }
+                                }
+                            }
+                    ) {
+                        val widthDp = with(LocalDensity.current) { constraints.maxWidth.toDp() }
+                        val fraction = if (videoDuration > 0) currentPlayTime.toFloat() / videoDuration else 0f
+
+                        // Inactive track (grey thin line)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.5.dp)
+                                .align(Alignment.Center)
+                                .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(1.dp))
+                        )
+
+                        // Active track (primary colored thin line)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(fraction)
+                                .height(2.5.dp)
+                                .align(Alignment.CenterStart)
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(1.dp))
+                        )
+
+                        // Tiny circular thumb element
+                        val thumbSize = 8.dp
+                        val halfThumb = thumbSize / 2
+                        val thumbOffset = (widthDp * fraction - halfThumb).coerceIn(0.dp, widthDp - thumbSize)
+
+                        Box(
+                            modifier = Modifier
+                                .offset(x = thumbOffset)
+                                .size(thumbSize)
+                                .align(Alignment.CenterStart)
+                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                        )
+                    }
                     Text(totalStr, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
                 }
 
@@ -944,21 +1008,25 @@ fun PlayerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Left row controls
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { isLockedMode = true }) {
-                            Icon(Icons.Default.Lock, contentDescription = "Lock controls", tint = Color.White)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        IconButton(onClick = { isLockedMode = true }, modifier = Modifier.size(34.dp)) {
+                            Icon(Icons.Default.Lock, contentDescription = "Lock controls", tint = Color.White, modifier = Modifier.size(18.dp))
                         }
 
-                        IconButton(onClick = { isFilesListVisible = !isFilesListVisible }) {
+                        IconButton(onClick = { isFilesListVisible = !isFilesListVisible }, modifier = Modifier.size(34.dp)) {
                             Icon(
                                 imageVector = Icons.Default.FeaturedPlayList,
                                 contentDescription = "قائمة الفيديوهات",
-                                tint = if (isFilesListVisible) MaterialTheme.colorScheme.primary else Color.White
+                                tint = if (isFilesListVisible) MaterialTheme.colorScheme.primary else Color.White,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
-                        IconButton(onClick = { isQuickSettingsOpen = true }) {
-                            Icon(Icons.Default.Settings, contentDescription = "إعدادات التشغيل", tint = Color.White)
+                        IconButton(onClick = { isQuickSettingsOpen = true }, modifier = Modifier.size(34.dp)) {
+                            Icon(Icons.Default.Settings, contentDescription = "إعدادات التشغيل", tint = Color.White, modifier = Modifier.size(18.dp))
                         }
                     }
 
@@ -974,20 +1042,25 @@ fun PlayerScreen(
                                     onNavigateToVideo(prevPath)
                                 }
                             },
-                            enabled = hasPreviousVideo
+                            enabled = hasPreviousVideo,
+                            modifier = Modifier.size(34.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SkipPrevious,
                                 contentDescription = "Previous File",
-                                tint = if (hasPreviousVideo) Color.White else Color.Gray
+                                tint = if (hasPreviousVideo) Color.White else Color.Gray,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
-                        IconButton(onClick = {
-                            val target = (player.currentPosition - seekStepSeconds * 1000L).coerceAtLeast(0)
-                            player.seekTo(target)
-                            currentPlayTime = target
-                        }) {
+                        IconButton(
+                            onClick = {
+                                val target = (player.currentPosition - seekStepSeconds * 1000L).coerceAtLeast(0)
+                                player.seekTo(target)
+                                currentPlayTime = target
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
                             Icon(
                                 imageVector = when (seekStepSeconds) {
                                     5 -> Icons.Default.Replay5
@@ -995,37 +1068,42 @@ fun PlayerScreen(
                                     else -> Icons.Default.Replay10
                                 },
                                 contentDescription = "Back Step",
-                                tint = Color.LightGray
+                                tint = Color.LightGray,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        LargeFloatingActionButton(
-                            onClick = {
-                                if (isPlayingState) player.pause() else player.play()
-                            },
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            shape = CircleShape,
+                        Box(
+                            contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .size(56.dp)
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                                .clickable {
+                                    if (isPlayingState) player.pause() else player.play()
+                                }
                                 .testTag("player_play_pause")
                         ) {
                             Icon(
                                 imageVector = if (isPlayingState) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = "Play Control Toggle",
                                 tint = Color.Black,
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        IconButton(onClick = {
-                            val target = (player.currentPosition + seekStepSeconds * 1000L).coerceAtMost(player.duration)
-                            player.seekTo(target)
-                            currentPlayTime = target
-                        }) {
+                        IconButton(
+                            onClick = {
+                                val target = (player.currentPosition + seekStepSeconds * 1000L).coerceAtMost(player.duration)
+                                player.seekTo(target)
+                                currentPlayTime = target
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
                             Icon(
                                 imageVector = when (seekStepSeconds) {
                                     5 -> Icons.Default.Forward5
@@ -1033,7 +1111,8 @@ fun PlayerScreen(
                                     else -> Icons.Default.Forward10
                                 },
                                 contentDescription = "Forward Step",
-                                tint = Color.LightGray
+                                tint = Color.LightGray,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
@@ -1044,30 +1123,42 @@ fun PlayerScreen(
                                     onNavigateToVideo(nextPath)
                                 }
                             },
-                            enabled = hasNextVideo
+                            enabled = hasNextVideo,
+                            modifier = Modifier.size(34.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SkipNext,
                                 contentDescription = "Next File",
-                                tint = if (hasNextVideo) Color.White else Color.Gray
+                                tint = if (hasNextVideo) Color.White else Color.Gray,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
 
                     // Right row details
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { isBrightnessSliderVisible = !isBrightnessSliderVisible }) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        IconButton(
+                            onClick = { isBrightnessSliderVisible = !isBrightnessSliderVisible },
+                            modifier = Modifier.size(34.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Brightness5,
                                 contentDescription = "الإضاءة شريط",
-                                tint = if (isBrightnessSliderVisible) MaterialTheme.colorScheme.primary else Color.White
+                                tint = if (isBrightnessSliderVisible) MaterialTheme.colorScheme.primary else Color.White,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         Box {
                             var isSpeedExpanded by remember { mutableStateOf(false) }
-                            IconButton(onClick = { isSpeedExpanded = true }) {
-                                Icon(Icons.Default.Speed, contentDescription = "Speed multiplier rate", tint = Color.White)
+                            IconButton(
+                                onClick = { isSpeedExpanded = true },
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Icon(Icons.Default.Speed, contentDescription = "Speed multiplier rate", tint = Color.White, modifier = Modifier.size(18.dp))
                             }
                             DropdownMenu(
                                 expanded = isSpeedExpanded,
