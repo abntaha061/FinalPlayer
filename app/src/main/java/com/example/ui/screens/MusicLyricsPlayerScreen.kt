@@ -56,7 +56,6 @@ fun MusicLyricsPlayerScreen(
 ) {
     val currentTrack by viewModel.currentTrack.collectAsState()
     val isPlaying by viewModel.isAudioPlaying.collectAsState()
-    val progress by viewModel.audioProgress.collectAsState()
     val duration by viewModel.audioDuration.collectAsState()
 
     val track = currentTrack ?: return
@@ -95,12 +94,6 @@ fun MusicLyricsPlayerScreen(
 
         albumArtBitmap = result.first
         colors = result.second ?: baseColors
-    }
-
-    // Active lyric calculation
-    val activeIndex = remember(progress, lyrics) {
-        val idx = lyrics.indexOfLast { progress >= it.timeMs }
-        if (idx == -1) 0 else idx
     }
 
     // Inactivity fade out for player control system
@@ -147,7 +140,7 @@ fun MusicLyricsPlayerScreen(
             // Highly visible synchronized lyrics taking up the main screen space
             SynchronizedLyricsList(
                 lyrics = lyrics,
-                activeIndex = activeIndex,
+                progressFlow = viewModel.audioProgress,
                 onLineClicked = { viewModel.seekAudioTo(it.timeMs) },
                 onUserInteraction = {
                     areControlsVisible = true
@@ -234,73 +227,12 @@ fun MusicLyricsPlayerScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 2. PureSonic Progress seekbar + Capsule split signature
-                    val progressSec = progress / 1000
-                    val durationSec = duration / 1000
-                    val progressStr = formatTimeToArabicIndic(progressSec)
-                    val durationStr = formatTimeToArabicIndic(durationSec)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Slider(
-                            value = if (duration > 0) progress.toFloat() / duration else 0f,
-                            onValueChange = { viewModel.seekAudioTo((it * duration).toLong()) },
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color.White,
-                                activeTrackColor = Color.White,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.2f),
-                                activeTickColor = Color.Transparent,
-                                inactiveTickColor = Color.Transparent
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("lyrics_player_seek")
-                        )
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        // PureSonic iconic visual signature: separator lines + capsule split
-                        Box(
-                            modifier = Modifier
-                                .width(2.dp)
-                                .height(14.dp)
-                                .background(Color.White)
-                        )
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Box(
-                            modifier = Modifier
-                                .width(42.dp)
-                                .height(14.dp)
-                                .clip(RoundedCornerShape(7.dp))
-                                .background(Color.White)
-                        )
-                    }
-
-                    // 3. Time labels Row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = progressStr,
-                            color = Color.White.copy(alpha = 0.7f),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = durationStr,
-                            color = Color.White.copy(alpha = 0.7f),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    // Isolated Audio progress bar for 0-recompositions performance optimization
+                    AudioProgressBar(
+                        progressFlow = viewModel.audioProgress,
+                        durationState = viewModel.audioDuration.collectAsState(),
+                        onSeek = { target -> viewModel.seekAudioTo(target) }
+                    )
 
                     Spacer(modifier = Modifier.height(20.dp))
 
@@ -388,11 +320,16 @@ fun TrackMetaData(title: String, artist: String?) {
 @Composable
 fun SynchronizedLyricsList(
     lyrics: List<LyricLine>,
-    activeIndex: Int,
+    progressFlow: kotlinx.coroutines.flow.StateFlow<Long>,
     onLineClicked: (LyricLine) -> Unit,
     onUserInteraction: () -> Unit,
     onTapBackground: () -> Unit
 ) {
+    val progress by progressFlow.collectAsState()
+    val activeIndex = remember(progress, lyrics) {
+        val idx = lyrics.indexOfLast { progress >= it.timeMs }
+        if (idx == -1) 0 else idx
+    }
     val listState = rememberLazyListState()
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -598,102 +535,29 @@ fun AuroraBackground(
     albumArtBitmap: android.graphics.Bitmap?,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "aurora_lights")
-
     // Smoothly animate each aurora color to create beautiful transition morphs when the track changes
-    val animatedC1 by animateColorAsState(targetValue = colors.c1, animationSpec = tween(1800), label = "animated_c1")
-    val animatedC2 by animateColorAsState(targetValue = colors.c2, animationSpec = tween(1800), label = "animated_c2")
-    val animatedC3 by animateColorAsState(targetValue = colors.c3, animationSpec = tween(1800), label = "animated_c3")
-    val animatedC4 by animateColorAsState(targetValue = colors.c4, animationSpec = tween(1800), label = "animated_c4")
+    val animatedC1 by animateColorAsState(targetValue = colors.c1, animationSpec = tween(2000), label = "animated_c1")
+    val animatedC2 by animateColorAsState(targetValue = colors.c2, animationSpec = tween(2000), label = "animated_c2")
+    val animatedC3 by animateColorAsState(targetValue = colors.c3, animationSpec = tween(2000), label = "animated_c3")
+    val animatedC4 by animateColorAsState(targetValue = colors.c4, animationSpec = tween(2000), label = "animated_c4")
 
-    // Slow organic floating movement vectors for the 4 colors of the fluid liquid aurora
-    val tX1 by infiniteTransition.animateFloat(
-        initialValue = -110f,
-        targetValue = 110f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(8000, easing = SineBehaviorEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "t_x1"
-    )
-    val tY1 by infiniteTransition.animateFloat(
-        initialValue = -90f,
-        targetValue = 90f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(11000, easing = SineBehaviorEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "t_y1"
-    )
-
-    val tX2 by infiniteTransition.animateFloat(
-        initialValue = 100f,
-        targetValue = -100f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(9000, easing = SineBehaviorEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "t_x2"
-    )
-    val tY2 by infiniteTransition.animateFloat(
-        initialValue = -70f,
-        targetValue = 110f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(12000, easing = SineBehaviorEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "t_y2"
-    )
-
-    val tX3 by infiniteTransition.animateFloat(
-        initialValue = -75f,
-        targetValue = 90f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(10000, easing = SineBehaviorEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "t_x3"
-    )
-    val tY3 by infiniteTransition.animateFloat(
-        initialValue = 110f,
-        targetValue = -90f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(7500, easing = SineBehaviorEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "t_y3"
-    )
-
-    val tX4 by infiniteTransition.animateFloat(
-        initialValue = 115f,
-        targetValue = -115f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(11500, easing = SineBehaviorEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "t_x4"
-    )
-    val tY4 by infiniteTransition.animateFloat(
-        initialValue = -110f,
-        targetValue = 80f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(9500, easing = SineBehaviorEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "t_y4"
-    )
-
-    // Generate a deep cosmic backdrop composed of extremely dark, rich variations of the track's colors
-    val darkBaseBrush = remember(animatedC1, animatedC2) {
-        val dark1 = animatedC1.copy(red = animatedC1.red * 0.08f, green = animatedC1.green * 0.08f, blue = animatedC1.blue * 0.08f, alpha = 1.0f)
-        val dark2 = animatedC2.copy(red = animatedC2.red * 0.06f, green = animatedC2.green * 0.06f, blue = animatedC2.blue * 0.06f, alpha = 1.0f)
-        Brush.verticalGradient(listOf(dark1, dark2))
+    // Optimize: Instead of rendering heavy canvas with continuous floating coordinates and costly .blur(80.dp)
+    // which drains battery and heats up the device by redrawing 60 frames per second on screen,
+    // we use a beautifully blended gradient brush directly. It achieves a gorgeous, vibrant look in hardware rendering.
+    val meshBrush = remember(animatedC1, animatedC2, animatedC3, animatedC4) {
+        val dark1 = animatedC1.copy(red = animatedC1.red * 0.08f, green = animatedC1.green * 0.08f, blue = animatedC1.blue * 0.08f, alpha = 0.45f)
+        val dark2 = animatedC2.copy(red = animatedC2.red * 0.06f, green = animatedC2.green * 0.06f, blue = animatedC2.blue * 0.06f, alpha = 0.40f)
+        val dark3 = animatedC3.copy(red = animatedC3.red * 0.07f, green = animatedC3.green * 0.07f, blue = animatedC3.blue * 0.07f, alpha = 0.38f)
+        val dark4 = animatedC4.copy(red = animatedC4.red * 0.07f, green = animatedC4.green * 0.07f, blue = animatedC4.blue * 0.07f, alpha = 0.42f)
+        Brush.linearGradient(
+            colors = listOf(dark1, dark2, dark3, dark4)
+        )
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(darkBaseBrush)
+            .background(meshBrush)
     ) {
         // Dynamic Blurred Album Art Background
         if (albumArtBitmap != null) {
@@ -708,74 +572,83 @@ fun AuroraBackground(
                 contentScale = ContentScale.Crop
             )
         }
+    }
+}
 
-        // Aurora Canvas
-        androidx.compose.foundation.Canvas(
+@Composable
+fun AudioProgressBar(
+    progressFlow: kotlinx.coroutines.flow.StateFlow<Long>,
+    durationState: State<Long>,
+    onSeek: (Long) -> Unit
+) {
+    val progress by progressFlow.collectAsState()
+    val duration = durationState.value
+    
+    val progressSec = progress / 1000
+    val durationSec = duration / 1000
+    val progressStr = formatTimeToArabicIndic(progressSec)
+    val durationStr = formatTimeToArabicIndic(durationSec)
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Slider(
+            value = if (duration > 0) progress.toFloat() / duration else 0f,
+            onValueChange = { onSeek((it * duration).toLong()) },
+            colors = SliderDefaults.colors(
+                thumbColor = Color.White,
+                activeTrackColor = Color.White,
+                inactiveTrackColor = Color.White.copy(alpha = 0.2f),
+                activeTickColor = Color.Transparent,
+                inactiveTickColor = Color.Transparent
+            ),
             modifier = Modifier
-                .fillMaxSize()
-                .blur(80.dp)
-        ) {
-            val width = size.width
-            val height = size.height
+                .weight(1f)
+                .testTag("lyrics_player_seek")
+        )
 
-            val c1Pos = androidx.compose.ui.geometry.Offset(
-                x = width * 0.3f + tX1.dp.toPx(),
-                y = height * 0.35f + tY1.dp.toPx()
-            )
-            val c2Pos = androidx.compose.ui.geometry.Offset(
-                x = width * 0.75f + tX2.dp.toPx(),
-                y = height * 0.25f + tY2.dp.toPx()
-            )
-            val c3Pos = androidx.compose.ui.geometry.Offset(
-                x = width * 0.25f + tX3.dp.toPx(),
-                y = height * 0.7f + tY3.dp.toPx()
-            )
-            val c4Pos = androidx.compose.ui.geometry.Offset(
-                x = width * 0.7f + tX4.dp.toPx(),
-                y = height * 0.65f + tY4.dp.toPx()
-            )
+        Spacer(modifier = Modifier.width(12.dp))
 
-            // Aurora metaball circles using smoothly morphing animated colors
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(animatedC1.copy(alpha = 0.45f), Color.Transparent),
-                    center = c1Pos,
-                    radius = width * 0.95f
-                ),
-                radius = width * 0.95f,
-                center = c1Pos
-            )
+        // PureSonic iconic visual signature: separator lines + capsule split
+        Box(
+            modifier = Modifier
+                .width(2.dp)
+                .height(14.dp)
+                .background(Color.White)
+        )
 
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(animatedC2.copy(alpha = 0.40f), Color.Transparent),
-                    center = c2Pos,
-                    radius = width * 1.05f
-                ),
-                radius = width * 1.05f,
-                center = c2Pos
-            )
+        Spacer(modifier = Modifier.width(12.dp))
 
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(animatedC3.copy(alpha = 0.38f), Color.Transparent),
-                    center = c3Pos,
-                    radius = width * 0.9f
-                ),
-                radius = width * 0.9f,
-                center = c3Pos
-            )
+        Box(
+            modifier = Modifier
+                .width(42.dp)
+                .height(14.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(Color.White)
+        )
+    }
 
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(animatedC4.copy(alpha = 0.42f), Color.Transparent),
-                    center = c4Pos,
-                    radius = width * 1.0f
-                ),
-                radius = width * 1.0f,
-                center = c4Pos
-            )
-        }
+    // Time labels Row
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = progressStr,
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = durationStr,
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 

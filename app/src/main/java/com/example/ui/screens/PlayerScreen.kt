@@ -334,19 +334,26 @@ fun PlayerScreen(
         }
     }
 
-    // Save history and lifecycle progress updates
+    // Save history and lifecycle progress updates: Throttle database write frequency
     var playbackPosition by remember { mutableStateOf(0L) }
+    var lastSavedPosition by remember { mutableStateOf(0L) }
     LaunchedEffect(player) {
          while (true) {
              delay(1000)
              playbackPosition = player.currentPosition
-             viewModel.addToHistory(filePath, playbackPosition)
+             // Save to database only every 10 seconds to drastically reduce CPU thermal energy
+             if (java.lang.Math.abs(playbackPosition - lastSavedPosition) >= 10000L) {
+                 viewModel.addToHistory(filePath, playbackPosition)
+                 lastSavedPosition = playbackPosition
+             }
          }
     }
 
-    // Clean player on exit
+    // Clean player on exit and guarantee final position is saved
     DisposableEffect(player) {
         onDispose {
+            // Save precise end position on dispose
+            viewModel.addToHistory(filePath, player.currentPosition)
             player.release()
         }
     }
@@ -1155,92 +1162,16 @@ fun PlayerScreen(
                         .navigationBarsPadding()
                         .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
                 ) {
-                // Progress Slider (SeekBar with visual parameters)
-                val totalSecs = videoDuration / 1000
-                val curSecs = currentPlayTime / 1000
-
-                val totalHours = totalSecs / 3600
-                val totalMinutes = (totalSecs % 3600) / 60
-                val totalSeconds = totalSecs % 60
-
-                val curHours = curSecs / 3600
-                val curMinutes = (curSecs % 3600) / 60
-                val curSeconds = curSecs % 60
-
-                val totalStr = "%02d:%02d:%02d".format(totalHours, totalMinutes, totalSeconds)
-                val curStr = "%02d:%02d:%02d".format(curHours, curMinutes, curSeconds)
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                ) {
-                    Text(curStr, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    BoxWithConstraints(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 10.dp)
-                            .height(18.dp)
-                            .testTag("player_seek_bar")
-                            .pointerInput(videoDuration) {
-                                detectTapGestures(
-                                    onPress = { offset ->
-                                        if (videoDuration > 0) {
-                                            val percent = (offset.x / size.width).coerceIn(0f, 1f)
-                                            val target = (percent * videoDuration).toLong()
-                                            currentPlayTime = target
-                                            player.seekTo(target)
-                                        }
-                                    }
-                                )
-                            }
-                            .pointerInput(videoDuration) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    if (videoDuration > 0) {
-                                        val percent = (change.position.x / size.width).coerceIn(0f, 1f)
-                                        val target = (percent * videoDuration).toLong()
-                                        currentPlayTime = target
-                                        player.seekTo(target)
-                                    }
-                                }
-                            }
-                    ) {
-                        val widthDp = with(LocalDensity.current) { constraints.maxWidth.toDp() }
-                        val fraction = if (videoDuration > 0) currentPlayTime.toFloat() / videoDuration else 0f
-
-                        // Inactive track (grey thin line)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(2.5.dp)
-                                .align(Alignment.Center)
-                                .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(1.dp))
-                        )
-
-                        // Active track (primary colored thin line)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(fraction)
-                                .height(2.5.dp)
-                                .align(Alignment.CenterStart)
-                                .background(currentAccentColor, RoundedCornerShape(1.dp))
-                        )
-
-                        // Tiny circular thumb element
-                        val thumbSize = 8.dp
-                        val halfThumb = thumbSize / 2
-                        val thumbOffset = (widthDp * fraction - halfThumb).coerceIn(0.dp, widthDp - thumbSize)
-
-                        Box(
-                            modifier = Modifier
-                                .offset(x = thumbOffset)
-                                .size(thumbSize)
-                                .align(Alignment.CenterStart)
-                                .background(currentAccentColor, CircleShape)
-                        )
+                // Progress Slider (SeekBar with visual parameters) - Isolated composable for zero-recompositions performance
+                PlayerProgressSlider(
+                    currentPlayTimeProvider = { currentPlayTime },
+                    videoDuration = videoDuration,
+                    currentAccentColor = currentAccentColor,
+                    onSeek = { target ->
+                        currentPlayTime = target
+                        player.seekTo(target)
                     }
-                    Text(totalStr, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
-                }
+                )
 
                 // Buttons control toolbar panel
                 Row(
@@ -2552,5 +2483,97 @@ private fun formatTime(ms: Long): String {
         "%d:%02d:%02d".format(hours, minutes, seconds)
     } else {
         "%d:%02d".format(minutes, seconds)
+    }
+}
+
+@Composable
+fun PlayerProgressSlider(
+    currentPlayTimeProvider: () -> Long,
+    videoDuration: Long,
+    currentAccentColor: Color,
+    onSeek: (Long) -> Unit
+) {
+    val totalSecs = videoDuration / 1000
+    val curSecs = currentPlayTimeProvider() / 1000
+
+    val totalHours = totalSecs / 3600
+    val totalMinutes = (totalSecs % 3600) / 60
+    val totalSeconds = totalSecs % 60
+
+    val curHours = curSecs / 3600
+    val curMinutes = (curSecs % 3600) / 60
+    val curSeconds = curSecs % 60
+
+    val totalStr = "%02d:%02d:%02d".format(totalHours, totalMinutes, totalSeconds)
+    val curStr = "%02d:%02d:%02d".format(curHours, curMinutes, curSeconds)
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+    ) {
+        Text(curStr, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        BoxWithConstraints(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 10.dp)
+                .height(18.dp)
+                .testTag("player_seek_bar")
+                .pointerInput(videoDuration) {
+                    detectTapGestures(
+                        onPress = { offset ->
+                            if (videoDuration > 0) {
+                                val percent = (offset.x / size.width).coerceIn(0f, 1f)
+                                val target = (percent * videoDuration).toLong()
+                                onSeek(target)
+                            }
+                        }
+                    )
+                }
+                .pointerInput(videoDuration) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        if (videoDuration > 0) {
+                            val percent = (change.position.x / size.width).coerceIn(0f, 1f)
+                            val target = (percent * videoDuration).toLong()
+                            onSeek(target)
+                        }
+                    }
+                }
+        ) {
+            val widthDp = with(LocalDensity.current) { constraints.maxWidth.toDp() }
+            val fraction = if (videoDuration > 0) currentPlayTimeProvider().toFloat() / videoDuration else 0f
+
+            // Inactive track (grey thin line)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.5.dp)
+                    .align(Alignment.Center)
+                    .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(1.dp))
+            )
+
+            // Active track (primary colored thin line)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .height(2.5.dp)
+                    .align(Alignment.CenterStart)
+                    .background(currentAccentColor, RoundedCornerShape(1.dp))
+            )
+
+            // Tiny circular thumb element
+            val thumbSize = 8.dp
+            val halfThumb = thumbSize / 2
+            val thumbOffset = (widthDp * fraction - halfThumb).coerceIn(0.dp, widthDp - thumbSize)
+
+            Box(
+                modifier = Modifier
+                    .offset(x = thumbOffset)
+                    .size(thumbSize)
+                    .align(Alignment.CenterStart)
+                    .background(currentAccentColor, CircleShape)
+            )
+        }
+        Text(totalStr, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
     }
 }
