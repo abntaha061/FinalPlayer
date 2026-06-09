@@ -397,10 +397,10 @@ fun SynchronizedLyricsList(
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val containerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
-        val targetYOffsetPx = containerHeightPx * 0.40f // Fixed target position (40% of the screen height)
-        val scrollOffsetPx = -targetYOffsetPx + with(LocalDensity.current) { 16.dp.toPx() }
+        val targetYOffsetPx = remember(containerHeightPx) { containerHeightPx * 0.33f } // Upper third (33% of the screen height)
+        val scrollOffsetPx = remember(targetYOffsetPx) { -targetYOffsetPx }
 
-        // Smooth scroll to align active lyric line perfectly at 40% height of list viewports
+        // Smooth scroll to align active lyric line perfectly at 33% height of list viewports
         LaunchedEffect(activeIndex) {
             if (activeIndex >= 0 && activeIndex < lyrics.size) {
                 listState.animateScrollToItem(
@@ -420,7 +420,7 @@ fun SynchronizedLyricsList(
                     }
                 },
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = maxHeight * 0.40f, bottom = maxHeight * 0.60f + 120.dp)
+            contentPadding = PaddingValues(top = maxHeight * 0.33f, bottom = maxHeight * 0.67f + 120.dp)
         ) {
             itemsIndexed(lyrics) { index, line ->
                 val isActive = index == activeIndex
