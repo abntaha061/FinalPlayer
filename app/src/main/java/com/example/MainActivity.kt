@@ -40,6 +40,12 @@ import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.PlayerScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.MusicLyricsPlayerScreen
+import com.example.ui.screens.AuroraBackground
+import com.example.ui.screens.AuroraColors
+import com.example.ui.screens.getAuroraColors
+import com.example.ui.screens.extractAuroraColorsFromBitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import com.example.data.local.entities.MediaFile
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.launch
@@ -152,20 +158,73 @@ fun MainNavigationRoot() {
         }
     }
 
+    val currentTrack by viewModel.currentTrack.collectAsState()
+    val defaultBaseColors = remember { AuroraColors(Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF311042), Color(0xFF034F6A)) }
+    var currentAuroraColors by remember { mutableStateOf(defaultBaseColors) }
+    var currentAlbumArtBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+    LaunchedEffect(currentTrack) {
+        val track = currentTrack
+        if (track == null) {
+            currentAuroraColors = defaultBaseColors
+            currentAlbumArtBitmap = null
+        } else {
+            val baseColors = getAuroraColors(track)
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val retriever = MediaMetadataRetriever()
+                var bitmapRes: android.graphics.Bitmap? = null
+                var colorsRes: AuroraColors? = null
+                try {
+                    retriever.setDataSource(track.path)
+                    val art = retriever.embeddedPicture
+                    if (art != null) {
+                        val bitmap = BitmapFactory.decodeByteArray(art, 0, art.size)
+                        bitmapRes = bitmap
+                        colorsRes = extractAuroraColorsFromBitmap(bitmap)
+                    }
+                } catch (e: Exception) {
+                    // Ignore
+                } finally {
+                    try {
+                        retriever.release()
+                    } catch (e: Exception) {}
+                }
+                bitmapRes to colorsRes
+            }
+            currentAlbumArtBitmap = result.first
+            currentAuroraColors = result.second ?: baseColors
+        }
+    }
+
     var activePlayingFilePath by rememberSaveable { mutableStateOf<String?>(null) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+        color = Color(0xFF06060A)
     ) {
-        if (!hasGrantedPermissions) {
-            // High fidelity permission setup onboarding view
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Root layer universal Aurora background
+            AuroraBackground(
+                colors = currentAuroraColors,
+                albumArtBitmap = currentAlbumArtBitmap,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Transparent dark overlay to keep all text screen elements content legible
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
-            ) {
+                    .background(Color.Black.copy(alpha = 0.45f))
+            )
+
+            if (!hasGrantedPermissions) {
+                // High fidelity permission setup onboarding view
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Transparent)
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -395,6 +454,7 @@ fun MainNavigationRoot() {
             }
         }
     }
+}
 }
 
 @Composable

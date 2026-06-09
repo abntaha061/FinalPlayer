@@ -157,7 +157,7 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             if (selectedBottomTab != 2) {
-                Column(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
+                Column(modifier = Modifier.background(Color.Transparent)) {
                      CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
                         if (selectedPaths.isNotEmpty()) {
                             TopAppBar(
@@ -200,7 +200,7 @@ fun HomeScreen(
                                     }
                                 },
                                 colors = TopAppBarDefaults.topAppBarColors(
-                                    containerColor = MaterialTheme.colorScheme.surface
+                                    containerColor = Color.Transparent
                                 )
                             )
                         } else {
@@ -287,7 +287,7 @@ fun HomeScreen(
                                     }
                                 },
                                 colors = TopAppBarDefaults.topAppBarColors(
-                                    containerColor = MaterialTheme.colorScheme.surface
+                                    containerColor = Color.Transparent
                                 )
                             )
                         }
@@ -328,7 +328,7 @@ fun HomeScreen(
                 
                 if (selectedPaths.isNotEmpty()) {
                     NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        containerColor = Color.Black.copy(alpha = 0.35f),
                         windowInsets = WindowInsets.navigationBars
                     ) {
                         NavigationBarItem(
@@ -365,7 +365,7 @@ fun HomeScreen(
                     }
                 } else {
                     NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = Color.Black.copy(alpha = 0.35f),
                         windowInsets = WindowInsets.navigationBars
                     ) {
                         NavigationBarItem(
@@ -390,7 +390,7 @@ fun HomeScreen(
                 }
             }
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = Color.Transparent
     ) { paddingValues ->
         // Multi-select operation dialog overlays
         if (isMovePickerOpen) {
