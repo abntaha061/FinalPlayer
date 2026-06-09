@@ -214,6 +214,9 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private val _isPrivateFolderLocked = MutableStateFlow(true)
     val isPrivateFolderLocked: StateFlow<Boolean> = _isPrivateFolderLocked.asStateFlow()
 
+    val themeColorHexState = MutableStateFlow(sharedPrefs.getString("app_theme_color_hex", "#FFD500F9") ?: "#FFD500F9")
+    val resumeButtonPositionState = MutableStateFlow(sharedPrefs.getString("resume_button_position_side", "LEFT") ?: "LEFT")
+
     private var realTimeWatcher: RealTimeMediaWatcher? = null
 
     init {
@@ -479,6 +482,18 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getAudioSortOption(): Int = sharedPrefs.getInt("audio_sort_option", 0)
     fun saveAudioSortOption(option: Int) = sharedPrefs.edit().putInt("audio_sort_option", option).apply()
+
+    fun getThemeColorHex(): String = sharedPrefs.getString("app_theme_color_hex", "#FFD500F9") ?: "#FFD500F9"
+    fun saveThemeColorHex(hex: String) {
+        sharedPrefs.edit().putString("app_theme_color_hex", hex).apply()
+        themeColorHexState.value = hex
+    }
+
+    fun getResumeButtonPosition(): String = sharedPrefs.getString("resume_button_position_side", "LEFT") ?: "LEFT"
+    fun saveResumeButtonPosition(side: String) {
+        sharedPrefs.edit().putString("resume_button_position_side", side).apply()
+        resumeButtonPositionState.value = side
+    }
 
     // --- COPIES, MOVES, DELETES & RENAMES MANAGER ---
     fun copyPaths(paths: List<String>, targetDir: String, onFinished: () -> Unit) {

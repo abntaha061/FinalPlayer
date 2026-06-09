@@ -94,6 +94,8 @@ fun PlayerScreen(
     // STATE DECLARATIONS
     // -----------------------------------------------------
     val allVideos by viewModel.videos.collectAsState(initial = emptyList())
+    val themeColorHex by viewModel.themeColorHexState.collectAsState()
+    val currentAccentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
     val currentMediaFile = remember(filePath) { File(filePath) }
 
     // Navigation and indexing support
@@ -1221,7 +1223,7 @@ fun PlayerScreen(
                                 .fillMaxWidth(fraction)
                                 .height(2.5.dp)
                                 .align(Alignment.CenterStart)
-                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(1.dp))
+                                .background(currentAccentColor, RoundedCornerShape(1.dp))
                         )
 
                         // Tiny circular thumb element
@@ -1234,7 +1236,7 @@ fun PlayerScreen(
                                 .offset(x = thumbOffset)
                                 .size(thumbSize)
                                 .align(Alignment.CenterStart)
-                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                .background(currentAccentColor, CircleShape)
                         )
                     }
                     Text(totalStr, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)

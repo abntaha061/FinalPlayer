@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -135,6 +136,127 @@ fun SettingsScreen(
                                     viewModel.saveDefaultScaleMode(mode)
                                 },
                                 label = { Text(mode) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // --- THEME & CUSTOMIZATION SECTION ---
+            val themeColorHex by viewModel.themeColorHexState.collectAsState()
+            val resumeButtonPosition by viewModel.resumeButtonPositionState.collectAsState()
+            val currentAccentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
+
+            Text(
+                "مظهر التطبيق وتخصيص الألوان (App Theme & Settings)",
+                fontSize = 15.sp,
+                color = currentAccentColor,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "اختر لون السمة الأساسي (Select Accent Color)",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "سيغير هذا لون أشرطة العناوين، شريط التشغيل السفلي، وشريط تقدم الفيديوهات لمظهر متناسق",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val colorsList = listOf(
+                        "#FFD500F9" to "أرجواني كودياك (Magenta)",
+                        "#FFFF3366" to "وردي نيون (Pink)",
+                        "#FF007AFF" to "أزرق ملكي (iOS Blue)",
+                        "#FF00E5FF" to "سماوي نيون (Cyan)",
+                        "#FF4CD964" to "أخضر عشبي (Green)",
+                        "#FFFF9500" to "برتقالي ناري (Orange)",
+                        "#FFFF5252" to "أحمر مرجاني (Coral)",
+                        "#FF9C27B0" to "بنفسجي عميق (Violet)"
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(end = 8.dp)
+                        ) {
+                            items(colorsList.size) { index ->
+                                val (hex, name) = colorsList[index]
+                                val colorItem = Color(android.graphics.Color.parseColor(hex))
+                                val isSelected = themeColorHex.equals(hex, ignoreCase = true)
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(androidx.compose.foundation.shape.CircleShape)
+                                        .background(colorItem)
+                                        .clickable {
+                                            viewModel.saveThemeColorHex(hex)
+                                        }
+                                        .border(
+                                            width = if (isSelected) 3.dp else 1.dp,
+                                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.3f),
+                                            shape = androidx.compose.foundation.shape.CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Selected",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        "موقع زر استئناف التشغيل (Resume Button Side)",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "تحديد اتجاه زر استئناف تشغيل الفيديوهات في الواجهة (اليمين أو اليسار)",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        listOf("LEFT" to "اليسار (Left)", "RIGHT" to "اليمين (Right)").forEach { (side, label) ->
+                            FilterChip(
+                                selected = resumeButtonPosition == side,
+                                onClick = {
+                                    viewModel.saveResumeButtonPosition(side)
+                                },
+                                label = { Text(label, fontSize = 12.sp) }
                             )
                         }
                     }

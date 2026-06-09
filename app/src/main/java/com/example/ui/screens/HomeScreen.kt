@@ -81,6 +81,10 @@ fun HomeScreen(
     val historyList by viewModel.history.collectAsState(initial = emptyList())
     val selectedFolderPath by viewModel.selectedFolderPath.collectAsState()
 
+    val themeColorHex by viewModel.themeColorHexState.collectAsState()
+    val resumeButtonPosition by viewModel.resumeButtonPositionState.collectAsState()
+    val currentAccentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
+
     val resumeVideoFilePath = remember(historyList, selectedFolderPath, videoList) {
         if (selectedFolderPath != null) {
             val inHistory = historyList.firstOrNull { entry ->
@@ -157,7 +161,7 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             if (selectedBottomTab != 2) {
-                Column(modifier = Modifier.background(Color.Transparent)) {
+                Column(modifier = Modifier.background(currentAccentColor)) {
                      CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
                         if (selectedPaths.isNotEmpty()) {
                             TopAppBar(
@@ -328,7 +332,7 @@ fun HomeScreen(
                 
                 if (selectedPaths.isNotEmpty()) {
                     NavigationBar(
-                        containerColor = Color.Black.copy(alpha = 0.35f),
+                        containerColor = currentAccentColor.copy(alpha = 0.15f),
                         windowInsets = WindowInsets.navigationBars
                     ) {
                         NavigationBarItem(
@@ -365,25 +369,25 @@ fun HomeScreen(
                     }
                 } else {
                     NavigationBar(
-                        containerColor = Color.Black.copy(alpha = 0.35f),
+                        containerColor = currentAccentColor.copy(alpha = 0.15f),
                         windowInsets = WindowInsets.navigationBars
                     ) {
                         NavigationBarItem(
                             selected = selectedBottomTab == 0,
                             onClick = { selectedBottomTab = 0 },
-                            icon = { RedCircleIcon(Icons.Default.VideoLibrary, selectedBottomTab == 0, "Videos") },
+                            icon = { RedCircleIcon(Icons.Default.VideoLibrary, selectedBottomTab == 0, "Videos", currentAccentColor) },
                             label = { Text("الفيديوهات") }
                         )
                         NavigationBarItem(
                             selected = selectedBottomTab == 1,
                             onClick = { selectedBottomTab = 1 },
-                            icon = { RedCircleIcon(Icons.Default.MusicNote, selectedBottomTab == 1, "Music") },
+                            icon = { RedCircleIcon(Icons.Default.MusicNote, selectedBottomTab == 1, "Music", currentAccentColor) },
                             label = { Text("الموسيقى") }
                         )
                         NavigationBarItem(
                             selected = selectedBottomTab == 2,
                             onClick = { selectedBottomTab = 2 },
-                            icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 2, "Settings") },
+                            icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 2, "Settings", currentAccentColor) },
                             label = { Text("الإعدادات") }
                         )
                     }
@@ -545,26 +549,31 @@ fun HomeScreen(
                 }
             }
 
-            // Floating Resume Button placed at bottom-right corner (circular & play video symbol)
+            // Floating Resume Button placed dynamically (circular & play video symbol)
             if (selectedBottomTab == 0 && selectedSubTabIndex == 0 && resumeVideoFilePath != null) {
+                val isLeft = resumeButtonPosition == "LEFT"
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = paddingValues.calculateBottomPadding() + 24.dp, end = 24.dp)
+                        .align(if (isLeft) Alignment.BottomStart else Alignment.BottomEnd)
+                        .padding(
+                            bottom = paddingValues.calculateBottomPadding() + 24.dp,
+                            start = if (isLeft) 24.dp else 0.dp,
+                            end = if (isLeft) 0.dp else 24.dp
+                        )
                 ) {
                     FloatingActionButton(
                         onClick = {
                             resumeVideoFilePath?.let { onPlayFile(it) }
                         },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        containerColor = currentAccentColor,
+                        contentColor = Color.White,
                         shape = CircleShape,
                         modifier = Modifier.size(56.dp).testTag("resume_playback_fab")
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = "استئناف التشغيل",
-                            tint = MaterialTheme.colorScheme.onPrimary,
+                            tint = Color.White,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -2684,23 +2693,26 @@ fun MiniPlayer(viewModel: MediaViewModel) {
     val colors = remember(track.id) { getAuroraColors(track) }
     val progressFraction = if (duration > 0) progress.toFloat() / duration else 0f
 
+    val themeColorHex by viewModel.themeColorHexState.collectAsState()
+    val themeColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(
                 brush = Brush.horizontalGradient(
-                    colors = listOf(Color(0xFF13131A), Color(0xFF0F0F14))
+                    colors = listOf(themeColor.copy(alpha = 0.85f), themeColor.copy(alpha = 0.95f))
                 )
             )
-            .border(width = 0.5.dp, color = Color.White.copy(alpha = 0.08f))
+            .border(width = 0.5.dp, color = Color.White.copy(alpha = 0.15f))
             .clickable { viewModel.setFullPlayerOpen(true) }
     ) {
         // Ultra-thin beautiful progression line on top
         LinearProgressIndicator(
             progress = { progressFraction },
             modifier = Modifier.fillMaxWidth().height(2.dp),
-            color = Color(0xFF00C8FF), // PureSonic beautiful cyan signature
-            trackColor = Color.White.copy(alpha = 0.1f)
+            color = Color.White,
+            trackColor = Color.White.copy(alpha = 0.3f)
         )
 
         Row(
@@ -2714,7 +2726,7 @@ fun MiniPlayer(viewModel: MediaViewModel) {
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+                    .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape),
                 fallbackColor = colors.c1
             )
 
@@ -2731,7 +2743,7 @@ fun MiniPlayer(viewModel: MediaViewModel) {
                 )
                 Text(
                     text = track.artist ?: "فنان غير معروف",
-                    color = Color(0xFF00C8FF), // Beautiful PureSonic cyan accent
+                    color = Color.White.copy(alpha = 0.8f),
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -2773,18 +2785,19 @@ fun MiniPlayer(viewModel: MediaViewModel) {
 fun RedCircleIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     isSelected: Boolean,
-    contentDescription: String
+    contentDescription: String,
+    themeColor: Color
 ) {
     Box(
         modifier = Modifier
             .size(38.dp)
             .background(
-                color = if (isSelected) Color.Red else Color.Transparent,
+                color = if (isSelected) themeColor else Color.Transparent,
                 shape = CircleShape
             )
             .border(
                 width = 1.5.dp,
-                color = if (isSelected) Color.Red else Color.Gray.copy(alpha = 0.3f),
+                color = if (isSelected) themeColor else Color.Gray.copy(alpha = 0.3f),
                 shape = CircleShape
             )
             .padding(6.dp),
