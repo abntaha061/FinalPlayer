@@ -60,13 +60,14 @@ class MediaScanner(private val mediaDao: MediaDao) {
                 if (existing == null) {
                     toInsertOrUpdate.add(scannedFile)
                 } else if (existing.dateModified != scannedFile.dateModified || existing.size != scannedFile.size) {
-                    // File modified, preserve user states: favorite, private, playback history progress, thumbnails
+                    // File modified, preserve user states: favorite, private, playback history progress, thumbnails, isNew
                     toInsertOrUpdate.add(scannedFile.copy(
                         id = existing.id,
                         isFavorite = existing.isFavorite,
                         isPrivate = existing.isPrivate,
                         lastPlayPosition = existing.lastPlayPosition,
-                        thumbnailPath = existing.thumbnailPath
+                        thumbnailPath = existing.thumbnailPath,
+                        isNew = existing.isNew
                     ))
                 }
             }

@@ -401,9 +401,11 @@ fun MainNavigationRoot() {
                         )
                         viewModel.playAudio(track)
                         viewModel.setFullPlayerOpen(true)
+                        viewModel.markAsPlayed(path)
                     }
                 } else {
                     activePlayingFilePath = path
+                    viewModel.markAsPlayed(path)
                 }
             }
 

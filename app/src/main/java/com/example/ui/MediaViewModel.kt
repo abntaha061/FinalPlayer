@@ -384,6 +384,12 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun markAsPlayed(path: String) {
+        viewModelScope.launch {
+            repository.markAsPlayed(path)
+        }
+    }
+
     fun clearHistory() {
         viewModelScope.launch {
             repository.clearHistory()

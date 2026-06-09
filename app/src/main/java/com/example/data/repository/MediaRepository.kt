@@ -32,6 +32,10 @@ class MediaRepository(context: Context) {
         mediaDao.updatePlaybackPosition(path, position)
     }
 
+    suspend fun markAsPlayed(path: String) {
+        mediaDao.markAsPlayed(path)
+    }
+
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) {
         mediaDao.updateFavorite(id, isFavorite)
     }

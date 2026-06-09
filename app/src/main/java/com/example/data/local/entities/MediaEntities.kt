@@ -31,7 +31,8 @@ data class MediaFile(
     val album: String? = null,
     val width: Int = 0,
     val height: Int = 0,
-    val isPrivate: Boolean = false
+    val isPrivate: Boolean = false,
+    val isNew: Boolean = true
 ) : Serializable
 
 @Entity(tableName = "playlists")

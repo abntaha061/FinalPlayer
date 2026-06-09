@@ -1354,15 +1354,38 @@ fun VideosAndFoldersTab(
                         ) {
                             MXFolderIcon(folderName = folderName, filesCount = filesCount, isSelected = selectedPaths.contains(folder.folderPath))
                             Spacer(modifier = Modifier.width(16.dp))
+                            val folderNewVideosCount = remember(videoList, folder.folderPath) {
+                                videoList.count { 
+                                    it.isNew && java.io.File(it.path).parentFile?.absolutePath == folder.folderPath
+                                }
+                            }
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = folderName,
-                                    fontSize = 13.5.sp,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Normal,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = folderName,
+                                        fontSize = 13.5.sp,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (folderNewVideosCount > 0) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .background(Color(0xFFFF3366), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                        ) {
+                                            Text(
+                                                text = "NEW",
+                                                color = Color.White,
+                                                fontSize = 8.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
@@ -1892,6 +1915,23 @@ fun VideoGridItem(
                             )
                     )
                 }
+                if (video.isNew) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .background(Color(0xFFFF3366), shape = RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "NEW",
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .size(38.dp)

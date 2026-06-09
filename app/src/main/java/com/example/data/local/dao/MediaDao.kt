@@ -57,8 +57,11 @@ interface MediaDao {
     @Query("DELETE FROM media_files WHERE path IN (:paths)")
     suspend fun deleteMediaFilesByPaths(paths: List<String>)
 
-    @Query("UPDATE media_files SET lastPlayPosition = :position WHERE path = :path")
+    @Query("UPDATE media_files SET lastPlayPosition = :position, isNew = 0 WHERE path = :path")
     suspend fun updatePlaybackPosition(path: String, position: Long)
+
+    @Query("UPDATE media_files SET isNew = 0 WHERE path = :path")
+    suspend fun markAsPlayed(path: String)
 
     @Query("UPDATE media_files SET isFavorite = :isFavorite WHERE id = :id")
     suspend fun updateFavorite(id: Long, isFavorite: Boolean)
