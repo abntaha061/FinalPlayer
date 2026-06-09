@@ -1604,6 +1604,14 @@ fun VideosAndFoldersTab(
                                             } else false
                                         } catch (e: Exception) { false }
                                     }
+                                    val dateText = remember(video.dateModified) {
+                                        try {
+                                            val sdf = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault())
+                                            sdf.format(java.util.Date(video.dateModified))
+                                        } catch (e: Exception) {
+                                            ""
+                                        }
+                                    }
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1622,12 +1630,49 @@ fun VideosAndFoldersTab(
                                                 )
                                             }
                                         }
+                                        if (video.width > 0 && video.height > 0) {
+                                            val resolutionText = remember(video.width, video.height) {
+                                                val minDim = minOf(video.width, video.height)
+                                                when {
+                                                    minDim >= 2160 -> "4K"
+                                                    minDim >= 1440 -> "2K"
+                                                    minDim >= 1080 -> "1080p"
+                                                    minDim >= 720 -> "720p"
+                                                    minDim >= 480 -> "480p"
+                                                    else -> "${video.width}x${video.height}"
+                                                }
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(Color(0xFF34C759), RoundedCornerShape(2.dp))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            ) {
+                                                Text(
+                                                    text = resolutionText,
+                                                    color = Color.White,
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
                                         val sizeString = "%.1f MB".format(video.size / (1024f * 1024f))
                                         Text(
                                             text = sizeString,
                                             fontSize = 11.sp,
                                             color = Color.Gray
                                         )
+                                        if (dateText.isNotEmpty()) {
+                                            Text(
+                                                text = "•",
+                                                fontSize = 11.sp,
+                                                color = Color.Gray.copy(alpha = 0.6f)
+                                            )
+                                            Text(
+                                                text = dateText,
+                                                fontSize = 11.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
                                     }
                                 }
 
@@ -2068,6 +2113,32 @@ fun VideoGridItem(
                                 )
                             }
                         }
+                        if (video.width > 0 && video.height > 0) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            val resolutionText = remember(video.width, video.height) {
+                                val minDim = minOf(video.width, video.height)
+                                when {
+                                    minDim >= 2160 -> "4K"
+                                    minDim >= 1440 -> "2K"
+                                    minDim >= 1080 -> "1080p"
+                                    minDim >= 720 -> "720p"
+                                    minDim >= 480 -> "480p"
+                                    else -> "${video.width}x${video.height}"
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFF34C759), RoundedCornerShape(2.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = resolutionText,
+                                    color = Color.White,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
 
                     // 3-dots Menu trigger
@@ -2115,17 +2186,39 @@ fun VideoGridItem(
                         }
                     }
                 }
+                val dateText = remember(video.dateModified) {
+                    try {
+                        val sdf = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault())
+                        sdf.format(java.util.Date(video.dateModified))
+                    } catch (e: Exception) {
+                        ""
+                    }
+                }
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = "%.1f MB".format(video.size / (1024f * 1024f)),
                         fontSize = 11.sp,
-                        color = Color.Gray
+                        color = Color.Gray,
+                        fontWeight = FontWeight.Medium
                     )
+                    if (dateText.isNotEmpty()) {
+                        Text(
+                            text = " • ",
+                            fontSize = 11.sp,
+                            color = Color.Gray.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            text = dateText,
+                            fontSize = 11.sp,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
                 }
             }
         }
