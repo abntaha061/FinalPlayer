@@ -1511,7 +1511,7 @@ fun VideosAndFoldersTab(
                                                 .align(Alignment.TopStart)
                                                 .padding(4.dp)
                                                 .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
-                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                .padding(horizontal = 4.dp, vertical = 0.dp)
                                         ) {
                                             Text(
                                                 text = "NEW",
@@ -1614,18 +1614,18 @@ fun VideosAndFoldersTab(
                                     }
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         if (hasSubtitles) {
                                             Box(
                                                 modifier = Modifier
                                                     .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    .padding(horizontal = 2.dp, vertical = 0.dp)
                                             ) {
                                                 Text(
                                                     text = "SRT",
                                                     color = Color.White,
-                                                    fontSize = 8.sp,
+                                                    fontSize = 7.5.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
@@ -1645,12 +1645,12 @@ fun VideosAndFoldersTab(
                                             Box(
                                                 modifier = Modifier
                                                     .background(Color(0xFF34C759), RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    .padding(horizontal = 2.dp, vertical = 0.dp)
                                             ) {
                                                 Text(
                                                     text = resolutionText,
                                                     color = Color.White,
-                                                    fontSize = 8.sp,
+                                                    fontSize = 7.5.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
@@ -1998,7 +1998,7 @@ fun VideoGridItem(
                             .align(Alignment.TopStart)
                             .padding(4.dp)
                             .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                            .padding(horizontal = 4.dp, vertical = 0.dp)
                     ) {
                         Text(
                             text = "NEW",
@@ -2103,12 +2103,12 @@ fun VideoGridItem(
                             Box(
                                 modifier = Modifier
                                     .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    .padding(horizontal = 2.dp, vertical = 0.dp)
                             ) {
                                 Text(
                                     text = "SRT",
                                     color = Color.White,
-                                    fontSize = 8.sp,
+                                    fontSize = 7.5.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -2129,12 +2129,12 @@ fun VideoGridItem(
                             Box(
                                 modifier = Modifier
                                     .background(Color(0xFF34C759), RoundedCornerShape(2.dp))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    .padding(horizontal = 2.dp, vertical = 0.dp)
                             ) {
                                 Text(
                                     text = resolutionText,
                                     color = Color.White,
-                                    fontSize = 8.sp,
+                                    fontSize = 7.5.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -2216,7 +2216,9 @@ fun VideoGridItem(
                             text = dateText,
                             fontSize = 11.sp,
                             color = Color.Gray,
-                            fontWeight = FontWeight.Normal
+                            fontWeight = FontWeight.Normal,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
