@@ -18,6 +18,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -41,7 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -714,13 +715,25 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .pointerInput(videoDuration, isLockedMode) {
-                if (!isLockedMode) {
-                    detectDragGestures(
-                        onDragStart = { offset: androidx.compose.ui.geometry.Offset ->
-                            dragStartOffset = offset
-                            currentGestureType = "NONE"
-                            val screenWidth = size.width
-                            isDraggingRightSide = offset.x > screenWidth / 2f
+                if (isLockedMode) {
+                    detectTapGestures(
+                        onTap = {
+                            areControlsVisible = !areControlsVisible
+                            if (!areControlsVisible) {
+                                isBrightnessSliderVisible = false
+                            }
+                        }
+                    )
+                } else {
+                    awaitPointerEventScope {
+                        var lastTapTime = 0L
+                        var lastTapPosition = androidx.compose.ui.geometry.Offset.Zero
+                        
+                        while (true) {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val downTime = System.currentTimeMillis()
+                            val startPos = down.position
+                            isDraggingRightSide = startPos.x > size.width / 2f
                             
                             val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
                             draggedVolRatio = currentVol.toFloat() / maxVolume
@@ -740,141 +753,137 @@ fun PlayerScreen(
                             }
                             draggedBrightness = realBright
                             currentBrightness = realBright
-                            
                             draggedSeekPosition = player.currentPosition
-                        },
-                        onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
-                            change.consume()
-                            val screenWidth = size.width
-                            val screenHeight = size.height
                             
-                            val totalX = change.position.x - dragStartOffset.x
-                            val totalY = dragStartOffset.y - change.position.y
+                            var hasMoved = false
+                            currentGestureType = "NONE"
                             
-                            val threshold = 25f
+                            var pointerId = down.id
+                            var pointerInputChange: PointerInputChange? = down
                             
-                            if (currentGestureType == "NONE") {
-                                if (kotlin.math.abs(totalX) >= threshold || kotlin.math.abs(totalY) >= threshold) {
-                                    if (kotlin.math.abs(totalX) > kotlin.math.abs(totalY)) {
-                                        currentGestureType = "SEEK"
-                                        showSeekDragIndicator = true
-                                    } else {
-                                        if (dragStartOffset.x > screenWidth / 2f) {
-                                            currentGestureType = "VOLUME"
-                                            showVolumeIndicator = true
+                            while (pointerInputChange != null && pointerInputChange.pressed) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == pointerId }
+                                if (change != null && change.pressed) {
+                                    pointerInputChange = change
+                                    val totalX = change.position.x - startPos.x
+                                    val totalY = startPos.y - change.position.y
+                                    
+                                    val threshold = 16f
+                                    if (currentGestureType == "NONE" && (kotlin.math.abs(totalX) >= threshold || kotlin.math.abs(totalY) >= threshold)) {
+                                        hasMoved = true
+                                        if (kotlin.math.abs(totalX) > kotlin.math.abs(totalY)) {
+                                            currentGestureType = "SEEK"
+                                            showSeekDragIndicator = true
                                         } else {
-                                            currentGestureType = "BRIGHTNESS"
-                                            showBrightnessIndicator = true
+                                            if (isDraggingRightSide) {
+                                                currentGestureType = "VOLUME"
+                                                showVolumeIndicator = true
+                                            } else {
+                                                currentGestureType = "BRIGHTNESS"
+                                                showBrightnessIndicator = true
+                                            }
                                         }
                                     }
+                                    
+                                    if (currentGestureType != "NONE") {
+                                        change.consume()
+                                        val dragAmountX = change.position.x - change.previousPosition.x
+                                        val dragAmountY = change.previousPosition.y - change.position.y
+                                        
+                                        when (currentGestureType) {
+                                            "VOLUME" -> {
+                                                val deltaRatio = dragAmountY / size.height.toFloat()
+                                                val newRatio = (draggedVolRatio + deltaRatio * 1.5f).coerceIn(0f, 1f)
+                                                draggedVolRatio = newRatio
+                                                val targetVol = (newRatio * maxVolume).toInt()
+                                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                                currentVolume = targetVol.toFloat()
+                                            }
+                                            "BRIGHTNESS" -> {
+                                                val deltaRatio = dragAmountY / size.height.toFloat()
+                                                val newBrightness = (draggedBrightness + deltaRatio * 1.5f).coerceIn(0.01f, 1.0f)
+                                                draggedBrightness = newBrightness
+                                                currentBrightness = newBrightness
+                                                val layoutParams = activity?.window?.attributes
+                                                if (layoutParams != null) {
+                                                    layoutParams.screenBrightness = newBrightness
+                                                    activity?.window?.attributes = layoutParams
+                                                }
+                                            }
+                                            "SEEK" -> {
+                                                if (videoDuration > 0) {
+                                                    // Make the seek gesture extremely intuitive and predictable
+                                                    val spanMs = (videoDuration / 4).coerceAtLeast(45000L).coerceAtMost(180000L)
+                                                    val deltaRatio = dragAmountX / size.width.toFloat()
+                                                    val deltaMs = (deltaRatio * spanMs).toLong()
+                                                    val targetPosition = (draggedSeekPosition + deltaMs).coerceIn(0L, videoDuration)
+                                                    draggedSeekPosition = targetPosition
+                                                    player.seekTo(targetPosition)
+                                                    currentPlayTime = targetPosition
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    pointerInputChange = null
                                 }
                             }
                             
-                            when (currentGestureType) {
-                                "VOLUME" -> {
-                                    val deltaY = -dragAmount.y
-                                    val deltaRatio = deltaY / screenHeight
-                                    val newRatio = (draggedVolRatio + deltaRatio * 1.8f).coerceIn(0f, 1f)
-                                    draggedVolRatio = newRatio
-                                    val targetVol = (newRatio * maxVolume).toInt()
-                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                                    currentVolume = targetVol.toFloat()
-                                }
-                                "BRIGHTNESS" -> {
-                                    val deltaY = -dragAmount.y
-                                    val deltaRatio = deltaY / screenHeight
-                                    val newBrightness = (draggedBrightness + deltaRatio * 1.8f).coerceIn(0.01f, 1.0f)
-                                    draggedBrightness = newBrightness
-                                    currentBrightness = newBrightness
-                                    val layoutParams = activity?.window?.attributes
-                                    if (layoutParams != null) {
-                                        layoutParams.screenBrightness = newBrightness
-                                        activity?.window?.attributes = layoutParams
-                                    }
-                                }
-                                "SEEK" -> {
-                                    if (videoDuration > 0) {
-                                        val deltaX = dragAmount.x
-                                        // A full sweep across the screen corresponds to 1/4 of total video duration or 60s
-                                        val spanMs = (videoDuration / 4).coerceAtLeast(45000L).coerceAtMost(180000L)
-                                        val deltaRatio = deltaX / screenWidth
-                                        val deltaMs = (deltaRatio * spanMs).toLong()
+                            showVolumeIndicator = false
+                            showBrightnessIndicator = false
+                            showSeekDragIndicator = false
+                            
+                            if (!hasMoved) {
+                                val upTime = System.currentTimeMillis()
+                                if (upTime - downTime < 300) {
+                                    if (upTime - lastTapTime < 300 && 
+                                        kotlin.math.abs(startPos.x - lastTapPosition.x) < 50f && 
+                                        kotlin.math.abs(startPos.y - lastTapPosition.y) < 50f) {
                                         
-                                        val targetPosition = (draggedSeekPosition + deltaMs).coerceIn(0L, videoDuration)
-                                        draggedSeekPosition = targetPosition
-                                        player.seekTo(targetPosition)
-                                        currentPlayTime = targetPosition
+                                        val fraction = startPos.x / size.width.toFloat()
+                                        if (fraction < 0.35f) {
+                                            val target = (player.currentPosition - 10000).coerceAtLeast(0)
+                                            player.seekTo(target)
+                                            currentPlayTime = target
+                                            showRewindOverlay = true
+                                            scope.launch {
+                                                delay(700)
+                                                showRewindOverlay = false
+                                            }
+                                        } else if (fraction > 0.65f) {
+                                            val target = (player.currentPosition + 10000).coerceAtMost(videoDuration)
+                                            player.seekTo(target)
+                                            currentPlayTime = target
+                                            showForwardOverlay = true
+                                            scope.launch {
+                                                delay(700)
+                                                showForwardOverlay = false
+                                            }
+                                        } else {
+                                            if (player.isPlaying) {
+                                                player.pause()
+                                            } else {
+                                                player.play()
+                                            }
+                                        }
+                                        lastTapTime = 0L
+                                        lastTapPosition = androidx.compose.ui.geometry.Offset.Zero
+                                    } else {
+                                        areControlsVisible = !areControlsVisible
+                                        if (!areControlsVisible) {
+                                            isBrightnessSliderVisible = false
+                                        }
+                                        
+                                        lastTapTime = upTime
+                                        lastTapPosition = startPos
                                     }
                                 }
                             }
-                        },
-                        onDragEnd = {
-                            showVolumeIndicator = false
-                            showBrightnessIndicator = false
-                            showSeekDragIndicator = false
-                            currentGestureType = "NONE"
-                        },
-                        onDragCancel = {
-                            showVolumeIndicator = false
-                            showBrightnessIndicator = false
-                            showSeekDragIndicator = false
+                            
                             currentGestureType = "NONE"
                         }
-                    )
-                }
-            }
-            .pointerInput(videoDuration, isLockedMode) {
-                if (!isLockedMode) {
-                    detectTapGestures(
-                        onDoubleTap = { offset: androidx.compose.ui.geometry.Offset ->
-                            val screenWidth = size.width
-                            val x = offset.x
-                            val fraction = x / screenWidth
-                            if (fraction < 0.35f) {
-                                // Double tap Left side: Rewind 10s
-                                val target = (player.currentPosition - 10000).coerceAtLeast(0)
-                                player.seekTo(target)
-                                currentPlayTime = target
-                                showRewindOverlay = true
-                                scope.launch {
-                                    delay(700)
-                                    showRewindOverlay = false
-                                }
-                            } else if (fraction > 0.65f) {
-                                // Double tap Right side: Forward 10s
-                                val target = (player.currentPosition + 10000).coerceAtMost(videoDuration)
-                                player.seekTo(target)
-                                currentPlayTime = target
-                                showForwardOverlay = true
-                                scope.launch {
-                                    delay(700)
-                                    showForwardOverlay = false
-                                }
-                            } else {
-                                // Double tap Center: Toggle play/pause
-                                if (player.isPlaying) {
-                                    player.pause()
-                                } else {
-                                    player.play()
-                                }
-                            }
-                        },
-                        onTap = {
-                            areControlsVisible = !areControlsVisible
-                            if (!areControlsVisible) {
-                                isBrightnessSliderVisible = false
-                            }
-                        }
-                    )
-                } else {
-                    detectTapGestures(
-                        onTap = {
-                            areControlsVisible = !areControlsVisible
-                            if (!areControlsVisible) {
-                                isBrightnessSliderVisible = false
-                            }
-                        }
-                    )
+                    }
                 }
             }
             .transformable(state = transformableState)
