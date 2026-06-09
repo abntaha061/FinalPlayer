@@ -434,6 +434,7 @@ fun MainNavigationRoot() {
                     composable("settings") {
                         SettingsScreen(
                             viewModel = viewModel,
+                            onPlayFile = handlePlayFile,
                             onBack = { navController.popBackStack() }
                         )
                     }

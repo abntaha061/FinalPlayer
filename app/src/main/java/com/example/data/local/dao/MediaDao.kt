@@ -69,6 +69,9 @@ interface MediaDao {
     @Query("UPDATE media_files SET isPrivate = :isPrivate WHERE id = :id")
     suspend fun updatePrivateStatus(id: Long, isPrivate: Boolean)
 
+    @Query("UPDATE media_files SET path = :newPath, isPrivate = :isPrivate WHERE id = :id")
+    suspend fun updatePathAndPrivateStatus(id: Long, newPath: String, isPrivate: Boolean)
+
     @Query("UPDATE media_files SET thumbnailPath = :thumbPath WHERE id = :id")
     suspend fun updateThumbnail(id: Long, thumbPath: String)
 

@@ -573,6 +573,7 @@ fun HomeScreen(
                     )
                     2 -> SettingsScreen(
                         viewModel = viewModel,
+                        onPlayFile = onPlayFile,
                         onBack = { selectedBottomTab = 0 }
                     )
                 }

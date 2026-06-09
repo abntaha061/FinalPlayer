@@ -25,9 +25,20 @@ import com.example.ui.MediaViewModel
 @Composable
 fun SettingsScreen(
     viewModel: MediaViewModel,
+    onPlayFile: ((String) -> Unit)? = null,
     onBack: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+
+    val isPrivateLocked by viewModel.isPrivateFolderLocked.collectAsState()
+    val privateFiles by viewModel.privateFiles.collectAsState(initial = emptyList())
+    var hasPasscodeState by remember { mutableStateOf(viewModel.getPasscode() != null) }
+
+    var isShowSetupDialog by remember { mutableStateOf(false) }
+    var isShowUnlockDialog by remember { mutableStateOf(false) }
+    var pinSetupInput by remember { mutableStateOf("") }
+    var pinUnlockInput by remember { mutableStateOf("") }
+    var unlockError by remember { mutableStateOf(false) }
 
     var defaultSpeed by remember { mutableStateOf(viewModel.getPlaybackSpeed()) }
     var hideControlsDelay by remember { mutableStateOf(viewModel.getHideControlsDelay()) }
@@ -312,6 +323,322 @@ fun SettingsScreen(
                         modifier = Modifier.testTag("subtitle_size_slider")
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // --- SECURE VAULT ("الخزنة الخاصة") SECTION ---
+            Text(
+                "الخزنة الخاصة وتأمين الفيديوهات (Secure Vault)",
+                fontSize = 15.sp,
+                color = currentAccentColor,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Vault Safe",
+                            tint = currentAccentColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            "خزنة حماية الفيديوهات الخاصة",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "هذا القسم يتيح لك حظر الفيديوهات عبر نقلها وإخفائها مادياً من مساحات التخزين العامة بالجهاز إلى مساحة مخصصة ومعزولة تماماً داخل التطبيق كملف سري خاص لا يمكن تصفحه أو كشفه من أي تطبيق خارجي كالمعرض أو الاستوديو أو مشغلات الفيديو الأخرى.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 18.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Status of the vault
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = if (!hasPasscodeState) {
+                                "حالة الخزنة: غير مفعّلة ⚠️"
+                            } else if (isPrivateLocked) {
+                                "حالة الخزنة: مقفلة ومؤمّنة 🔒"
+                            } else {
+                                "حالة الخزنة: مفتوحة ومتاحة ✅"
+                            },
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = if (!hasPasscodeState) Color(0xFFFF9500) else if (isPrivateLocked) Color(0xFFFF5252) else Color(0xFF34C759)
+                        )
+
+                        Text(
+                            text = "عدد الفيديوهات المخفية: ${privateFiles.size}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Action buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (!hasPasscodeState) {
+                            Button(
+                                onClick = {
+                                    pinSetupInput = ""
+                                    isShowSetupDialog = true
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = currentAccentColor)
+                            ) {
+                                Text("تفعيل الخزنة (رمز PIN)", color = Color.White, fontSize = 12.sp)
+                            }
+                        } else {
+                            if (isPrivateLocked) {
+                                Button(
+                                    onClick = {
+                                        pinUnlockInput = ""
+                                        unlockError = false
+                                        isShowUnlockDialog = true
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                                ) {
+                                    Text("فتح قفل الخزنة 🔓", color = Color.White, fontSize = 12.sp)
+                                }
+                            } else {
+                                Button(
+                                    onClick = {
+                                        viewModel.lockPrivateFolder()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                                ) {
+                                    Text("قفل الخزنة الآن 🔒", color = Color.White, fontSize = 12.sp)
+                                }
+                            }
+
+                            // Option to reset or change PIN code anyway
+                            OutlinedButton(
+                                onClick = {
+                                    pinSetupInput = ""
+                                    isShowSetupDialog = true
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("تغيير رمز PIN 🔑", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                    }
+
+                    // Render files inside the Vault if unlocked
+                    if (hasPasscodeState && !isPrivateLocked) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            "الملفات السرية بالخزنة (Files in Vault):",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = currentAccentColor,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+
+                        if (privateFiles.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "الخزنة فارغة حالياً.\nأضف فيديوهات من صفحة الفيديوهات بالنقر على القائمة (3 نقاط) واختيار \"نقل إلى الخزنة\".",
+                                    fontSize = 11.sp,
+                                    color = Color.Gray,
+                                    lineHeight = 16.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        } else {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                privateFiles.forEach { file ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Video",
+                                            tint = currentAccentColor,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = file.title,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                            val sizeMb = file.size / (1024f * 1024f)
+                                            Text(
+                                                text = "الموقع الحالي: مساحة آمنة ومخفية • %.1f MB".format(sizeMb),
+                                                fontSize = 10.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+
+                                        // Play directly
+                                        IconButton(
+                                            onClick = { onPlayFile?.invoke(file.path) },
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = "Play Video",
+                                                tint = Color(0xFF34C759)
+                                            )
+                                        }
+
+                                        // Move out of vault (Restore/Unhide)
+                                        IconButton(
+                                            onClick = { viewModel.setPrivateStatus(file, false) },
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.LockOpen,
+                                                contentDescription = "Restore File",
+                                                tint = currentAccentColor
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- PASSCODE DIALOGS ---
+            if (isShowSetupDialog) {
+                AlertDialog(
+                    onDismissRequest = { isShowSetupDialog = false },
+                    title = { Text("إعداد الرقم السري 🔑", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column {
+                            Text("أدخل رمزاً سرياً مكوناً من أرقام لحماية وإخفاء فيديوهاتك:", fontSize = 13.sp)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            TextField(
+                                value = pinSetupInput,
+                                onValueChange = { pinSetupInput = it },
+                                placeholder = { Text("أدخل الكود الرقمي") },
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (pinSetupInput.isNotEmpty()) {
+                                    viewModel.savePasscode(pinSetupInput)
+                                    hasPasscodeState = true
+                                    isShowSetupDialog = false
+                                }
+                            }
+                        ) {
+                            Text("حفظ الكود والتمكين")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { isShowSetupDialog = false }) {
+                            Text("إلغاء")
+                        }
+                    }
+                )
+            }
+
+            if (isShowUnlockDialog) {
+                AlertDialog(
+                    onDismissRequest = { isShowUnlockDialog = false },
+                    title = { Text("فك قفل الخزنة الآمنة 🔓", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column {
+                            Text("يرجى كتابة رمز PIN السري المصرح لفك القفل والاستعراض:", fontSize = 13.sp)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            TextField(
+                                value = pinUnlockInput,
+                                onValueChange = {
+                                    pinUnlockInput = it
+                                    unlockError = false
+                                },
+                                placeholder = { Text("الرمز السري") },
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (unlockError) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("كود PIN خاطئ! يرجى التحقق وإعادة المحاولة", color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (viewModel.unlockPrivateFolder(pinUnlockInput)) {
+                                    isShowUnlockDialog = false
+                                    unlockError = false
+                                } else {
+                                    unlockError = true
+                                }
+                            }
+                        ) {
+                            Text("تأكيد الفك")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { isShowUnlockDialog = false }) {
+                            Text("إلغاء")
+                        }
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))

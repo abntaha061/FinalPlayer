@@ -7,7 +7,7 @@ import com.example.data.local.entities.*
 import kotlinx.coroutines.flow.Flow
 import java.io.File
 
-class MediaRepository(context: Context) {
+class MediaRepository(private val context: Context) {
     private val database = MediaDatabase.getDatabase(context)
     private val mediaDao = database.mediaDao()
     private val scanner = MediaScanner(mediaDao)
@@ -41,7 +41,71 @@ class MediaRepository(context: Context) {
     }
 
     suspend fun setPrivateStatus(id: Long, isPrivate: Boolean) {
-        mediaDao.updatePrivateStatus(id, isPrivate)
+        try {
+            val mediaFile = mediaDao.getMediaFileById(id) ?: return
+            val secureDir = File(context.filesDir, "SecureVault")
+            if (!secureDir.exists()) {
+                secureDir.mkdirs()
+                try {
+                    File(secureDir, ".nomedia").createNewFile()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            if (isPrivate) {
+                val originalFile = File(mediaFile.path)
+                if (originalFile.exists() && !originalFile.absolutePath.contains("SecureVault")) {
+                    val destFile = File(secureDir, "${mediaFile.id}_${originalFile.name}")
+                    try {
+                        originalFile.copyTo(destFile, overwrite = true)
+                        originalFile.delete()
+                        
+                        // Save original path in preferences
+                        val prefs = context.getSharedPreferences("secure_original_paths", Context.MODE_PRIVATE)
+                        prefs.edit().putString("path_${mediaFile.id}", mediaFile.path).apply()
+                        
+                        // Update in DB
+                        mediaDao.updatePathAndPrivateStatus(id, destFile.absolutePath, true)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        // Fallback: at least update the private status in DB
+                        mediaDao.updatePrivateStatus(id, true)
+                    }
+                } else {
+                    mediaDao.updatePrivateStatus(id, true)
+                }
+            } else {
+                val currentFile = File(mediaFile.path)
+                val prefs = context.getSharedPreferences("secure_original_paths", Context.MODE_PRIVATE)
+                val originalPath = prefs.getString("path_${mediaFile.id}", null)
+                if (originalPath != null) {
+                    val destFile = File(originalPath)
+                    if (currentFile.exists() && currentFile.absolutePath.contains("SecureVault")) {
+                        try {
+                            destFile.parentFile?.mkdirs()
+                            currentFile.copyTo(destFile, overwrite = true)
+                            currentFile.delete()
+                            
+                            mediaDao.updatePathAndPrivateStatus(id, originalPath, false)
+                            prefs.edit().remove("path_${mediaFile.id}").apply()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            mediaDao.updatePrivateStatus(id, false)
+                        }
+                    } else {
+                        mediaDao.updatePathAndPrivateStatus(id, originalPath, false)
+                        prefs.edit().remove("path_${mediaFile.id}").apply()
+                    }
+                } else {
+                    // Fallback if original path is somehow unknown
+                    mediaDao.updatePrivateStatus(id, false)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            mediaDao.updatePrivateStatus(id, isPrivate)
+        }
     }
 
     suspend fun deleteFile(path: String) {
