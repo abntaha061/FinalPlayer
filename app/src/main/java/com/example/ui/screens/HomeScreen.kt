@@ -333,19 +333,26 @@ fun HomeScreen(
                 if (selectedPaths.isNotEmpty()) {
                     NavigationBar(
                         containerColor = currentAccentColor.copy(alpha = 0.15f),
-                        windowInsets = WindowInsets.navigationBars
+                        windowInsets = WindowInsets.navigationBars,
+                        modifier = Modifier.height(64.dp)
                     ) {
                         NavigationBarItem(
                             selected = false,
                             onClick = { isMovePickerOpen = true },
                             icon = { Icon(Icons.Default.DriveFileMove, contentDescription = "نقل") },
-                            label = { Text("نقل", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            label = { Text("نقل", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent
+                            )
                         )
                         NavigationBarItem(
                             selected = false,
                             onClick = { isCopyPickerOpen = true },
                             icon = { Icon(Icons.Default.ContentCopy, contentDescription = "نسخ") },
-                            label = { Text("نسخ", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            label = { Text("نسخ", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent
+                            )
                         )
                         NavigationBarItem(
                             selected = false,
@@ -358,37 +365,59 @@ fun HomeScreen(
                                 }
                             },
                             icon = { Icon(Icons.Default.Edit, contentDescription = "إعادة تسمية") },
-                            label = { Text("تسمية", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            label = { Text("تسمية", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent
+                            )
                         )
                         NavigationBarItem(
                             selected = false,
                             onClick = { isDeleteConfirmOpen = true },
                             icon = { Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color.Red) },
-                            label = { Text("حذف", fontSize = 11.sp, color = Color.Red, fontWeight = FontWeight.Bold) }
+                            label = { Text("حذف", fontSize = 10.sp, color = Color.Red, fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent
+                            )
                         )
                     }
                 } else {
                     NavigationBar(
                         containerColor = currentAccentColor.copy(alpha = 0.15f),
-                        windowInsets = WindowInsets.navigationBars
+                        windowInsets = WindowInsets.navigationBars,
+                        modifier = Modifier.height(64.dp)
                     ) {
                         NavigationBarItem(
                             selected = selectedBottomTab == 0,
                             onClick = { selectedBottomTab = 0 },
                             icon = { RedCircleIcon(Icons.Default.VideoLibrary, selectedBottomTab == 0, "Videos", currentAccentColor) },
-                            label = { Text("الفيديوهات") }
+                            label = { Text("الفيديوهات", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 0) FontWeight.Bold else FontWeight.Normal) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent,
+                                selectedIconColor = Color.Unspecified,
+                                unselectedIconColor = Color.Unspecified
+                            )
                         )
                         NavigationBarItem(
                             selected = selectedBottomTab == 1,
                             onClick = { selectedBottomTab = 1 },
                             icon = { RedCircleIcon(Icons.Default.MusicNote, selectedBottomTab == 1, "Music", currentAccentColor) },
-                            label = { Text("الموسيقى") }
+                            label = { Text("الموسيقى", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 1) FontWeight.Bold else FontWeight.Normal) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent,
+                                selectedIconColor = Color.Unspecified,
+                                unselectedIconColor = Color.Unspecified
+                            )
                         )
                         NavigationBarItem(
                             selected = selectedBottomTab == 2,
                             onClick = { selectedBottomTab = 2 },
                             icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 2, "Settings", currentAccentColor) },
-                            label = { Text("الإعدادات") }
+                            label = { Text("الإعدادات", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 2) FontWeight.Bold else FontWeight.Normal) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent,
+                                selectedIconColor = Color.Unspecified,
+                                unselectedIconColor = Color.Unspecified
+                            )
                         )
                     }
                 }
@@ -1352,13 +1381,13 @@ fun VideosAndFoldersTab(
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            MXFolderIcon(folderName = folderName, filesCount = filesCount, isSelected = selectedPaths.contains(folder.folderPath))
-                            Spacer(modifier = Modifier.width(16.dp))
                             val folderNewVideosCount = remember(videoList, folder.folderPath) {
                                 videoList.count { 
                                     it.isNew && java.io.File(it.path).parentFile?.absolutePath == folder.folderPath
                                 }
                             }
+                            MXFolderIcon(folderName = folderName, filesCount = folderNewVideosCount, isSelected = selectedPaths.contains(folder.folderPath))
+                            Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
@@ -1370,21 +1399,6 @@ fun VideosAndFoldersTab(
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f, fill = false)
                                     )
-                                    if (folderNewVideosCount > 0) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Box(
-                                            modifier = Modifier
-                                                .background(Color(0xFFFF3366), RoundedCornerShape(4.dp))
-                                                .padding(horizontal = 5.dp, vertical = 1.5.dp)
-                                        ) {
-                                            Text(
-                                                text = "NEW",
-                                                color = Color.White,
-                                                fontSize = 8.5.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1489,6 +1503,23 @@ fun VideosAndFoldersTab(
                                                     )
                                                 )
                                         )
+                                    }
+
+                                    if (video.isNew) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopStart)
+                                                .padding(6.dp)
+                                                .background(Color(0xFFFF3366), shape = RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "NEW",
+                                                color = Color.White,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
 
                                     // Small elegant play overlay in list view
@@ -2830,24 +2861,23 @@ fun RedCircleIcon(
 ) {
     Box(
         modifier = Modifier
-            .size(38.dp)
+            .size(36.dp)
             .background(
                 color = if (isSelected) themeColor else Color.Transparent,
                 shape = CircleShape
             )
             .border(
-                width = 1.5.dp,
+                width = 1.dp,
                 color = if (isSelected) themeColor else Color.Gray.copy(alpha = 0.3f),
                 shape = CircleShape
-            )
-            .padding(6.dp),
+            ),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (isSelected) Color.White else Color.Gray,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(18.dp)
         )
     }
 }

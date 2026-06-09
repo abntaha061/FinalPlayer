@@ -112,6 +112,7 @@ fun MusicLyricsPlayerScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(Color(0xFF0A0A0E))
             .testTag("aurora_music_player_screen")
             .pointerInput(Unit) {
                 detectTapGestures {
@@ -333,16 +334,12 @@ fun SynchronizedLyricsList(
     val listState = rememberLazyListState()
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val containerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
-        val targetYOffsetPx = remember(containerHeightPx) { containerHeightPx * 0.33f } // Upper third (33% of the screen height)
-        val scrollOffsetPx = remember(targetYOffsetPx) { -targetYOffsetPx }
-
-        // Smooth scroll to align active lyric line perfectly at 33% height of list viewports
+        // Smooth scroll to align active lyric line perfectly at the content padding threshold
         LaunchedEffect(activeIndex) {
             if (activeIndex >= 0 && activeIndex < lyrics.size) {
                 listState.animateScrollToItem(
                     index = activeIndex,
-                    scrollOffset = scrollOffsetPx.toInt()
+                    scrollOffset = 0
                 )
             }
         }
@@ -357,7 +354,7 @@ fun SynchronizedLyricsList(
                     }
                 },
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = maxHeight * 0.33f, bottom = maxHeight * 0.67f + 120.dp)
+            contentPadding = PaddingValues(top = maxHeight * 0.25f, bottom = maxHeight * 0.75f + 120.dp)
         ) {
             itemsIndexed(lyrics) { index, line ->
                 val isActive = index == activeIndex
@@ -545,20 +542,26 @@ fun AuroraBackground(
     // which drains battery and heats up the device by redrawing 60 frames per second on screen,
     // we use a beautifully blended gradient brush directly. It achieves a gorgeous, vibrant look in hardware rendering.
     val meshBrush = remember(animatedC1, animatedC2, animatedC3, animatedC4) {
-        val dark1 = animatedC1.copy(red = animatedC1.red * 0.08f, green = animatedC1.green * 0.08f, blue = animatedC1.blue * 0.08f, alpha = 0.45f)
-        val dark2 = animatedC2.copy(red = animatedC2.red * 0.06f, green = animatedC2.green * 0.06f, blue = animatedC2.blue * 0.06f, alpha = 0.40f)
-        val dark3 = animatedC3.copy(red = animatedC3.red * 0.07f, green = animatedC3.green * 0.07f, blue = animatedC3.blue * 0.07f, alpha = 0.38f)
-        val dark4 = animatedC4.copy(red = animatedC4.red * 0.07f, green = animatedC4.green * 0.07f, blue = animatedC4.blue * 0.07f, alpha = 0.42f)
+        val bright1 = animatedC1.copy(alpha = 0.38f)
+        val bright2 = animatedC2.copy(alpha = 0.35f)
+        val bright3 = animatedC3.copy(alpha = 0.32f)
+        val bright4 = animatedC4.copy(alpha = 0.34f)
         Brush.linearGradient(
-            colors = listOf(dark1, dark2, dark3, dark4)
+            colors = listOf(bright1, bright2, bright3, bright4)
         )
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(meshBrush)
+            .background(Color(0xFF0C0C12)) // Solid dark background to prevent bleed-through
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(meshBrush)
+        )
+
         // Dynamic Blurred Album Art Background
         if (albumArtBitmap != null) {
             val imgBitmap = remember(albumArtBitmap) { albumArtBitmap.asImageBitmap() }
@@ -567,8 +570,8 @@ fun AuroraBackground(
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
-                    .blur(20.dp)
-                    .graphicsLayer { alpha = 0.28f },
+                    .blur(40.dp)
+                    .graphicsLayer { alpha = 0.4f },
                 contentScale = ContentScale.Crop
             )
         }
