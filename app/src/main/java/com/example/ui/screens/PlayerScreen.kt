@@ -677,6 +677,55 @@ fun PlayerScreen(
             .background(Color.Black)
             .pointerInput(videoDuration, isLockedMode) {
                 if (!isLockedMode) {
+                    detectDragGestures(
+                        onDragStart = { offset: androidx.compose.ui.geometry.Offset ->
+                            val screenWidth = size.width
+                            isDraggingRightSide = offset.x > screenWidth / 2f
+                            if (isDraggingRightSide) {
+                                val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                draggedVolRatio = currentVol.toFloat() / maxVolume
+                                showVolumeIndicator = true
+                            } else {
+                                val currentBright = activity?.window?.attributes?.screenBrightness ?: 0.5f
+                                val realBright = if (currentBright < 0f) 0.5f else currentBright
+                                draggedBrightness = realBright
+                                showBrightnessIndicator = true
+                            }
+                        },
+                        onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
+                            change.consume()
+                            val deltaY = -dragAmount.y
+                            val screenHeight = size.height
+                            val deltaRatio = deltaY / screenHeight
+                            
+                            if (isDraggingRightSide) {
+                                val newRatio = (draggedVolRatio + deltaRatio * 1.5f).coerceIn(0f, 1f)
+                                draggedVolRatio = newRatio
+                                val targetVol = (newRatio * maxVolume).toInt()
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                            } else {
+                                val newBrightness = (draggedBrightness + deltaRatio * 1.5f).coerceIn(0.01f, 1.0f)
+                                draggedBrightness = newBrightness
+                                val layoutParams = activity?.window?.attributes
+                                if (layoutParams != null) {
+                                    layoutParams.screenBrightness = newBrightness
+                                    activity?.window?.attributes = layoutParams
+                                }
+                            }
+                        },
+                        onDragEnd = {
+                            showVolumeIndicator = false
+                            showBrightnessIndicator = false
+                        },
+                        onDragCancel = {
+                            showVolumeIndicator = false
+                            showBrightnessIndicator = false
+                        }
+                    )
+                }
+            }
+            .pointerInput(videoDuration, isLockedMode) {
+                if (!isLockedMode) {
                     detectTapGestures(
                         onDoubleTap = { offset: androidx.compose.ui.geometry.Offset ->
                             val screenWidth = size.width
@@ -725,55 +774,6 @@ fun PlayerScreen(
                             if (!areControlsVisible) {
                                 isBrightnessSliderVisible = false
                             }
-                        }
-                    )
-                }
-            }
-            .pointerInput(videoDuration, isLockedMode) {
-                if (!isLockedMode) {
-                    detectDragGestures(
-                        onDragStart = { offset: androidx.compose.ui.geometry.Offset ->
-                            val screenWidth = size.width
-                            isDraggingRightSide = offset.x > screenWidth / 2f
-                            if (isDraggingRightSide) {
-                                val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                draggedVolRatio = currentVol.toFloat() / maxVolume
-                                showVolumeIndicator = true
-                            } else {
-                                val currentBright = activity?.window?.attributes?.screenBrightness ?: 0.5f
-                                val realBright = if (currentBright < 0f) 0.5f else currentBright
-                                draggedBrightness = realBright
-                                showBrightnessIndicator = true
-                            }
-                        },
-                        onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
-                            change.consume()
-                            val deltaY = -dragAmount.y
-                            val screenHeight = size.height
-                            val deltaRatio = deltaY / screenHeight
-                            
-                            if (isDraggingRightSide) {
-                                val newRatio = (draggedVolRatio + deltaRatio * 1.5f).coerceIn(0f, 1f)
-                                draggedVolRatio = newRatio
-                                val targetVol = (newRatio * maxVolume).toInt()
-                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                            } else {
-                                val newBrightness = (draggedBrightness + deltaRatio * 1.5f).coerceIn(0.01f, 1.0f)
-                                draggedBrightness = newBrightness
-                                val layoutParams = activity?.window?.attributes
-                                if (layoutParams != null) {
-                                    layoutParams.screenBrightness = newBrightness
-                                    activity?.window?.attributes = layoutParams
-                                }
-                            }
-                        },
-                        onDragEnd = {
-                            showVolumeIndicator = false
-                            showBrightnessIndicator = false
-                        },
-                        onDragCancel = {
-                            showVolumeIndicator = false
-                            showBrightnessIndicator = false
                         }
                     )
                 }
