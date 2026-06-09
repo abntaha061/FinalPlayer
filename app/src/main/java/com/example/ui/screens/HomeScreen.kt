@@ -2769,14 +2769,21 @@ fun MiniPlayer(viewModel: MediaViewModel) {
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
     val themeColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
 
+    val miniPlayerBrush = remember(colors) {
+        val c1 = colors.c1.copy(alpha = 0.38f)
+        val c2 = colors.c2.copy(alpha = 0.35f)
+        val c3 = colors.c3.copy(alpha = 0.32f)
+        val c4 = colors.c4.copy(alpha = 0.36f)
+        Brush.linearGradient(
+            colors = listOf(c1, c2, c3, c4)
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                brush = Brush.horizontalGradient(
-                    colors = listOf(themeColor.copy(alpha = 0.85f), themeColor.copy(alpha = 0.95f))
-                )
-            )
+            .background(Color(0xFF0C0C12))
+            .background(brush = miniPlayerBrush)
             .border(width = 0.5.dp, color = Color.White.copy(alpha = 0.15f))
             .clickable { viewModel.setFullPlayerOpen(true) }
     ) {

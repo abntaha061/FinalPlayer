@@ -463,6 +463,10 @@ fun PlayerScreen(
     var showBrightnessIndicator by remember { mutableStateOf(false) }
     var showRewindOverlay by remember { mutableStateOf(false) }
     var showForwardOverlay by remember { mutableStateOf(false) }
+    var showSeekDragIndicator by remember { mutableStateOf(false) }
+    var draggedSeekPosition by remember { mutableStateOf(0L) }
+    var currentGestureType by remember { mutableStateOf("NONE") } // "NONE", "VOLUME", "BRIGHTNESS", "SEEK"
+    var dragStartOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
     // Subtitle customization details
     var subAlignment by remember { mutableStateOf("Center") }
@@ -713,47 +717,108 @@ fun PlayerScreen(
                 if (!isLockedMode) {
                     detectDragGestures(
                         onDragStart = { offset: androidx.compose.ui.geometry.Offset ->
+                            dragStartOffset = offset
+                            currentGestureType = "NONE"
                             val screenWidth = size.width
                             isDraggingRightSide = offset.x > screenWidth / 2f
-                            if (isDraggingRightSide) {
-                                val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                draggedVolRatio = currentVol.toFloat() / maxVolume
-                                showVolumeIndicator = true
+                            
+                            val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                            draggedVolRatio = currentVol.toFloat() / maxVolume
+                            
+                            val currentBright = activity?.window?.attributes?.screenBrightness ?: -1f
+                            val realBright = if (currentBright < 0f) {
+                                try {
+                                    android.provider.Settings.System.getInt(
+                                        context.contentResolver,
+                                        android.provider.Settings.System.SCREEN_BRIGHTNESS
+                                    ).toFloat() / 255f
+                                } catch (e: Exception) {
+                                    0.5f
+                                }
                             } else {
-                                val currentBright = activity?.window?.attributes?.screenBrightness ?: 0.5f
-                                val realBright = if (currentBright < 0f) 0.5f else currentBright
-                                draggedBrightness = realBright
-                                showBrightnessIndicator = true
+                                currentBright
                             }
+                            draggedBrightness = realBright
+                            currentBrightness = realBright
+                            
+                            draggedSeekPosition = player.currentPosition
                         },
                         onDrag = { change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
                             change.consume()
-                            val deltaY = -dragAmount.y
+                            val screenWidth = size.width
                             val screenHeight = size.height
-                            val deltaRatio = deltaY / screenHeight
                             
-                            if (isDraggingRightSide) {
-                                val newRatio = (draggedVolRatio + deltaRatio * 1.5f).coerceIn(0f, 1f)
-                                draggedVolRatio = newRatio
-                                val targetVol = (newRatio * maxVolume).toInt()
-                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                            } else {
-                                val newBrightness = (draggedBrightness + deltaRatio * 1.5f).coerceIn(0.01f, 1.0f)
-                                draggedBrightness = newBrightness
-                                val layoutParams = activity?.window?.attributes
-                                if (layoutParams != null) {
-                                    layoutParams.screenBrightness = newBrightness
-                                    activity?.window?.attributes = layoutParams
+                            val totalX = change.position.x - dragStartOffset.x
+                            val totalY = dragStartOffset.y - change.position.y
+                            
+                            val threshold = 25f
+                            
+                            if (currentGestureType == "NONE") {
+                                if (kotlin.math.abs(totalX) >= threshold || kotlin.math.abs(totalY) >= threshold) {
+                                    if (kotlin.math.abs(totalX) > kotlin.math.abs(totalY)) {
+                                        currentGestureType = "SEEK"
+                                        showSeekDragIndicator = true
+                                    } else {
+                                        if (dragStartOffset.x > screenWidth / 2f) {
+                                            currentGestureType = "VOLUME"
+                                            showVolumeIndicator = true
+                                        } else {
+                                            currentGestureType = "BRIGHTNESS"
+                                            showBrightnessIndicator = true
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            when (currentGestureType) {
+                                "VOLUME" -> {
+                                    val deltaY = -dragAmount.y
+                                    val deltaRatio = deltaY / screenHeight
+                                    val newRatio = (draggedVolRatio + deltaRatio * 1.8f).coerceIn(0f, 1f)
+                                    draggedVolRatio = newRatio
+                                    val targetVol = (newRatio * maxVolume).toInt()
+                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                    currentVolume = targetVol.toFloat()
+                                }
+                                "BRIGHTNESS" -> {
+                                    val deltaY = -dragAmount.y
+                                    val deltaRatio = deltaY / screenHeight
+                                    val newBrightness = (draggedBrightness + deltaRatio * 1.8f).coerceIn(0.01f, 1.0f)
+                                    draggedBrightness = newBrightness
+                                    currentBrightness = newBrightness
+                                    val layoutParams = activity?.window?.attributes
+                                    if (layoutParams != null) {
+                                        layoutParams.screenBrightness = newBrightness
+                                        activity?.window?.attributes = layoutParams
+                                    }
+                                }
+                                "SEEK" -> {
+                                    if (videoDuration > 0) {
+                                        val deltaX = dragAmount.x
+                                        // A full sweep across the screen corresponds to 1/4 of total video duration or 60s
+                                        val spanMs = (videoDuration / 4).coerceAtLeast(45000L).coerceAtMost(180000L)
+                                        val deltaRatio = deltaX / screenWidth
+                                        val deltaMs = (deltaRatio * spanMs).toLong()
+                                        
+                                        val targetPosition = (draggedSeekPosition + deltaMs).coerceIn(0L, videoDuration)
+                                        draggedSeekPosition = targetPosition
+                                        player.seekTo(targetPosition)
+                                        currentPlayTime = targetPosition
+                                    }
                                 }
                             }
                         },
                         onDragEnd = {
                             showVolumeIndicator = false
                             showBrightnessIndicator = false
+                            showSeekDragIndicator = false
+                            currentGestureType = "NONE"
                         },
                         onDragCancel = {
                             showVolumeIndicator = false
                             showBrightnessIndicator = false
+                            showSeekDragIndicator = false
+                            currentGestureType = "NONE"
                         }
                     )
                 }
@@ -960,6 +1025,36 @@ fun PlayerScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("السطوع", color = Color.LightGray, fontSize = 12.sp)
                     Text("$brightnessPercentage%", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
+        }
+
+        // Temporal Seek Swipe Gesture Indicator (center bubble)
+        if (showSeekDragIndicator) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.82f), shape = RoundedCornerShape(16.dp))
+                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(16.dp))
+                    .padding(vertical = 18.dp, horizontal = 28.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.CompareArrows,
+                        contentDescription = "Seek",
+                        tint = Color(0xFF00C8FF),
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("تقديم / تأخير", color = Color.LightGray, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${formatTime(draggedSeekPosition)} / ${formatTime(videoDuration)}",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
                 }
             }
         }
