@@ -1509,14 +1509,14 @@ fun VideosAndFoldersTab(
                                         Box(
                                             modifier = Modifier
                                                 .align(Alignment.TopStart)
-                                                .padding(6.dp)
-                                                .background(Color(0xFFFF3366), shape = RoundedCornerShape(4.dp))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                .padding(4.dp)
+                                                .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
                                         ) {
                                             Text(
                                                 text = "NEW",
                                                 color = Color.White,
-                                                fontSize = 9.sp,
+                                                fontSize = 7.5.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
@@ -1583,6 +1583,7 @@ fun VideosAndFoldersTab(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = video.title,
+                                        color = Color.White,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Normal,
                                         maxLines = 2,
@@ -1950,14 +1951,14 @@ fun VideoGridItem(
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .padding(6.dp)
-                            .background(Color(0xFFFF3366), shape = RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .padding(4.dp)
+                            .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
                     ) {
                         Text(
                             text = "NEW",
                             color = Color.White,
-                            fontSize = 9.sp,
+                            fontSize = 7.5.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -2045,6 +2046,7 @@ fun VideoGridItem(
                     ) {
                         Text(
                             text = video.title,
+                            color = Color.White,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Normal,
                             maxLines = 1,

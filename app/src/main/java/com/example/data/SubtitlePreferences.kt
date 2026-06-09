@@ -13,10 +13,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 data class SubtitlePreferences(
-    val textSize: Float = 18f,
-    val verticalOffset: Float = 0.95f, // Position vertical offset ratio from top (0.0 to 1.0)
+    val textSize: Float = 20f,
+    val verticalOffset: Float = 0.98f, // Position vertical offset ratio from top (0.0 to 1.0) - lowered to match MX Player style
     val textColorArgb: Int = Color.White.toArgb(),
-    val backgroundColorArgb: Int = Color.Black.copy(alpha = 0.6f).toArgb()
+    val backgroundColorArgb: Int = Color.Black.copy(alpha = 0.85f).toArgb() // Opaque black for superior contrast
 ) {
     val textColor: Color get() = Color(textColorArgb)
     val backgroundColor: Color get() = Color(backgroundColorArgb)
@@ -35,10 +35,10 @@ class SubtitlePrefsManager(private val context: Context) {
 
     val subtitlePreferencesFlow: Flow<SubtitlePreferences> = context.subtitleDataStore.data.map { preferences ->
         SubtitlePreferences(
-            textSize = preferences[TEXT_SIZE] ?: 18f,
-            verticalOffset = preferences[VERTICAL_OFFSET] ?: 0.95f,
+            textSize = preferences[TEXT_SIZE] ?: 20f,
+            verticalOffset = preferences[VERTICAL_OFFSET] ?: 0.98f,
             textColorArgb = preferences[TEXT_COLOR_ARGB] ?: Color.White.toArgb(),
-            backgroundColorArgb = preferences[BACKGROUND_COLOR_ARGB] ?: Color.Black.copy(alpha = 0.6f).toArgb()
+            backgroundColorArgb = preferences[BACKGROUND_COLOR_ARGB] ?: Color.Black.copy(alpha = 0.85f).toArgb()
         )
     }
 

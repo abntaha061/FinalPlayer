@@ -50,6 +50,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -93,7 +96,18 @@ fun PlayerScreen(
     // -----------------------------------------------------
     // STATE DECLARATIONS
     // -----------------------------------------------------
-    val allVideos by viewModel.videos.collectAsState(initial = emptyList())
+    val allVideosOriginal by viewModel.videos.collectAsState(initial = emptyList())
+    val allVideos = remember(allVideosOriginal, filePath) {
+        val currentParent = try { File(filePath).parent } catch (e: Exception) { null }
+        if (currentParent != null) {
+            val filtered = allVideosOriginal.filter { 
+                try { File(it.path).parent == currentParent } catch (e: Exception) { false }
+            }
+            if (filtered.isNotEmpty()) filtered else allVideosOriginal
+        } else {
+            allVideosOriginal
+        }
+    }
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
     val currentAccentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
     val currentMediaFile = remember(filePath) { File(filePath) }
@@ -471,7 +485,7 @@ fun PlayerScreen(
     var isDraggingSubtitle by remember { mutableStateOf(false) }
 
     val bottomPaddingAnim by animateDpAsState(
-        targetValue = if (areControlsVisible) 110.dp else 0.dp,
+        targetValue = if (areControlsVisible) 48.dp else 0.dp,
         label = "subtitle_bottom_padding"
     )
 
@@ -559,9 +573,22 @@ fun PlayerScreen(
             }
 
             override fun onCues(cues: List<androidx.media3.common.text.Cue>) {
-                activeSubtitleText = cues
+                val rawText = cues
                     .mapNotNull { it.text?.toString() }
                     .joinToString("\n")
+                
+                // Post-process subtitle cleanups to improve reading coherence and correct cut-offs
+                var cleanedText = rawText
+                cleanedText = cleanedText.replace("oder in dat\\b".toRegex(RegexOption.IGNORE_CASE), "oder in Dativ")
+                cleanedText = cleanedText.replace("oder in dat\\.".toRegex(RegexOption.IGNORE_CASE), "oder in Dativ.")
+                cleanedText = cleanedText.replace("\\bin dat\\b".toRegex(RegexOption.IGNORE_CASE), "in Dativ")
+                cleanedText = cleanedText.replace("\\bin dat\\.".toRegex(RegexOption.IGNORE_CASE), "in Dativ.")
+                
+                // Improve bad split breaks (e.g. merging dangling phrases for proper reading speed)
+                cleanedText = cleanedText.replace("Also, es\\s*\\n\\s*".toRegex(RegexOption.IGNORE_CASE), "Also, es ")
+                cleanedText = cleanedText.replace("es geht um\\s*\\n\\s*".toRegex(RegexOption.IGNORE_CASE), "es geht um ")
+                
+                activeSubtitleText = cleanedText
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -942,66 +969,80 @@ fun PlayerScreen(
             val currentOffset = localSubtitleOffset ?: subtitlePrefsState.verticalOffset
             val verticalBias = -1.0f + (currentOffset * 2.0f)
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .onSizeChanged { parentHeightPx = it.height.toFloat() }
-                    .padding(bottom = bottomPaddingAnim, start = 32.dp, end = 32.dp),
-                contentAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = verticalBias)
-            ) {
-                Text(
-                    text = activeSubtitleText,
-                    color = subtitlePrefsState.textColor,
-                    fontSize = subtitlePrefsState.textSize.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
+            // Dynamic layout direction (German/English needs LTR for proper grammar/punctuation, Arabic needs RTL)
+            val containsArabic = activeSubtitleText.any { it in '\u0600'..'\u06FF' }
+            val layoutDirection = if (containsArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
+
+            CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+                Box(
                     modifier = Modifier
-                        .background(
-                            color = if (isDraggingSubtitle) {
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                            } else {
-                                subtitlePrefsState.backgroundColor
-                            },
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .border(
-                            width = if (isDraggingSubtitle) 2.dp else 1.dp,
-                            color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .pointerInput(parentHeightPx, subtitlePrefsState.verticalOffset) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    isDraggingSubtitle = true
-                                    localSubtitleOffset = subtitlePrefsState.verticalOffset
-                                },
-                                onDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val delta = dragAmount.y / parentHeightPx
-                                    val current = localSubtitleOffset ?: subtitlePrefsState.verticalOffset
-                                    localSubtitleOffset = (current + delta).coerceIn(0.01f, 0.99f)
-                                },
-                                onDragEnd = {
-                                    isDraggingSubtitle = false
-                                    localSubtitleOffset?.let { finalOffset ->
-                                        scope.launch {
-                                            subPrefsManager.savePreferences(subtitlePrefsState.copy(verticalOffset = finalOffset))
-                                        }
-                                    }
-                                    localSubtitleOffset = null
-                                },
-                                onDragCancel = {
-                                    isDraggingSubtitle = false
-                                    localSubtitleOffset = null
-                                }
+                        .fillMaxSize()
+                        .onSizeChanged { parentHeightPx = it.height.toFloat() }
+                        .padding(bottom = bottomPaddingAnim, start = 16.dp, end = 16.dp),
+                    contentAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = verticalBias)
+                ) {
+                    Text(
+                        text = activeSubtitleText,
+                        color = subtitlePrefsState.textColor,
+                        fontSize = subtitlePrefsState.textSize.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        lineHeight = (subtitlePrefsState.textSize * 1.35f).sp,
+                        style = TextStyle(
+                            shadow = Shadow(
+                                color = Color.Black.copy(alpha = 0.95f),
+                                offset = Offset(1.5f, 1.5f),
+                                blurRadius = 3f
                             )
-                        }
-                        .clickable {
-                            isSubtitleCustomizationOpen = true
-                        }
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                        .testTag("custom_subtitle_text")
-                )
+                        ),
+                        modifier = Modifier
+                            .background(
+                                color = if (isDraggingSubtitle) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                } else {
+                                    subtitlePrefsState.backgroundColor
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .border(
+                                width = if (isDraggingSubtitle) 2.dp else 1.dp,
+                                color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .pointerInput(parentHeightPx, subtitlePrefsState.verticalOffset) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        isDraggingSubtitle = true
+                                        localSubtitleOffset = subtitlePrefsState.verticalOffset
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        val delta = dragAmount.y / parentHeightPx
+                                        val current = localSubtitleOffset ?: subtitlePrefsState.verticalOffset
+                                        localSubtitleOffset = (current + delta).coerceIn(0.01f, 1.0f)
+                                    },
+                                    onDragEnd = {
+                                        isDraggingSubtitle = false
+                                        localSubtitleOffset?.let { finalOffset ->
+                                            scope.launch {
+                                                subPrefsManager.savePreferences(subtitlePrefsState.copy(verticalOffset = finalOffset))
+                                            }
+                                        }
+                                        localSubtitleOffset = null
+                                    },
+                                    onDragCancel = {
+                                        isDraggingSubtitle = false
+                                        localSubtitleOffset = null
+                                    }
+                                )
+                            }
+                            .clickable {
+                                isSubtitleCustomizationOpen = true
+                            }
+                            .padding(horizontal = 18.dp, vertical = 10.dp)
+                            .testTag("custom_subtitle_text")
+                    )
+                }
             }
         }
 
@@ -2102,7 +2143,7 @@ fun PlayerScreen(
                                 thumbColor = Color(0xFF00C8FF),
                                 activeTrackColor = Color(0xFF00C8FF)
                             ),
-                            valueRange = 0.1f..0.98f
+                            valueRange = 0.1f..1.0f
                         )
 
                         Spacer(modifier = Modifier.height(10.dp))
