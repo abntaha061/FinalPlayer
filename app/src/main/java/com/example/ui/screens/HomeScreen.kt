@@ -16,6 +16,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.delay
 import androidx.compose.material.icons.Icons
@@ -100,7 +103,7 @@ fun HomeScreen(
         }
     }
 
-    var selectedBottomTab by remember { mutableStateOf(0) } // 0 = Videos, 1 = Music, 2 = Settings
+    var selectedBottomTab by remember { mutableStateOf(0) } // 0 = Videos, 1 = Music, 2 = Vault, 3 = Settings
     var selectedSubTabIndex by remember { mutableStateOf(0) } // 0 = Videos, 1 = Favorites/Playlists, 2 = Vault
 
     // Display & sorting configurations
@@ -145,7 +148,7 @@ fun HomeScreen(
             selectedPaths.clear()
         } else if (selectedFolderPath != null) {
             viewModel.setSelectedFolderPath(null)
-        } else if (selectedBottomTab == 1 || selectedBottomTab == 2) {
+        } else if (selectedBottomTab in listOf(1, 2, 3)) {
             selectedBottomTab = 0
         } else {
             val currentTime = System.currentTimeMillis()
@@ -160,7 +163,7 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            if (selectedBottomTab != 2) {
+            if (selectedBottomTab != 2 && selectedBottomTab != 3) {
                 Column(modifier = Modifier.background(currentAccentColor)) {
                      CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
                         if (selectedPaths.isNotEmpty()) {
@@ -411,8 +414,19 @@ fun HomeScreen(
                         NavigationBarItem(
                             selected = selectedBottomTab == 2,
                             onClick = { selectedBottomTab = 2 },
-                            icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 2, "Settings", currentAccentColor) },
-                            label = { Text("الإعدادات", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 2) FontWeight.Bold else FontWeight.Normal) },
+                            icon = { RedCircleIcon(Icons.Default.Lock, selectedBottomTab == 2, "Vault", currentAccentColor) },
+                            label = { Text("الخزنة السرية", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 2) FontWeight.Bold else FontWeight.Normal) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent,
+                                selectedIconColor = Color.Unspecified,
+                                unselectedIconColor = Color.Unspecified
+                            )
+                        )
+                        NavigationBarItem(
+                            selected = selectedBottomTab == 3,
+                            onClick = { selectedBottomTab = 3 },
+                            icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 3, "Settings", currentAccentColor) },
+                            label = { Text("الإعدادات", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 3) FontWeight.Bold else FontWeight.Normal) },
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = Color.Transparent,
                                 selectedIconColor = Color.Unspecified,
@@ -556,13 +570,11 @@ fun HomeScreen(
                                 onCreatePlaylist = { isPlaylistModalVisible = true },
                                 viewModel = viewModel
                             )
-                            2 -> PrivateVaultTab(
-                                privateFiles = privateFilesList,
-                                isLocked = isPrivateLocked,
+                            2 -> MainVaultTabScreen(
+                                viewModel = viewModel,
                                 onPlayFile = onPlayFile,
-                                onGoSetup = { isPasscodeSetupDialogVisible = true },
-                                onGoUnlock = { isPasscodeUnlockDialogVisible = true },
-                                viewModel = viewModel
+                                accentColor = currentAccentColor,
+                                onBackToMainMenu = { selectedBottomTab = 0 }
                             )
                         }
                     }
@@ -571,7 +583,15 @@ fun HomeScreen(
                         onPlayFile = onPlayFile,
                         viewModel = viewModel
                     )
-                    2 -> SettingsScreen(
+                    2 -> {
+                        MainVaultTabScreen(
+                            viewModel = viewModel,
+                            onPlayFile = onPlayFile,
+                            accentColor = currentAccentColor,
+                            onBackToMainMenu = { selectedBottomTab = 0 }
+                        )
+                    }
+                    3 -> SettingsScreen(
                         viewModel = viewModel,
                         onPlayFile = onPlayFile,
                         onBack = { selectedBottomTab = 0 }
@@ -1148,7 +1168,12 @@ fun formatVideosCountArabic(count: Int): String {
 }
 
 @Composable
-fun MXFolderIcon(folderName: String, filesCount: Int, isSelected: Boolean = false) {
+fun MXFolderIcon(
+    folderName: String,
+    filesCount: Int,
+    isSelected: Boolean = false,
+    accentColor: Color = Color(0xFFFF3333)
+) {
     val darkGrey = Color(0xFF4C5059) // Silver-grey/dark silver color of MX folder
     val iconColor = Color(0xFF8E95A5) // Light grey color for camera/movie icon inside the folder
 
@@ -1167,7 +1192,7 @@ fun MXFolderIcon(folderName: String, filesCount: Int, isSelected: Boolean = fals
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(6.dp)),
+                    .background(accentColor, shape = RoundedCornerShape(6.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -1205,22 +1230,33 @@ fun MXFolderIcon(folderName: String, filesCount: Int, isSelected: Boolean = fals
             }
         }
 
-        // Red count badge at the top-right of the folder icon, overlapping exactly like MX Player
+        // Beautiful badge count displayed as a perfect circle (or pill for multi-digits), aligned & color-synced
         if (filesCount > 0 && !isSelected) {
             Box(
                 modifier = Modifier
-                    .size(18.dp)
-                    .background(Color(0xFFFF3333), shape = CircleShape)
                     .align(Alignment.TopEnd)
-                    .offset(x = 4.dp, y = (-2).dp),
+                    .offset(x = 6.dp, y = (-4).dp)
+                    .widthIn(min = 18.dp)
+                    .height(18.dp)
+                    .background(accentColor, shape = RoundedCornerShape(50))
+                    .padding(horizontal = 4.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = filesCount.toString(),
-                    color = Color.White,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
+                    Text(
+                        text = filesCount.toString(),
+                        color = Color.White,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        style = androidx.compose.ui.text.TextStyle(
+                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                includeFontPadding = false
+                            )
+                        )
+                    )
+                }
             }
         }
     }
@@ -1259,6 +1295,9 @@ fun VideosAndFoldersTab(
     var videoToRename by remember { mutableStateOf<MediaFile?>(null) }
     var newNameText by remember { mutableStateOf("") }
     var videoToDelete by remember { mutableStateOf<MediaFile?>(null) }
+
+    val themeColorHex by viewModel.themeColorHexState.collectAsState()
+    val accentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
 
     // Derive folders list if database list is empty as a failover
     val derivedFoldersList = remember(videoList, scannedFolders) {
@@ -1387,7 +1426,7 @@ fun VideosAndFoldersTab(
                                     it.isNew && java.io.File(it.path).parentFile?.absolutePath == folder.folderPath
                                 }
                             }
-                            MXFolderIcon(folderName = folderName, filesCount = folderNewVideosCount, isSelected = selectedPaths.contains(folder.folderPath))
+                            MXFolderIcon(folderName = folderName, filesCount = folderNewVideosCount, isSelected = selectedPaths.contains(folder.folderPath), accentColor = accentColor)
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1512,12 +1551,13 @@ fun VideosAndFoldersTab(
                                                 .align(Alignment.TopStart)
                                                 .padding(4.dp)
                                                 .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
-                                                .padding(horizontal = 4.dp, vertical = 0.dp)
+                                                .padding(horizontal = 4.dp, vertical = 1.5.dp), contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = "NEW",
                                                 color = Color.White,
                                                 fontSize = 7.5.sp,
+                                                style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
@@ -1621,12 +1661,13 @@ fun VideosAndFoldersTab(
                                             Box(
                                                 modifier = Modifier
                                                     .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 2.dp, vertical = 0.dp)
+                                                    .padding(horizontal = 4.dp, vertical = 2.dp), contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
                                                     text = "SRT",
                                                     color = Color.White,
                                                     fontSize = 7.5.sp,
+                                                    style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
@@ -1646,12 +1687,13 @@ fun VideosAndFoldersTab(
                                             Box(
                                                 modifier = Modifier
                                                     .background(Color(0xFF34C759), RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 2.dp, vertical = 0.dp)
+                                                    .padding(horizontal = 4.dp, vertical = 2.dp), contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
                                                     text = resolutionText,
                                                     color = Color.White,
                                                     fontSize = 7.5.sp,
+                                                    style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
@@ -1999,12 +2041,13 @@ fun VideoGridItem(
                             .align(Alignment.TopStart)
                             .padding(4.dp)
                             .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
-                            .padding(horizontal = 4.dp, vertical = 0.dp)
+                            .padding(horizontal = 4.dp, vertical = 1.5.dp), contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "NEW",
                             color = Color.White,
                             fontSize = 7.5.sp,
+                            style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -2104,12 +2147,13 @@ fun VideoGridItem(
                             Box(
                                 modifier = Modifier
                                     .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
-                                    .padding(horizontal = 2.dp, vertical = 0.dp)
+                                    .padding(horizontal = 4.dp, vertical = 2.dp), contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = "SRT",
                                     color = Color.White,
                                     fontSize = 7.5.sp,
+                                    style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -2130,12 +2174,13 @@ fun VideoGridItem(
                             Box(
                                 modifier = Modifier
                                     .background(Color(0xFF34C759), RoundedCornerShape(2.dp))
-                                    .padding(horizontal = 2.dp, vertical = 0.dp)
+                                    .padding(horizontal = 4.dp, vertical = 2.dp), contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = resolutionText,
                                     color = Color.White,
                                     fontSize = 7.5.sp,
+                                    style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -3199,4 +3244,533 @@ fun FolderPickerDialog(
             }
         }
     )
+}
+
+// ========================================================
+// --- FULLY IMMERSIVE DEDICATED PRIVATE VAULT PLATFORM ---
+// ========================================================
+@Composable
+fun MainVaultTabScreen(
+    viewModel: com.example.ui.MediaViewModel,
+    onPlayFile: (String) -> Unit,
+    accentColor: Color,
+    onBackToMainMenu: () -> Unit
+) {
+    val privateFiles by viewModel.privateFiles.collectAsState(initial = emptyList())
+    val isPrivateLocked by viewModel.isPrivateFolderLocked.collectAsState()
+    
+    // Track passcode status reactively if user saves/modifies it
+    var passcodeTrigger by remember { mutableStateOf(0) }
+    val hasPasscode = remember(isPrivateLocked, passcodeTrigger) { 
+        viewModel.getPasscode() != null 
+    }
+    
+    var localViewState by remember { mutableStateOf("") }
+    
+    val resolvedState = remember(hasPasscode, isPrivateLocked, localViewState) {
+        if (localViewState.isNotEmpty()) {
+            localViewState
+        } else {
+            if (!hasPasscode) {
+                "landing"
+            } else if (isPrivateLocked) {
+                "keypad_unlock"
+            } else {
+                "dashboard"
+            }
+        }
+    }
+    
+    var keypadErrorText by remember { mutableStateOf<String?>(null) }
+    
+    when (resolvedState) {
+        "landing" -> {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Box(
+                    modifier = Modifier
+                        .size(110.dp)
+                        .clip(CircleShape)
+                        .background(accentColor.copy(alpha = 0.15f))
+                        .border(2.dp, accentColor.copy(alpha = 0.3f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Shield SECURE",
+                        tint = accentColor,
+                        modifier = Modifier.size(56.dp)
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Text(
+                    text = "مركز النواة السرية (Secure Vault Hub) 🛡️",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = "مساحة آمنة ومعزولة تماماً في ذاكرة النظام الداخلية لحفظ مقاطع الفيديو الخاصة والحساسة بعيداً عن أيدي الفضوليين والمعرض العام لهاتفك.",
+                    fontSize = 12.5.sp,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Icon(Icons.Default.VerifiedUser, contentDescription = "Shield", tint = Color(0xFF34C759), modifier = Modifier.size(20.dp))
+                            Column {
+                                Text("تأمين بـ PIN خاص", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, color = Color.White)
+                                Text("نظام رقمي كامل يمنع أي متسلل من استعراض محتوى الخزنة.", fontSize = 11.sp, color = Color.Gray)
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Icon(Icons.Default.VisibilityOff, contentDescription = "Private", tint = Color(0xFFFF9500), modifier = Modifier.size(20.dp))
+                            Column {
+                                Text("إخفاء كامل من نظام الهاتف", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, color = Color.White)
+                                Text("تتم إزالة الفيديوهات فوراً من الاستوديو وتخزينها تحت تشفير معزول.", fontSize = 11.sp, color = Color.Gray)
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Icon(Icons.Default.LockClock, contentDescription = "Clock Auto Lock", tint = Color(0xFF30B0C7), modifier = Modifier.size(20.dp))
+                            Column {
+                                Text("إغلاق فوري تلقائي", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, color = Color.White)
+                                Text("عند الخروج من التطبيق أو غلقه، تقفل الخزنة تلقائياً من جديد للحفاظ على سرية ملفاتك.", fontSize = 11.sp, color = Color.Gray)
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                Button(
+                    onClick = { localViewState = "keypad_setup" },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("vault_full_setup_trigger"),
+                    colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("تعيين رمز PIN والتفعيل الآن 🔒", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+        "keypad_setup" -> {
+            VaultKeypad(
+                title = "تعيين رمز PIN الجديد للخزنة",
+                subtitle = "الرجاء كتابة رمز قفل مكون من 4 أرقام لتأمين خزنتك السرية",
+                accentColor = accentColor,
+                errorText = keypadErrorText,
+                onPinEntered = { enteredPin ->
+                    if (enteredPin.length == 4) {
+                        viewModel.savePasscode(enteredPin)
+                        keypadErrorText = null
+                        passcodeTrigger++
+                        localViewState = "dashboard"
+                    } else {
+                        keypadErrorText = "يجب أن يتكون الرمز من 4 أرقام!"
+                    }
+                },
+                onBack = {
+                    keypadErrorText = null
+                    if (viewModel.getPasscode() != null) {
+                        localViewState = "dashboard"
+                    } else {
+                        localViewState = "landing"
+                    }
+                }
+            )
+        }
+        "keypad_unlock" -> {
+            VaultKeypad(
+                title = "الخزنة السرية مقفلة",
+                subtitle = "الرجاء إدخال رمز PIN المكون من 4 أرقام لفتح الخزنة واستعراض ملفاتك",
+                accentColor = accentColor,
+                errorText = keypadErrorText,
+                onPinEntered = { enteredPin ->
+                    if (viewModel.unlockPrivateFolder(enteredPin)) {
+                        keypadErrorText = null
+                        localViewState = "dashboard"
+                    } else {
+                        keypadErrorText = "رمز الـ PIN الذي أدخلته غير صحيح! حاول مرة أخرى"
+                    }
+                },
+                onBack = {
+                    keypadErrorText = null
+                    onBackToMainMenu()
+                }
+            )
+        }
+        "dashboard" -> {
+            var searchQuery by remember { mutableStateOf("") }
+            var sortBy by remember { mutableStateOf("date") } // "date", "title", "size"
+            var showDeleteConfirmByFile by remember { mutableStateOf<MediaFile?>(null) }
+
+            val filteredFiles = remember(privateFiles, searchQuery, sortBy) {
+                var list = privateFiles.filter { 
+                    it.title.contains(searchQuery, ignoreCase = true)
+                }
+                when (sortBy) {
+                    "title" -> list = list.sortedBy { it.title }
+                    "size" -> list = list.sortedByDescending { it.size }
+                    "date" -> list = list.sortedByDescending { it.dateModified }
+                }
+                list
+            }
+
+            val totalSize = remember(privateFiles) {
+                privateFiles.sumOf { it.size }
+            }
+
+            val formattedTotalSize = remember(totalSize) {
+                val mb = totalSize / (1024f * 1024f)
+                if (mb > 1024) {
+                    "%.2f GB".format(mb / 1024f)
+                } else {
+                    "%.1f MB".format(mb)
+                }
+            }
+
+            // Confirm permanent deletion alert
+            showDeleteConfirmByFile?.let { mediaToDelete ->
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirmByFile = null },
+                    title = { Text("حذف فيديو خاص نهائياً", fontWeight = FontWeight.Bold, color = Color.Red, fontSize = 16.sp) },
+                    text = {
+                        Text("هل أنت متأكد من رغبتك في حذف مقطع الفيديو الخاص هذا (${mediaToDelete.title}) بشكل نهائي ومغلق من على جهازك؟ لا يمكن التراجع عن هذه الخطوة.", fontSize = 13.5.sp)
+                    },
+                    confirmButton = {
+                        Button(
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                            onClick = {
+                                showDeleteConfirmByFile = null
+                                viewModel.deletePaths(listOf(mediaToDelete.path)) {}
+                            }
+                        ) {
+                            Text("حذف نهائي", color = Color.White)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteConfirmByFile = null }) {
+                            Text("إلغاء")
+                        }
+                    }
+                )
+            }
+
+            Scaffold(
+                topBar = {
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    TopAppBar(
+                        title = { 
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Safe",
+                                    tint = accentColor,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "مستودع الخزنة الخاصة",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        },
+                        actions = {
+                            // Quick Action Buttons
+                            TextButton(onClick = { 
+                                localViewState = "keypad_setup" 
+                            }) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Default.VpnKey, contentDescription = "Change PIN", tint = accentColor, modifier = Modifier.size(16.dp))
+                                    Text("تغيير PIN", color = accentColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            IconButton(onClick = { 
+                                viewModel.lockPrivateFolder()
+                                localViewState = "keypad_unlock"
+                            }) {
+                                Icon(Icons.Default.Lock, contentDescription = "Lock", tint = Color(0xFFFF5252))
+                            }
+                        }
+                    )
+                },
+                containerColor = MaterialTheme.colorScheme.background
+            ) { paddingValues ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                        .padding(horizontal = 16.dp)
+                ) {
+                    // Analytics stats panel
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("الملفات المحمية", fontSize = 10.5.sp, color = Color.Gray)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("${privateFiles.size} فيديو", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                            }
+                        }
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("إجمالي السعة المشغولة", fontSize = 10.5.sp, color = Color.Gray)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(formattedTotalSize, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                            }
+                        }
+                    }
+
+                    // Security Certificate
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF34C759).copy(alpha = 0.08f)),
+                        border = BorderStroke(1.dp, Color(0xFF34C759).copy(alpha = 0.2f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Security, contentDescription = "Verified Status", tint = Color(0xFF34C759), modifier = Modifier.size(20.dp))
+                            Text(
+                                text = "حصانة برمجية كاملة: الملفات معزولة ومحمية محلياً بنجاح.",
+                                fontSize = 10.5.sp,
+                                color = Color(0xFF34C759)
+                            )
+                        }
+                    }
+
+                    // Toolbar action search & sorting
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("ابحث بالاسم هنا...", fontSize = 12.sp) },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(18.dp)) },
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+
+                        // Sort Menu Dropdown
+                        Box {
+                            var showSortMenu by remember { mutableStateOf(false) }
+                            Button(
+                                onClick = { showSortMenu = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.height(48.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Default.Sort, contentDescription = "Sort Icon", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(16.dp))
+                                    Text(
+                                        text = when(sortBy) {
+                                            "date" -> "الأحدث"
+                                            "title" -> "الاسم"
+                                            "size" -> "الحجم"
+                                            else -> "فرز"
+                                        },
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("الأحدث 📅", fontSize = 12.sp) },
+                                    onClick = { sortBy = "date"; showSortMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("الاسم أ-ي 🔤", fontSize = 12.sp) },
+                                    onClick = { sortBy = "title"; showSortMenu = false }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("الحجم الأكبر 💾", fontSize = 12.sp) },
+                                    onClick = { sortBy = "size"; showSortMenu = false }
+                                )
+                            }
+                        }
+                    }
+
+                    // Secured Videos List
+                    if (filteredFiles.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Info, contentDescription = "Empty", tint = accentColor.copy(alpha = 0.3f), modifier = Modifier.size(56.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = if (searchQuery.isNotEmpty()) "لا توجد نتائج مطابقة لبحثك!" 
+                                           else "الخزنة فارغة حالياً!\n\nلتأمين الفيديوهات اضغط على زر الخيارات (3 نقاط) لأي فيديو في تبويب الفيديوهات واختر \"نقل إلى الخزنة\".",
+                                    fontSize = 12.5.sp,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 18.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(bottom = 12.dp)
+                        ) {
+                            items(filteredFiles, key = { it.id }) { file ->
+                                val thumbnail = rememberVideoThumbnail(file.path)
+                                val sizeMb = file.size / (1024f * 1024f)
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Visual thumbnail cover
+                                        Box(
+                                            modifier = Modifier
+                                                .size(90.dp, 58.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color.Black.copy(alpha = 0.3f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (thumbnail != null) {
+                                                Image(
+                                                    bitmap = thumbnail,
+                                                    contentDescription = "Cover",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayArrow,
+                                                    contentDescription = "Default Play",
+                                                    tint = accentColor.copy(alpha = 0.6f),
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+
+                                            if (file.duration > 0) {
+                                                val totalSec = file.duration / 1000
+                                                val min = totalSec / 60
+                                                val sec = totalSec % 60
+                                                val durFormatted = "%02d:%02d".format(min, sec)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomEnd)
+                                                        .padding(2.dp)
+                                                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(2.dp))
+                                                        .padding(horizontal = 3.dp, vertical = 1.dp)
+                                                ) {
+                                                    Text(durFormatted, fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        // Text titles
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = file.title,
+                                                fontSize = 12.2.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "الحجم: %.1f MB".format(sizeMb),
+                                                fontSize = 10.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+
+                                        // Play action button
+                                        IconButton(
+                                            onClick = { onPlayFile(file.path) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color(0xFF34C759), modifier = Modifier.size(22.dp))
+                                        }
+
+                                        // Unlocks / Restore from vault
+                                        IconButton(
+                                            onClick = { viewModel.setPrivateStatus(file, false) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.LockOpen, contentDescription = "Restore", tint = accentColor, modifier = Modifier.size(18.dp))
+                                        }
+
+                                        // Permanently delete
+                                        IconButton(
+                                            onClick = { showDeleteConfirmByFile = file },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFFF4D4D), modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
