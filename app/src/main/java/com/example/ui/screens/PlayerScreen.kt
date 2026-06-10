@@ -600,6 +600,25 @@ fun PlayerScreen(
                 videoWidth = videoSize.width
                 videoHeight = videoSize.height
             }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                error.printStackTrace()
+                val message = when (error.errorCode) {
+                    androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> 
+                        "⚠️ خطأ في فك تشفير الفيديو: جهازك قد لا يدعم ترميز هذا الفيديو أو الدقة عالية جداً."
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> 
+                        "⚠️ لم يتم العثور على الملف! يبدو أنه تم حذفه أو نقله من مكانه الأصلي."
+                    else -> "⚠️ تعذر تشغيل هذا الملف: ${error.localizedMessage ?: "تنسيق غير مدعوم أو تالف"}"
+                }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                
+                // Fallback attempt: if HW decoration initialized poorly, change states to reset
+                if (error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED && !isHWAccelActive) {
+                    isHWAccelActive = true
+                }
+            }
         }
         player.addListener(listener)
         player.setPlaybackSpeed(speedMultiplier)

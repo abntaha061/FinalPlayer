@@ -2813,34 +2813,124 @@ fun PrivateVaultTab(
                             .weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("الخزنة فارغة حالياً. أضف مقاطع إليها لحمايتها.", color = Color.Gray)
+                        Text(
+                            text = "الخزنة فارغة حالياً.\nلتأمين الفيديوهات اضغط على (3 نقاط) لأي فيديو في تبويب الفيديوهات واختر \"نقل إلى الخزنة\".",
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.weight(1f)) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
                         items(privateFiles) { target ->
-                            Row(
+                            val thumbnail = rememberVideoThumbnail(target.path)
+                            val sizeMb = target.size / (1024f * 1024f)
+                            
+                            Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 5.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                                    .clickable { onPlayFile(target.path) }
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .clickable { onPlayFile(target.path) },
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
                             ) {
-                                Icon(Icons.Default.Lock, contentDescription = "Secure status option icon", tint = Color.Red)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    target.title,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                // Withdraw item from vault button
-                                IconButton(onClick = { viewModel.setPrivateStatus(target, false) }) {
-                                    Icon(Icons.Default.LockOpen, contentDescription = "Unlock status trigger icon", tint = Color.Green)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Thumbnail container
+                                    Box(
+                                        modifier = Modifier
+                                            .size(80.dp, 52.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color.Black.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (thumbnail != null) {
+                                            androidx.compose.foundation.Image(
+                                                bitmap = thumbnail,
+                                                contentDescription = "Thumbnail",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = "Play Icon",
+                                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+
+                                        if (target.duration > 0) {
+                                            val totalSec = target.duration / 1000
+                                            val min = totalSec / 60
+                                            val sec = totalSec % 60
+                                            val durFormatted = "%02d:%02d".format(min, sec)
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .padding(2.dp)
+                                                    .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = durFormatted,
+                                                    fontSize = 8.sp,
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    // Title & Size Detail
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = target.title,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "الحجم: %.1f MB".format(sizeMb),
+                                            fontSize = 10.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
+
+                                    // Action keys
+                                    IconButton(
+                                        onClick = { onPlayFile(target.path) },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Play Video",
+                                            tint = Color(0xFF34C759)
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = { viewModel.setPrivateStatus(target, false) },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.LockOpen,
+                                            contentDescription = "Restore File",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                             }
                         }

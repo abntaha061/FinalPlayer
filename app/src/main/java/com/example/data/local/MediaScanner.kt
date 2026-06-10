@@ -143,7 +143,8 @@ class MediaScanner(private val mediaDao: MediaDao) {
 
                 if (size < 1024) continue // ignore small corrupt assets less than 1KB
 
-                if (ext == "mp4" || ext == "mkv" || ext == "webm" || ext == "avi" || ext == "3gp" || ext == "flv") {
+                if (ext == "mp4" || ext == "mkv" || ext == "webm" || ext == "avi" || ext == "3gp" || ext == "flv" || ext == "ts") {
+                    if (shouldExcludeVideoFile(path)) continue
                     val dateModified = file.lastModified()
                     val title = file.nameWithoutExtension
 
@@ -221,6 +222,21 @@ class MediaScanner(private val mediaDao: MediaDao) {
                lowerPath.contains("recording")
     }
 
+    private fun shouldExcludeVideoFile(path: String): Boolean {
+        if (path.contains("SecureVault")) return false // do not filter vault files
+        val lowerPath = path.lowercase()
+        return lowerPath.contains("_temp_") || 
+               lowerPath.contains("temp_") || 
+               lowerPath.contains("temp_segments") || 
+               lowerPath.contains("temp-segments") ||
+               lowerPath.contains(".mp4_temp_") ||
+               lowerPath.contains("segment") ||
+               lowerPath.contains(".cache") ||
+               lowerPath.contains("/cache/") ||
+               (lowerPath.contains(".ts") && (lowerPath.contains("seg") || lowerPath.contains("chunk"))) ||
+               (lowerPath.contains("idm") && lowerPath.contains("temp"))
+    }
+
     private suspend fun refreshFoldersFromDb() {
         try {
             // Recalculate directories according to the media files currently stored
@@ -277,6 +293,7 @@ class MediaScanner(private val mediaDao: MediaDao) {
 
                 while (cursor.moveToNext()) {
                     val rawPath = cursor.getString(dataCol) ?: continue
+                    if (shouldExcludeVideoFile(rawPath)) continue
                     val file = File(rawPath)
                     val path = try { file.canonicalPath } catch (e: Exception) { file.absolutePath }
                     val dateMod = cursor.getLong(dateModCol) * 1000L
