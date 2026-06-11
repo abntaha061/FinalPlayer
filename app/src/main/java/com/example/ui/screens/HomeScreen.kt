@@ -52,8 +52,13 @@ import com.example.ui.MediaViewModel
 import com.example.ui.components.TrackArtwork
 import java.io.File
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -1252,6 +1257,12 @@ fun MXFolderIcon(
     }
 }
 
+private data class FolderStats(
+    val filesCount: Int,
+    val totalBytes: Long,
+    val newVideosCount: Int
+)
+
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun VideosAndFoldersTab(
@@ -1288,6 +1299,23 @@ fun VideosAndFoldersTab(
 
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
     val accentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
+
+    val folderStatsMap = remember(videoList) {
+        val statsMap = mutableMapOf<String, FolderStats>()
+        videoList.groupBy { video ->
+            val path = video.path
+            val lastSlash = path.lastIndexOf('/')
+            if (lastSlash > 0) path.substring(0, lastSlash) else ""
+        }.forEach { (parentFolderPath, list) ->
+            if (parentFolderPath.isNotEmpty()) {
+                val filesCount = list.size
+                val totalBytes = list.sumOf { it.size }
+                val newVideosCount = list.count { it.isNew }
+                statsMap[parentFolderPath] = FolderStats(filesCount, totalBytes, newVideosCount)
+            }
+        }
+        statsMap
+    }
 
     // Derive folders list if database list is empty as a failover
     val derivedFoldersList = remember(videoList, scannedFolders) {
@@ -1373,16 +1401,11 @@ fun VideosAndFoldersTab(
                     }
                 }
             } else {
-                items(derivedFoldersList) { folder ->
+                items(derivedFoldersList, key = { it.folderPath }) { folder ->
                     val folderName = File(folder.folderPath).name
-                    val filesCount = videoList.count { 
-                        val p = File(it.path).parentFile?.absolutePath
-                        p == folder.folderPath
-                    }
-                    val totalBytes = videoList.filter { 
-                        val p = File(it.path).parentFile?.absolutePath
-                        p == folder.folderPath
-                    }.sumOf { it.size }
+                    val stats = folderStatsMap[folder.folderPath] ?: FolderStats(0, 0, 0)
+                    val filesCount = stats.filesCount
+                    val totalBytes = stats.totalBytes
 
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         Row(
@@ -1411,11 +1434,7 @@ fun VideosAndFoldersTab(
                                 .padding(vertical = 12.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val folderNewVideosCount = remember(videoList, folder.folderPath) {
-                                videoList.count { 
-                                    it.isNew && java.io.File(it.path).parentFile?.absolutePath == folder.folderPath
-                                }
-                            }
+                            val folderNewVideosCount = stats.newVideosCount
                             MXFolderIcon(folderName = folderName, filesCount = folderNewVideosCount, isSelected = selectedPaths.contains(folder.folderPath), accentColor = accentColor)
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -1476,7 +1495,7 @@ fun VideosAndFoldersTab(
             } else {
                 // Determine whether to show LIST layout or GRID layout in chunked rows
                 if (layoutMode == "LIST") {
-                    items(displayVideos) { video ->
+                    items(displayVideos, key = { it.path }) { video ->
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Row(
                                 modifier = Modifier
@@ -1760,8 +1779,8 @@ fun VideosAndFoldersTab(
                     // Modern 2-Column Grid Layout Chunk implementation avoiding nested lists error
                     val columns = 2
                     val videoChunks = displayVideos.chunked(columns)
-                    videoChunks.forEach { chunk ->
-                        item {
+                    videoChunks.forEachIndexed { idx, chunk ->
+                        item(key = chunk.firstOrNull()?.path ?: "chunk_$idx") {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -2360,98 +2379,100 @@ fun MusicPlayerTab(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(sortedList) { track ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
-                                .clickable { onPlayFile(track.path) }
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // 1. Right side: Artwork
-                            TrackArtwork(
-                                filePath = track.path,
+                    itemsIndexed(sortedList, key = { _, track -> track.path }) { index, track ->
+                        TrackEntranceTransition(key = track.path, index = index) {
+                            Row(
                                 modifier = Modifier
-                                    .size(54.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                            )
-                            Spacer(modifier = Modifier.width(14.dp))
-
-                            // 2. Center: Artist & Title
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = track.title,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                                    .clickable { onPlayFile(track.path) }
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 1. Right side: Artwork
+                                TrackArtwork(
+                                    filePath = track.path,
+                                    modifier = Modifier
+                                        .size(54.dp)
+                                        .clip(RoundedCornerShape(12.dp))
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = track.artist ?: "فنان غير معروف",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color(0xFF00C8FF), // Beautiful cyan/teal from PureSonic screenshots!
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                                Spacer(modifier = Modifier.width(14.dp))
 
-                            // 3. Left side: Duration & Actions
-                            val durationSec = track.duration / 1000
-                            val durationStr = "%02d:%02d".format(durationSec / 60, durationSec % 60)
-                            Text(
-                                text = durationStr,
-                                fontSize = 11.sp,
-                                color = Color.Gray,
-                                modifier = Modifier.padding(horizontal = 6.dp)
-                            )
-
-                            // Favorite toggle menu or playlist actions
-                            var isTrackMenuExpanded by remember { mutableStateOf(false) }
-                            Box {
-                                IconButton(onClick = { isTrackMenuExpanded = true }) {
-                                    Icon(
-                                        imageVector = Icons.Default.MoreVert,
-                                        contentDescription = "Track Actions Menu",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                // 2. Center: Artist & Title
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = track.title,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = track.artist ?: "فنان غير معروف",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFF00C8FF), // Beautiful cyan/teal from PureSonic screenshots!
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
-                                DropdownMenu(
-                                    expanded = isTrackMenuExpanded,
-                                    onDismissRequest = { isTrackMenuExpanded = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(if (track.isFavorite) "إزالة من المفضلة" else "إضافة للمفضلة") },
-                                        leadingIcon = {
-                                            Icon(
-                                                if (track.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                                contentDescription = null,
-                                                tint = if (track.isFavorite) Color.Red else Color.Gray
-                                            )
-                                        },
-                                        onClick = {
-                                            viewModel.toggleFavorite(track)
-                                            isTrackMenuExpanded = false
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("إضافة إلى قائمة تشغيل") },
-                                        leadingIcon = {
-                                            Icon(
-                                                Icons.Default.PlaylistAdd,
-                                                contentDescription = null
-                                            )
-                                        },
-                                        onClick = {
-                                            selectedTrackPathForPlaylist = track.path
-                                            showDialogForPlaylistSelection = true
-                                            isTrackMenuExpanded = false
-                                        }
-                                    )
+
+                                // 3. Left side: Duration & Actions
+                                val durationSec = track.duration / 1000
+                                val durationStr = "%02d:%02d".format(durationSec / 60, durationSec % 60)
+                                Text(
+                                    text = durationStr,
+                                    fontSize = 11.sp,
+                                    color = Color.Gray,
+                                    modifier = Modifier.padding(horizontal = 6.dp)
+                                )
+
+                                // Favorite toggle menu or playlist actions
+                                var isTrackMenuExpanded by remember { mutableStateOf(false) }
+                                Box {
+                                    IconButton(onClick = { isTrackMenuExpanded = true }) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "Track Actions Menu",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = isTrackMenuExpanded,
+                                        onDismissRequest = { isTrackMenuExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(if (track.isFavorite) "إزالة من المفضلة" else "إضافة للمفضلة") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    if (track.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                                    contentDescription = null,
+                                                    tint = if (track.isFavorite) Color.Red else Color.Gray
+                                                )
+                                            },
+                                            onClick = {
+                                                viewModel.toggleFavorite(track)
+                                                isTrackMenuExpanded = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("إضافة إلى قائمة تشغيل") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.PlaylistAdd,
+                                                    contentDescription = null
+                                                )
+                                            },
+                                            onClick = {
+                                                selectedTrackPathForPlaylist = track.path
+                                                showDialogForPlaylistSelection = true
+                                                isTrackMenuExpanded = false
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -3765,5 +3786,45 @@ fun MainVaultTabScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun TrackEntranceTransition(
+    key: Any,
+    index: Int,
+    content: @Composable () -> Unit
+) {
+    var isVisible by remember(key) { mutableStateOf(false) }
+    LaunchedEffect(key) {
+        isVisible = true
+    }
+    val alpha by animateFloatAsState(
+        targetValue = if (isVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+        label = "alpha"
+    )
+    // Alternate entrance side based on index for a highly professional, staggered effect!
+    val startOffsetX = if (index % 2 == 0) 70f else -70f
+    val translationX by animateFloatAsState(
+        targetValue = if (isVisible) 0f else startOffsetX,
+        animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
+        label = "translationX"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (isVisible) 1f else 0.95f,
+        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+        label = "scale"
+    )
+
+    Box(
+        modifier = Modifier.graphicsLayer {
+            this.alpha = alpha
+            this.translationX = translationX
+            this.scaleX = scale
+            this.scaleY = scale
+        }
+    ) {
+        content()
     }
 }
