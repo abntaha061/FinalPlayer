@@ -1745,7 +1745,7 @@ fun VideosAndFoldersTab(
                                     )
                                     DropdownMenuItem(
                                         text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
-                                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
                                         onClick = {
                                             isMenuExpanded = false
                                             viewModel.setPrivateStatus(video, true)
@@ -2216,7 +2216,7 @@ fun VideoGridItem(
                             )
                             DropdownMenuItem(
                                 text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
-                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
                                 onClick = {
                                     isMenuExpanded = false
                                     onVaultClick()
@@ -2840,7 +2840,7 @@ fun PrivateVaultTab(
                         color = MaterialTheme.colorScheme.primary
                     )
                     IconButton(onClick = { viewModel.lockPrivateFolder() }) {
-                        Icon(Icons.Default.Lock, contentDescription = "Lock vault", tint = Color.Red)
+                        Icon(Icons.Default.ExitToApp, contentDescription = "Lock vault", tint = Color.Red)
                     }
                 }
 
@@ -2964,7 +2964,7 @@ fun PrivateVaultTab(
                                         modifier = Modifier.size(36.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.LockOpen,
+                                            imageVector = Icons.Default.Visibility,
                                             contentDescription = "Restore File",
                                             tint = MaterialTheme.colorScheme.primary
                                         )
@@ -3296,8 +3296,8 @@ fun MainVaultTabScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Shield SECURE",
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = "Private Folder",
                         tint = accentColor,
                         modifier = Modifier.size(56.dp)
                     )
@@ -3306,7 +3306,7 @@ fun MainVaultTabScreen(
                 Spacer(modifier = Modifier.height(24.dp))
                 
                 Text(
-                    text = "مركز النواة السرية (Secure Vault Hub) 🛡️",
+                    text = "المجلد الخاص (Private Folder)",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                     color = Color.White,
@@ -3336,7 +3336,7 @@ fun MainVaultTabScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Icon(Icons.Default.VerifiedUser, contentDescription = "Shield", tint = Color(0xFF34C759), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.CheckCircle, contentDescription = "Verified", tint = Color(0xFF34C759), modifier = Modifier.size(20.dp))
                             Column {
                                 Text("تأمين بـ PIN خاص", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, color = Color.White)
                                 Text("نظام رقمي كامل يمنع أي متسلل من استعراض محتوى الخزنة.", fontSize = 11.sp, color = Color.Gray)
@@ -3350,7 +3350,7 @@ fun MainVaultTabScreen(
                             }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Icon(Icons.Default.LockClock, contentDescription = "Clock Auto Lock", tint = Color(0xFF30B0C7), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Schedule, contentDescription = "Clock Auto Lock", tint = Color(0xFF30B0C7), modifier = Modifier.size(20.dp))
                             Column {
                                 Text("إغلاق فوري تلقائي", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, color = Color.White)
                                 Text("عند الخروج من التطبيق أو غلقه، تقفل الخزنة تلقائياً من جديد للحفاظ على سرية ملفاتك.", fontSize = 11.sp, color = Color.Gray)
@@ -3484,7 +3484,7 @@ fun MainVaultTabScreen(
                         title = { 
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = Icons.Default.Lock,
+                                    imageVector = Icons.Default.Folder,
                                     contentDescription = "Safe",
                                     tint = accentColor,
                                     modifier = Modifier.size(22.dp)
@@ -3511,7 +3511,7 @@ fun MainVaultTabScreen(
                                 viewModel.lockPrivateFolder()
                                 localViewState = "keypad_unlock"
                             }) {
-                                Icon(Icons.Default.Lock, contentDescription = "Lock", tint = Color(0xFFFF5252))
+                                Icon(Icons.Default.ExitToApp, contentDescription = "Lock", tint = Color(0xFFFF5252))
                             }
                         }
                     )
@@ -3562,7 +3562,7 @@ fun MainVaultTabScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.Security, contentDescription = "Verified Status", tint = Color(0xFF34C759), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.CheckCircle, contentDescription = "Verified Status", tint = Color(0xFF34C759), modifier = Modifier.size(20.dp))
                             Text(
                                 text = "حصانة برمجية كاملة: الملفات معزولة ومحمية محلياً بنجاح.",
                                 fontSize = 10.5.sp,
@@ -3747,7 +3747,7 @@ fun MainVaultTabScreen(
                                             onClick = { viewModel.setPrivateStatus(file, false) },
                                             modifier = Modifier.size(32.dp)
                                         ) {
-                                            Icon(Icons.Default.LockOpen, contentDescription = "Restore", tint = accentColor, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Default.Visibility, contentDescription = "Restore", tint = accentColor, modifier = Modifier.size(18.dp))
                                         }
 
                                         // Permanently delete

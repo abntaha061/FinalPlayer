@@ -1098,7 +1098,7 @@ fun VaultDashboard(
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.LockOpen,
+                                        imageVector = Icons.Default.Visibility,
                                         contentDescription = "Restore File",
                                         tint = accentColor,
                                         modifier = Modifier.size(20.dp)
@@ -1132,8 +1132,8 @@ fun VaultDashboard(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Default.Lock, contentDescription = "Change Pin", modifier = Modifier.size(16.dp))
-                    Text("تغيير أو إعداد الرقم السري (PIN) الخاص بالخزنة 🔑", fontSize = 12.sp)
+                    Icon(Icons.Default.VpnKey, contentDescription = "Change Pin", modifier = Modifier.size(16.dp))
+                    Text("تغيير أو إعداد الرقم السري (PIN) الخاص بالخزنة", fontSize = 12.sp)
                 }
             }
         }
