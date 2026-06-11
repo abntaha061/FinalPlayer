@@ -1477,13 +1477,34 @@ fun PlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         IconButton(
-                            onClick = { isBrightnessSliderVisible = !isBrightnessSliderVisible },
+                            onClick = {
+                                val current = activity?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                                val target = if (current == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) {
+                                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                } else if (current == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE || current == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
+                                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                } else {
+                                    if ((activity?.resources?.configuration?.orientation ?: 1) == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
+                                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                    } else {
+                                        android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    }
+                                }
+                                activity?.requestedOrientation = target
+                                currentOrientationState = target
+                                gestureIndicatorText = if (target == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) "الوضع الرأسي (عمودي)" else "الوضع الأفقي (دوران)"
+                                scope.launch {
+                                    isIndicatorVisible = true
+                                    delay(800)
+                                    isIndicatorVisible = false
+                                }
+                            },
                             modifier = Modifier.size(34.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Brightness5,
-                                contentDescription = "الإضاءة شريط",
-                                tint = if (isBrightnessSliderVisible) MaterialTheme.colorScheme.primary else Color.White,
+                                imageVector = Icons.Default.ScreenRotation,
+                                contentDescription = "دوران الشاشة",
+                                tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
