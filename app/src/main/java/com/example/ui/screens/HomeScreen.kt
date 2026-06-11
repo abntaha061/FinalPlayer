@@ -1442,7 +1442,7 @@ fun VideosAndFoldersTab(
                                     Text(
                                         text = folderName,
                                         fontSize = 13.5.sp,
-                                        color = Color.White,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         fontWeight = FontWeight.Normal,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -1453,18 +1453,18 @@ fun VideosAndFoldersTab(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = formatVideosCountArabic(filesCount),
-                                        color = Color(0xFF8E94A0),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                                         fontSize = 11.5.sp
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Box(
                                         modifier = Modifier
-                                            .background(Color(0xFF242730), shape = RoundedCornerShape(3.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(3.dp))
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
                                         Text(
                                             text = formatFolderSizeArabic(totalBytes),
-                                            color = Color(0xFFA6ABB6),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Medium
                                         )
@@ -2147,7 +2147,7 @@ fun VideoGridItem(
                     ) {
                         Text(
                             text = video.title,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Normal,
                             maxLines = 1,

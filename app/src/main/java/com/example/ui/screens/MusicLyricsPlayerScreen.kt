@@ -109,10 +109,17 @@ fun MusicLyricsPlayerScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
+    val appThemeMode by viewModel.appThemeModeState.collectAsState()
+    val isDark = when (appThemeMode) {
+        "LIGHT" -> false
+        "DARK" -> true
+        else -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0A0E))
+            .background(if (isDark) Color(0xFF0A0A0E) else Color(0xFFF5F5FC))
             .testTag("aurora_music_player_screen")
             .pointerInput(Unit) {
                 detectTapGestures {
@@ -124,13 +131,16 @@ fun MusicLyricsPlayerScreen(
             }
     ) {
         // 1. Aurora Background layer
-        AuroraBackground(colors = colors, albumArtBitmap = albumArtBitmap)
+        AuroraBackground(colors = colors, albumArtBitmap = albumArtBitmap, isDark = isDark)
 
-        // Dim dark filter
+        // Adaptive filter
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
+                .background(
+                    if (isDark) Color.Black.copy(alpha = 0.5f)
+                    else Color.White.copy(alpha = 0.88f)
+                )
         )
 
         // Overlay layout: list stretches full screen, controls overlay on top
@@ -530,7 +540,8 @@ fun TrackAlbumArtCard(
 fun AuroraBackground(
     colors: AuroraColors,
     albumArtBitmap: android.graphics.Bitmap?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isDark: Boolean = true
 ) {
     // Smoothly animate each aurora color to create beautiful transition morphs when the track changes
     val animatedC1 by animateColorAsState(targetValue = colors.c1, animationSpec = tween(2000), label = "animated_c1")
@@ -541,11 +552,12 @@ fun AuroraBackground(
     // Optimize: Instead of rendering heavy canvas with continuous floating coordinates and costly .blur(80.dp)
     // which drains battery and heats up the device by redrawing 60 frames per second on screen,
     // we use a beautifully blended gradient brush directly. It achieves a gorgeous, vibrant look in hardware rendering.
-    val meshBrush = remember(animatedC1, animatedC2, animatedC3, animatedC4) {
-        val bright1 = animatedC1.copy(alpha = 0.38f)
-        val bright2 = animatedC2.copy(alpha = 0.35f)
-        val bright3 = animatedC3.copy(alpha = 0.32f)
-        val bright4 = animatedC4.copy(alpha = 0.34f)
+    val meshBrush = remember(animatedC1, animatedC2, animatedC3, animatedC4, isDark) {
+        val alphaVal = if (isDark) 0.38f else 0.18f
+        val bright1 = animatedC1.copy(alpha = alphaVal)
+        val bright2 = animatedC2.copy(alpha = alphaVal)
+        val bright3 = animatedC3.copy(alpha = alphaVal)
+        val bright4 = animatedC4.copy(alpha = alphaVal)
         Brush.linearGradient(
             colors = listOf(bright1, bright2, bright3, bright4)
         )
@@ -554,7 +566,7 @@ fun AuroraBackground(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0C0C12)) // Solid dark background to prevent bleed-through
+            .background(if (isDark) Color(0xFF0C0C12) else Color(0xFFF5F5FC)) // Solid background adapted to theme
     ) {
         Box(
             modifier = Modifier

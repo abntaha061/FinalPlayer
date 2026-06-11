@@ -216,6 +216,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
 
     val themeColorHexState = MutableStateFlow(sharedPrefs.getString("app_theme_color_hex", "#FFD500F9") ?: "#FFD500F9")
     val resumeButtonPositionState = MutableStateFlow(sharedPrefs.getString("resume_button_position_side", "LEFT") ?: "LEFT")
+    val appThemeModeState = MutableStateFlow(sharedPrefs.getString("app_theme_mode", "SYSTEM") ?: "SYSTEM")
 
     private var realTimeWatcher: RealTimeMediaWatcher? = null
 
@@ -499,6 +500,12 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     fun saveResumeButtonPosition(side: String) {
         sharedPrefs.edit().putString("resume_button_position_side", side).apply()
         resumeButtonPositionState.value = side
+    }
+
+    fun getAppThemeMode(): String = sharedPrefs.getString("app_theme_mode", "SYSTEM") ?: "SYSTEM"
+    fun saveAppThemeMode(mode: String) {
+        sharedPrefs.edit().putString("app_theme_mode", mode).apply()
+        appThemeModeState.value = mode
     }
 
     // --- COPIES, MOVES, DELETES & RENAMES MANAGER ---

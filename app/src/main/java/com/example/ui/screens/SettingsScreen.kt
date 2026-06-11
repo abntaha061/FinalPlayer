@@ -61,6 +61,14 @@ fun SettingsScreen(
     var audioBoostEnabled by remember { mutableStateOf(viewModel.getAudioBoostEnabled()) }
     var defaultScaleMode by remember { mutableStateOf(viewModel.getDefaultScaleMode()) }
 
+    val appThemeMode by viewModel.appThemeModeState.collectAsState()
+
+    var showThemeDialog by remember { mutableStateOf(false) }
+    var showAccentColorDialog by remember { mutableStateOf(false) }
+    var showSpeedDialog by remember { mutableStateOf(false) }
+    var showAspectRatioDialog by remember { mutableStateOf(false) }
+    var showResumeButtonDialog by remember { mutableStateOf(false) }
+
     var alertMessage by remember { mutableStateOf<String?>(null) }
 
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
@@ -183,6 +191,31 @@ fun SettingsScreen(
                         .verticalScroll(scrollState)
                         .padding(16.dp)
                 ) {
+                    val colorsList = remember {
+                        listOf(
+                            "#FFD500F9" to "أرجواني كودياك (Magenta)",
+                            "#FFFF3366" to "وردي نيون (Pink)",
+                            "#FF007AFF" to "أزرق ملكي (iOS Blue)",
+                            "#FF00E5FF" to "سماوي نيون (Cyan)",
+                            "#FF4CD964" to "أخضر عشبي (Green)",
+                            "#FFFF9500" to "برتقالي ناري (Orange)",
+                            "#FFFF5252" to "أحمر مرجاني (Coral)",
+                            "#FF9C27B0" to "بنفسجي عميق (Violet)"
+                        )
+                    }
+
+                    val currentAccentColorName = remember(themeColorHex) {
+                        colorsList.find { it.first.equals(themeColorHex, ignoreCase = true) }?.second ?: "مخصص"
+                    }
+
+                    val currentThemeModeText = when (appThemeMode) {
+                        "LIGHT" -> "الوضع الفاتح (Light Mode)"
+                        "DARK" -> "الوضع الداكن (Dark Mode)"
+                        else -> "تلقائي حسب النظام (System)"
+                    }
+
+                    val currentResumeSideText = if (resumeButtonPosition == "LEFT") "اليسار (Left)" else "اليمين (Right)"
+
                     // General Title Section
                     Text(
                         "خصائص التشغيل (Playback Configuration)",
@@ -192,77 +225,25 @@ fun SettingsScreen(
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
 
-                    // Speed Control
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                "السرعة الافتراضية (Default Playing Speed)",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "حدد معدل السرعة كوضع أساسي عند فتح أي ملف",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                listOf(0.5f, 1.0f, 1.5f, 2.0f).forEach { speed ->
-                                    FilterChip(
-                                        selected = defaultSpeed == speed,
-                                        onClick = {
-                                            defaultSpeed = speed
-                                            viewModel.savePlaybackSpeed(speed)
-                                        },
-                                        label = { Text("${speed}x") }
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    // 1. Playback Speed Clickable Row
+                    SettingsOptionRow(
+                        title = "السرعة الافتراضية للتشغيل (Default Playing Speed)",
+                        subtitle = "حدد معدل السرعة كوضع أساسي عند فتح أي ملف تشغيل",
+                        currentValue = "${defaultSpeed}x",
+                        icon = Icons.Default.Speed,
+                        accentColor = currentAccentColor,
+                        onClick = { showSpeedDialog = true }
+                    )
 
-                    // Aspect ratio scaling mode
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                "تحجيم الشاشة الافتراضي (Default Aspect Ratio)",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                listOf("FIT", "FILL", "STRETCH", "CROP").forEach { mode ->
-                                    FilterChip(
-                                        selected = defaultScaleMode == mode,
-                                        onClick = {
-                                            defaultScaleMode = mode
-                                            viewModel.saveDefaultScaleMode(mode)
-                                        },
-                                        label = { Text(mode) }
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    // 2. Aspect Ratio Clickable Row
+                    SettingsOptionRow(
+                        title = "تحجيم الشاشة الافتراضي (Default Aspect Ratio)",
+                        subtitle = "حدد طريقة ملء الشاشة كخيار وعرض أساسي للفيديوهات",
+                        currentValue = defaultScaleMode,
+                        icon = Icons.Default.AspectRatio,
+                        accentColor = currentAccentColor,
+                        onClick = { showAspectRatioDialog = true }
+                    )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -275,110 +256,358 @@ fun SettingsScreen(
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
 
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                "اختر لون السمة الأساسي (Select Accent Color)",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                "سيغير هذا لون أشرطة العناوين، شريط التشغيل السفلي، وشريط تقدم الفيديوهات لمظهر متناسق",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
+                    // 3. Theme Mode Selection Card/Row
+                    SettingsOptionRow(
+                        title = "وضع مظهر التطبيق (Dark / Light Mode)",
+                        subtitle = "التحكم في المظهر الداكن (الليلي) أو الفاتح (النهاري) أو التلقائي",
+                        currentValue = currentThemeModeText,
+                        icon = Icons.Default.Brightness4,
+                        accentColor = currentAccentColor,
+                        onClick = { showThemeDialog = true }
+                    )
 
-                            val colorsList = listOf(
-                                "#FFD500F9" to "أرجواني كودياك (Magenta)",
-                                "#FFFF3366" to "وردي نيون (Pink)",
-                                "#FF007AFF" to "أزرق ملكي (iOS Blue)",
-                                "#FF00E5FF" to "سماوي نيون (Cyan)",
-                                "#FF4CD964" to "أخضر عشبي (Green)",
-                                "#FFFF9500" to "برتقالي ناري (Orange)",
-                                "#FFFF5252" to "أحمر مرجاني (Coral)",
-                                "#FF9C27B0" to "بنفسجي عميق (Violet)"
-                            )
+                    // 4. Accent Color Row
+                    SettingsOptionRow(
+                        title = "لون السمة الأساسي (Accent Color Selection)",
+                        subtitle = "اختيار اللون السائد لأزرار التشغيل والتقدم والنوافذ المنبثقة",
+                        currentValue = currentAccentColorName,
+                        icon = Icons.Default.Palette,
+                        accentColor = currentAccentColor,
+                        onClick = { showAccentColorDialog = true }
+                    )
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                androidx.compose.foundation.lazy.LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    contentPadding = PaddingValues(end = 8.dp)
+                    // 5. Resume Side Button Position
+                    SettingsOptionRow(
+                        title = "موقع زر استئناف التشغيل (Resume Button Side)",
+                        subtitle = "تحديد اتجاه زر استئناف تشغيل الفيديوهات (اليمين أو اليسار)",
+                        currentValue = currentResumeSideText,
+                        icon = Icons.Default.CompareArrows,
+                        accentColor = currentAccentColor,
+                        onClick = { showResumeButtonDialog = true }
+                    )
+
+                    // --- POPUP DIALOGS IMPLEMENTATION ---
+                    if (showThemeDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showThemeDialog = false },
+                            title = {
+                                Text(
+                                    text = "وضع مظهر التطبيق (Theme Mode)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    items(colorsList.size) { index ->
-                                        val (hex, name) = colorsList[index]
-                                        val colorItem = Color(android.graphics.Color.parseColor(hex))
-                                        val isSelected = themeColorHex.equals(hex, ignoreCase = true)
-
-                                        Box(
+                                    listOf(
+                                        "SYSTEM" to "تلقائي حسب النظام (System Default)",
+                                        "LIGHT" to "الوضع الفاتح الصباحي (Light Day Mode)",
+                                        "DARK" to "الوضع الداكن الليلي (Dark Night Mode)"
+                                    ).forEach { (mode, label) ->
+                                        val isSelected = appThemeMode == mode
+                                        Row(
                                             modifier = Modifier
-                                                .size(48.dp)
-                                                .clip(CircleShape)
-                                                .background(colorItem)
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) currentAccentColor.copy(alpha = 0.15f) else Color.Transparent)
                                                 .clickable {
-                                                    viewModel.saveThemeColorHex(hex)
+                                                    viewModel.saveAppThemeMode(mode)
+                                                    showThemeDialog = false
                                                 }
-                                                .border(
-                                                    width = if (isSelected) 3.dp else 1.dp,
-                                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.3f),
-                                                    shape = CircleShape
-                                                ),
-                                            contentAlignment = Alignment.Center
+                                                .padding(14.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            if (isSelected) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = "Selected",
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                            }
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    viewModel.saveAppThemeMode(mode)
+                                                    showThemeDialog = false
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = currentAccentColor)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = label,
+                                                fontSize = 14.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) currentAccentColor else MaterialTheme.colorScheme.onSurface
+                                            )
                                         }
                                     }
                                 }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Text(
-                                "موقع زر استئناف التشغيل (Resume Button Side)",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "تحديد اتجاه زر استئناف تشغيل الفيديوهات في الواجهة (اليمين أو اليسار)",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                listOf("LEFT" to "اليسار (Left)", "RIGHT" to "اليمين (Right)").forEach { (side, label) ->
-                                    FilterChip(
-                                        selected = resumeButtonPosition == side,
-                                        onClick = {
-                                            viewModel.saveResumeButtonPosition(side)
-                                        },
-                                        label = { Text(label, fontSize = 12.sp) }
-                                    )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showThemeDialog = false }) {
+                                    Text("إلغاء (Cancel)", color = currentAccentColor)
                                 }
                             }
-                        }
+                        )
+                    }
+
+                    if (showSpeedDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showSpeedDialog = false },
+                            title = {
+                                Text(
+                                    text = "السرعة الافتراضية للتشغيل (Playback Speed)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f).forEach { speed ->
+                                        val isSelected = defaultSpeed == speed
+                                        val label = if (speed == 1.0f) "1.0x (طبيعي)" else "${speed}x"
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) currentAccentColor.copy(alpha = 0.15f) else Color.Transparent)
+                                                .clickable {
+                                                    defaultSpeed = speed
+                                                    viewModel.savePlaybackSpeed(speed)
+                                                    showSpeedDialog = false
+                                                }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    defaultSpeed = speed
+                                                    viewModel.savePlaybackSpeed(speed)
+                                                    showSpeedDialog = false
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = currentAccentColor)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = label,
+                                                fontSize = 14.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) currentAccentColor else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showSpeedDialog = false }) {
+                                    Text("إلغاء (Cancel)", color = currentAccentColor)
+                                }
+                            }
+                        )
+                    }
+
+                    if (showAspectRatioDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showAspectRatioDialog = false },
+                            title = {
+                                Text(
+                                    text = "تحجيم الشاشة الافتراضي (Aspect Ratio)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf(
+                                        "FIT" to "ملاءمة الشاشة (FIT)",
+                                        "FILL" to "تعبئة الشاشة كاملة (FILL)",
+                                        "STRETCH" to "تمديد الصورة (STRETCH)",
+                                        "CROP" to "قص أطراف الفيديو (CROP)"
+                                    ).forEach { (mode, label) ->
+                                        val isSelected = defaultScaleMode == mode
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) currentAccentColor.copy(alpha = 0.15f) else Color.Transparent)
+                                                .clickable {
+                                                    defaultScaleMode = mode
+                                                    viewModel.saveDefaultScaleMode(mode)
+                                                    showAspectRatioDialog = false
+                                                }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    defaultScaleMode = mode
+                                                    viewModel.saveDefaultScaleMode(mode)
+                                                    showAspectRatioDialog = false
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = currentAccentColor)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = label,
+                                                fontSize = 14.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) currentAccentColor else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showAspectRatioDialog = false }) {
+                                    Text("إلغاء (Cancel)", color = currentAccentColor)
+                                }
+                            }
+                        )
+                    }
+
+                    if (showAccentColorDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showAccentColorDialog = false },
+                            title = {
+                                Text(
+                                    text = "اختر لون السمة الأساسي (Accent Color)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    colorsList.forEach { (hex, name) ->
+                                        val colorItem = Color(android.graphics.Color.parseColor(hex))
+                                        val isSelected = themeColorHex.equals(hex, ignoreCase = true)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) colorItem.copy(alpha = 0.15f) else Color.Transparent)
+                                                .clickable {
+                                                    viewModel.saveThemeColorHex(hex)
+                                                    showAccentColorDialog = false
+                                                }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    viewModel.saveThemeColorHex(hex)
+                                                    showAccentColorDialog = false
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = colorItem)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            // Color indicator circle
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .clip(CircleShape)
+                                                    .background(colorItem)
+                                                    .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = name,
+                                                fontSize = 13.5.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) colorItem else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showAccentColorDialog = false }) {
+                                    Text("إلغاء (Cancel)", color = currentAccentColor)
+                                }
+                            }
+                        )
+                    }
+
+                    if (showResumeButtonDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showResumeButtonDialog = false },
+                            title = {
+                                Text(
+                                    text = "موقع زر استئناف التشغيل (Resume Button)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf(
+                                        "LEFT" to "اليسار (Resume Button on Left)",
+                                        "RIGHT" to "اليمين (Resume Button on Right)"
+                                    ).forEach { (side, label) ->
+                                        val isSelected = resumeButtonPosition == side
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) currentAccentColor.copy(alpha = 0.15f) else Color.Transparent)
+                                                .clickable {
+                                                    viewModel.saveResumeButtonPosition(side)
+                                                    showResumeButtonDialog = false
+                                                }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    viewModel.saveResumeButtonPosition(side)
+                                                    showResumeButtonDialog = false
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = currentAccentColor)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = label,
+                                                fontSize = 14.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) currentAccentColor else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showResumeButtonDialog = false }) {
+                                    Text("إلغاء (Cancel)", color = currentAccentColor)
+                                }
+                            }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1164,3 +1393,76 @@ fun VaultDashboard(
         )
     }
 }
+
+@Composable
+fun SettingsOptionRow(
+    title: String,
+    subtitle: String,
+    currentValue: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accentColor: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.5.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    fontSize = 10.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = currentValue,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor
+                )
+                Icon(
+                    imageVector = Icons.Default.PlayArrow, // beautiful small arrow direction
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+    }
+}
+

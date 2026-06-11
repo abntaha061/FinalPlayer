@@ -63,7 +63,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MyApplicationTheme {
+            val viewModel: MediaViewModel = viewModel()
+            val appThemeMode by viewModel.appThemeModeState.collectAsState()
+            val isDark = when (appThemeMode) {
+                "LIGHT" -> false
+                "DARK" -> true
+                else -> androidx.compose.foundation.isSystemInDarkTheme()
+            }
+            MyApplicationTheme(darkTheme = isDark) {
                 MainNavigationRoot()
             }
         }
@@ -198,23 +205,34 @@ fun MainNavigationRoot() {
 
     var activePlayingFilePath by rememberSaveable { mutableStateOf<String?>(null) }
 
+    val appThemeMode by viewModel.appThemeModeState.collectAsState()
+    val isDark = when (appThemeMode) {
+        "LIGHT" -> false
+        "DARK" -> true
+        else -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color(0xFF06060A)
+        color = if (isDark) Color(0xFF06060A) else Color(0xFFF5F5FC)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Root layer universal Aurora background
             AuroraBackground(
                 colors = currentAuroraColors,
                 albumArtBitmap = currentAlbumArtBitmap,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                isDark = isDark
             )
 
-            // Transparent dark overlay to keep all text screen elements content legible
+            // Transparent overlay to keep all text screen elements content legible depending on theme mode
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.45f))
+                    .background(
+                        if (isDark) Color.Black.copy(alpha = 0.45f)
+                        else Color.White.copy(alpha = 0.88f)
+                    )
             )
 
             if (!hasGrantedPermissions) {
