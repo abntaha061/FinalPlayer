@@ -103,7 +103,7 @@ fun HomeScreen(
         }
     }
 
-    var selectedBottomTab by remember { mutableStateOf(0) } // 0 = Videos, 1 = Music, 2 = Vault, 3 = Settings
+    var selectedBottomTab by remember { mutableStateOf(0) } // 0 = Videos, 1 = Music, 2 = Settings
     var selectedSubTabIndex by remember { mutableStateOf(0) } // 0 = Videos, 1 = Favorites/Playlists, 2 = Vault
 
     // Display & sorting configurations
@@ -148,7 +148,7 @@ fun HomeScreen(
             selectedPaths.clear()
         } else if (selectedFolderPath != null) {
             viewModel.setSelectedFolderPath(null)
-        } else if (selectedBottomTab in listOf(1, 2, 3)) {
+        } else if (selectedBottomTab in listOf(1, 2)) {
             selectedBottomTab = 0
         } else {
             val currentTime = System.currentTimeMillis()
@@ -163,7 +163,7 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            if (selectedBottomTab != 2 && selectedBottomTab != 3) {
+            if (selectedBottomTab != 2) {
                 Column(modifier = Modifier.background(currentAccentColor)) {
                      CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
                         if (selectedPaths.isNotEmpty()) {
@@ -414,19 +414,8 @@ fun HomeScreen(
                         NavigationBarItem(
                             selected = selectedBottomTab == 2,
                             onClick = { selectedBottomTab = 2 },
-                            icon = { RedCircleIcon(Icons.Default.Lock, selectedBottomTab == 2, "Vault", currentAccentColor) },
-                            label = { Text("الخزنة السرية", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 2) FontWeight.Bold else FontWeight.Normal) },
-                            colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = Color.Transparent,
-                                selectedIconColor = Color.Unspecified,
-                                unselectedIconColor = Color.Unspecified
-                            )
-                        )
-                        NavigationBarItem(
-                            selected = selectedBottomTab == 3,
-                            onClick = { selectedBottomTab = 3 },
-                            icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 3, "Settings", currentAccentColor) },
-                            label = { Text("الإعدادات", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 3) FontWeight.Bold else FontWeight.Normal) },
+                            icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 2, "Settings", currentAccentColor) },
+                            label = { Text("الإعدادات", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 2) FontWeight.Bold else FontWeight.Normal) },
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = Color.Transparent,
                                 selectedIconColor = Color.Unspecified,
@@ -583,15 +572,7 @@ fun HomeScreen(
                         onPlayFile = onPlayFile,
                         viewModel = viewModel
                     )
-                    2 -> {
-                        MainVaultTabScreen(
-                            viewModel = viewModel,
-                            onPlayFile = onPlayFile,
-                            accentColor = currentAccentColor,
-                            onBackToMainMenu = { selectedBottomTab = 0 }
-                        )
-                    }
-                    3 -> SettingsScreen(
+                    2 -> SettingsScreen(
                         viewModel = viewModel,
                         onPlayFile = onPlayFile,
                         onBack = { selectedBottomTab = 0 }
@@ -1232,14 +1213,23 @@ fun MXFolderIcon(
 
         // Beautiful badge count displayed as a perfect circle (or pill for multi-digits), aligned & color-synced
         if (filesCount > 0 && !isSelected) {
+            val isSingleDigit = filesCount < 10
             Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = 6.dp, y = (-4).dp)
-                    .widthIn(min = 18.dp)
-                    .height(18.dp)
-                    .background(accentColor, shape = RoundedCornerShape(50))
-                    .padding(horizontal = 4.dp),
+                modifier = if (isSingleDigit) {
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 6.dp, y = (-4).dp)
+                        .size(18.dp)
+                        .background(accentColor, shape = CircleShape)
+                } else {
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 6.dp, y = (-4).dp)
+                        .height(18.dp)
+                        .widthIn(min = 18.dp)
+                        .background(accentColor, shape = CircleShape)
+                        .padding(horizontal = 4.dp)
+                },
                 contentAlignment = Alignment.Center
             ) {
                 CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
@@ -1551,7 +1541,7 @@ fun VideosAndFoldersTab(
                                                 .align(Alignment.TopStart)
                                                 .padding(4.dp)
                                                 .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
-                                                .padding(horizontal = 4.dp, vertical = 1.5.dp), contentAlignment = Alignment.Center
+                                                .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = "NEW",
@@ -1661,7 +1651,7 @@ fun VideosAndFoldersTab(
                                             Box(
                                                 modifier = Modifier
                                                     .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 4.dp, vertical = 2.dp), contentAlignment = Alignment.Center
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
                                                     text = "SRT",
@@ -1687,7 +1677,7 @@ fun VideosAndFoldersTab(
                                             Box(
                                                 modifier = Modifier
                                                     .background(Color(0xFF34C759), RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 4.dp, vertical = 2.dp), contentAlignment = Alignment.Center
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
                                                     text = resolutionText,
@@ -2041,13 +2031,16 @@ fun VideoGridItem(
                             .align(Alignment.TopStart)
                             .padding(4.dp)
                             .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
-                            .padding(horizontal = 4.dp, vertical = 1.5.dp), contentAlignment = Alignment.Center
+                            .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "NEW",
                             color = Color.White,
                             fontSize = 7.5.sp,
-                            style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
+                            style = androidx.compose.ui.text.TextStyle(
+                                platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                                lineHeight = 7.5.sp
+                            ),
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -2147,7 +2140,7 @@ fun VideoGridItem(
                             Box(
                                 modifier = Modifier
                                     .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
-                                    .padding(horizontal = 4.dp, vertical = 2.dp), contentAlignment = Alignment.Center
+                                    .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = "SRT",
@@ -2174,7 +2167,7 @@ fun VideoGridItem(
                             Box(
                                 modifier = Modifier
                                     .background(Color(0xFF34C759), RoundedCornerShape(2.dp))
-                                    .padding(horizontal = 4.dp, vertical = 2.dp), contentAlignment = Alignment.Center
+                                    .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = resolutionText,

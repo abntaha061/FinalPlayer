@@ -471,8 +471,8 @@ fun SettingsScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = "Safe Lock",
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = "Safe Folder",
                                     tint = currentAccentColor,
                                     modifier = Modifier.size(24.dp)
                                 )
@@ -480,16 +480,16 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    "مركز الخزنة السرية الفائقة ✔️",
+                                    "الخزنة الخاصة (Private Folder)",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    if (!hasPasscodeState) "غير نشطة ⚠️ اضغط لتهيئة الرقم السري وتفعيل الحماية"
-                                    else if (isPrivateLocked) "الخزنة مقفلة ومؤمّنة 🔒 انقر لإدخال الكود وتصفح المحتوى"
-                                    else "نشطة ومفتوحة 🔓 انقر لاستعراض ملفاتك المخفية وإدارتها",
+                                    if (!hasPasscodeState) "غير نشط. اضغط لتهيئة الرمز السري وحماية ملفاتك"
+                                    else if (isPrivateLocked) "مغلق. انقر لإدخال الرمز السري واستعراض المحتوى"
+                                    else "مفتوح. انقر لتصفح الملفات والتحكم بها",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -620,25 +620,7 @@ fun VaultKeypad(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Glowing Lock Icon Layout
-            Box(
-                modifier = Modifier
-                    .size(90.dp)
-                    .clip(CircleShape)
-                    .background(accentColor.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = "Lock Secure",
-                    tint = accentColor,
-                    modifier = Modifier.size(44.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(30.dp))
 
             Text(
                 text = title,
@@ -820,20 +802,11 @@ fun VaultDashboard(
             @OptIn(ExperimentalMaterial3Api::class)
             TopAppBar(
                 title = { 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Safe",
-                            tint = accentColor,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "الخزنة السرية (Private Vault)",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Text(
+                        "الخزنة الخاصة (Private Folder)",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBackToSettings) {
@@ -850,10 +823,7 @@ fun VaultDashboard(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(Icons.Default.Lock, contentDescription = "Lock", tint = Color.White, modifier = Modifier.size(16.dp))
-                            Text("قفل الآن 🔒", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Text("قفل المجلد", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -912,40 +882,7 @@ fun VaultDashboard(
                 }
             }
 
-            // Security Certificate Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF34C759).copy(alpha = 0.08f)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF34C759).copy(alpha = 0.2f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Shield,
-                        contentDescription = "Shield Active",
-                        tint = Color(0xFF34C759),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Column {
-                        Text(
-                            "مستودع آمن ومشفّر بالكامل 🛡️",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF34C759)
-                        )
-                        Text(
-                            "الملفات معزولة في مساحة تخزين خاصة لا يمكن للتطبيقات الأخرى الوصول إليها",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            }
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Search Bar & Filter Menu
             Row(
