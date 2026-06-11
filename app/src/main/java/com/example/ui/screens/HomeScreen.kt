@@ -1633,7 +1633,7 @@ fun VideosAndFoldersTab(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = video.title,
-                                        color = Color.White,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Normal,
                                         maxLines = 2,

@@ -162,7 +162,8 @@ fun MusicLyricsPlayerScreen(
                     if (areControlsVisible) {
                         lastInteractionTime = System.currentTimeMillis()
                     }
-                }
+                },
+                isDark = isDark
             )
 
             // Header Bar wrapped in animated visibility to match lower panel/seekbar
@@ -183,22 +184,30 @@ fun MusicLyricsPlayerScreen(
                 ) {
                     IconButton(
                         onClick = onBack,
-                        modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape)
+                        modifier = Modifier.background(
+                            if (isDark) Color.White.copy(alpha = 0.12f)
+                            else Color.Black.copy(alpha = 0.08f),
+                            CircleShape
+                        )
                     ) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Minimize Player", tint = Color.White)
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Minimize Player",
+                            tint = if (isDark) Color.White else Color(0xFF1C1C1E)
+                        )
                     }
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "جاري التشغيل الآن (NOW PLAYING)",
-                            color = Color.LightGray.copy(alpha = 0.7f),
+                            color = if (isDark) Color.LightGray.copy(alpha = 0.7f) else Color.DarkGray.copy(alpha = 0.7f),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp
                         )
                         Text(
                             text = track.album ?: "ألبوم افتراضي (Default Album)",
-                            color = Color.White,
+                            color = if (isDark) Color.White else Color(0xFF1C1C1E),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -208,12 +217,16 @@ fun MusicLyricsPlayerScreen(
 
                     IconButton(
                         onClick = { viewModel.toggleFavorite(track) },
-                        modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape)
+                        modifier = Modifier.background(
+                            if (isDark) Color.White.copy(alpha = 0.12f)
+                            else Color.Black.copy(alpha = 0.08f),
+                            CircleShape
+                        )
                     ) {
                         Icon(
                             imageVector = if (track.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             contentDescription = "Favorite track",
-                            tint = if (track.isFavorite) Color.Red else Color.White
+                            tint = if (track.isFavorite) Color.Red else (if (isDark) Color.White else Color(0xFF1C1C1E))
                         )
                     }
                 }
@@ -242,7 +255,8 @@ fun MusicLyricsPlayerScreen(
                     AudioProgressBar(
                         progressFlow = viewModel.audioProgress,
                         durationState = viewModel.audioDuration.collectAsState(),
-                        onSeek = { target -> viewModel.seekAudioTo(target) }
+                        onSeek = { target -> viewModel.seekAudioTo(target) },
+                        isDark = isDark
                     )
 
                     Spacer(modifier = Modifier.height(20.dp))
@@ -261,7 +275,7 @@ fun MusicLyricsPlayerScreen(
                             Icon(
                                 imageVector = Icons.Default.SkipPrevious,
                                 contentDescription = "السابق (Previous)",
-                                tint = Color.White,
+                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
                                 modifier = Modifier.size(32.dp)
                             )
                         }
@@ -270,13 +284,13 @@ fun MusicLyricsPlayerScreen(
                         IconButton(
                             onClick = { viewModel.toggleAudioPlayPause() },
                             modifier = Modifier
-                                .background(Color.White, CircleShape)
+                                .background(if (isDark) Color.White else Color(0xFF1C1C1E), CircleShape)
                                 .size(64.dp)
                         ) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = "تشغيل الكتم",
-                                tint = Color.Black,
+                                tint = if (isDark) Color.Black else Color.White,
                                 modifier = Modifier.size(34.dp)
                             )
                         }
@@ -289,7 +303,7 @@ fun MusicLyricsPlayerScreen(
                             Icon(
                                 imageVector = Icons.Default.SkipNext,
                                 contentDescription = "التالي (Next)",
-                                tint = Color.White,
+                                tint = if (isDark) Color.White else Color(0xFF1C1C1E),
                                 modifier = Modifier.size(32.dp)
                             )
                         }
@@ -334,7 +348,8 @@ fun SynchronizedLyricsList(
     progressFlow: kotlinx.coroutines.flow.StateFlow<Long>,
     onLineClicked: (LyricLine) -> Unit,
     onUserInteraction: () -> Unit,
-    onTapBackground: () -> Unit
+    onTapBackground: () -> Unit,
+    isDark: Boolean = true
 ) {
     val progress by progressFlow.collectAsState()
     val activeIndex = remember(progress, lyrics) {
@@ -392,7 +407,11 @@ fun SynchronizedLyricsList(
                 ) {
                     Text(
                         text = line.text,
-                        color = if (isActive) Color.White else Color.LightGray.copy(alpha = 0.8f),
+                        color = if (isDark) {
+                            if (isActive) Color.White else Color.LightGray.copy(alpha = 0.8f)
+                        } else {
+                            if (isActive) Color(0xFF1C1C1E) else Color.DarkGray.copy(alpha = 0.53f)
+                        },
                         fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Medium,
                         fontSize = if (isActive) 22.sp else 14.sp,
                         textAlign = TextAlign.Right, // RTL reading flow for Arabic lyrics
@@ -594,7 +613,8 @@ fun AuroraBackground(
 fun AudioProgressBar(
     progressFlow: kotlinx.coroutines.flow.StateFlow<Long>,
     durationState: State<Long>,
-    onSeek: (Long) -> Unit
+    onSeek: (Long) -> Unit,
+    isDark: Boolean = true
 ) {
     val progress by progressFlow.collectAsState()
     val duration = durationState.value
@@ -604,6 +624,10 @@ fun AudioProgressBar(
     val progressStr = formatTimeToArabicIndic(progressSec)
     val durationStr = formatTimeToArabicIndic(durationSec)
 
+    val contentColor = if (isDark) Color.White else Color(0xFF1C1C1E)
+    val inactiveTrackColor = if (isDark) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.15f)
+    val timeLabelColor = if (isDark) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.6f)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -612,9 +636,9 @@ fun AudioProgressBar(
             value = if (duration > 0) progress.toFloat() / duration else 0f,
             onValueChange = { onSeek((it * duration).toLong()) },
             colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = Color.White,
-                inactiveTrackColor = Color.White.copy(alpha = 0.2f),
+                thumbColor = contentColor,
+                activeTrackColor = contentColor,
+                inactiveTrackColor = inactiveTrackColor,
                 activeTickColor = Color.Transparent,
                 inactiveTickColor = Color.Transparent
             ),
@@ -630,7 +654,7 @@ fun AudioProgressBar(
             modifier = Modifier
                 .width(2.dp)
                 .height(14.dp)
-                .background(Color.White)
+                .background(contentColor)
         )
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -640,7 +664,7 @@ fun AudioProgressBar(
                 .width(42.dp)
                 .height(14.dp)
                 .clip(RoundedCornerShape(7.dp))
-                .background(Color.White)
+                .background(contentColor)
         )
     }
 
@@ -654,13 +678,13 @@ fun AudioProgressBar(
     ) {
         Text(
             text = progressStr,
-            color = Color.White.copy(alpha = 0.7f),
+            color = timeLabelColor,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium
         )
         Text(
             text = durationStr,
-            color = Color.White.copy(alpha = 0.7f),
+            color = timeLabelColor,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium
         )
