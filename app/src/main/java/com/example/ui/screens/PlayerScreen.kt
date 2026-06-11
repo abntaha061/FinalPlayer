@@ -448,6 +448,8 @@ fun PlayerScreen(
     var equalizerPresetIndex by remember { mutableStateOf(0) }
     var equalizerBandLevels by remember { mutableStateOf(floatArrayOf(0.2f, 0.2f, 0.2f, 0.2f, 0.2f)) }
     var equalizerInstance by remember { mutableStateOf<Equalizer?>(null) }
+    var loudnessEnhancerInstance by remember { mutableStateOf<android.media.audiofx.LoudnessEnhancer?>(null) }
+    var currentVolRatio by remember { mutableStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume) }
 
     var isMoreOptionsSheetOpen by remember { mutableStateOf(false) }
     var isAudioTracksDialogOpen by remember { mutableStateOf(false) }
@@ -530,6 +532,17 @@ fun PlayerScreen(
                 eq.enabled = true
                 equalizerInstance = eq
                 isEqualizerActive = true
+
+                val enhancer = android.media.audiofx.LoudnessEnhancer(audioSessionId)
+                enhancer.enabled = true
+                if (currentVolRatio > 1.0f) {
+                    val extraRatio = currentVolRatio - 1.0f
+                    val targetGainMb = (extraRatio * 3000).toInt().coerceIn(0, 3000)
+                    enhancer.setTargetGain(targetGainMb)
+                } else {
+                    enhancer.setTargetGain(0)
+                }
+                loudnessEnhancerInstance = enhancer
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -755,7 +768,10 @@ fun PlayerScreen(
                             isDraggingRightSide = startPos.x > size.width / 2f
                             
                             val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                            draggedVolRatio = currentVol.toFloat() / maxVolume
+                            if (currentVol < maxVolume.toInt()) {
+                                currentVolRatio = currentVol.toFloat() / maxVolume
+                            }
+                            draggedVolRatio = currentVolRatio
                             
                             val currentBright = activity?.window?.attributes?.screenBrightness ?: -1f
                             val realBright = if (currentBright < 0f) {
@@ -813,11 +829,25 @@ fun PlayerScreen(
                                         when (currentGestureType) {
                                             "VOLUME" -> {
                                                 val deltaRatio = dragAmountY / size.height.toFloat()
-                                                val newRatio = (draggedVolRatio + deltaRatio * 1.5f).coerceIn(0f, 1f)
+                                                val newRatio = (draggedVolRatio + deltaRatio * 1.5f).coerceIn(0f, 2f)
                                                 draggedVolRatio = newRatio
-                                                val targetVol = (newRatio * maxVolume).toInt()
-                                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                                                currentVolume = targetVol.toFloat()
+                                                currentVolRatio = newRatio
+                                                if (newRatio <= 1.0f) {
+                                                    val targetVol = (newRatio * maxVolume).toInt()
+                                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                                    currentVolume = targetVol.toFloat()
+                                                    try {
+                                                        loudnessEnhancerInstance?.setTargetGain(0)
+                                                    } catch (e: Exception) { e.printStackTrace() }
+                                                } else {
+                                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume.toInt(), 0)
+                                                    currentVolume = maxVolume
+                                                    val extraRatio = newRatio - 1.0f
+                                                    val targetGainMb = (extraRatio * 3000).toInt().coerceIn(0, 3000)
+                                                    try {
+                                                        loudnessEnhancerInstance?.setTargetGain(targetGainMb)
+                                                    } catch (e: Exception) { e.printStackTrace() }
+                                                }
                                             }
                                             "BRIGHTNESS" -> {
                                                 val deltaRatio = dragAmountY / size.height.toFloat()
