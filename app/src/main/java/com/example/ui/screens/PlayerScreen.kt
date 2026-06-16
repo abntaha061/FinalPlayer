@@ -609,6 +609,9 @@ fun PlayerScreen(
                 cleanedText = cleanedText.replace("Also, es\\s*\\n\\s*".toRegex(RegexOption.IGNORE_CASE), "Also, es ")
                 cleanedText = cleanedText.replace("es geht um\\s*\\n\\s*".toRegex(RegexOption.IGNORE_CASE), "es geht um ")
                 
+                // التعديل هنا: تنظيف مسافات الحشو الجانبية المخفية تماماً من كل سطر لضمان التماسك والانكماش
+                cleanedText = cleanedText.lines().map { it.trim() }.joinToString("\n").trim()
+                
                 activeSubtitleText = cleanedText
             }
 
@@ -630,7 +633,6 @@ fun PlayerScreen(
                 }
                 Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                 
-                // Fallback attempt: if HW decoration initialized poorly, change states to reset
                 if (error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED && !isHWAccelActive) {
                     isHWAccelActive = true
                 }
@@ -786,7 +788,6 @@ fun PlayerScreen(
                         var lastTapPosition = androidx.compose.ui.geometry.Offset.Zero
                         
                         while (true) {
-                            // التعديل هنا: استخدام requireUnconsumed = true لمنع تداخل اللمس العشوائي مع الأزرار والقوائم المفتوحة
                             val down = awaitFirstDown(requireUnconsumed = true)
                             val downTime = System.currentTimeMillis()
                             val startPos = down.position
@@ -988,14 +989,13 @@ fun PlayerScreen(
             }
             .transformable(state = transformableState)
     ) {
-        // AndroidView rendering Surface Player Canvas
         key(filePath) {
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
                         this.player = player
                         useController = false
-                        subtitleView?.visibility = android.view.View.GONE // Disable built-in caption layer
+                        subtitleView?.visibility = android.view.View.GONE
                         resizeMode = when (scaleMode) {
                             "FILL" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                             "STRETCH" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
@@ -1018,7 +1018,7 @@ fun PlayerScreen(
                         "CROP" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                     }
-                    view.subtitleView?.visibility = android.view.View.GONE // Force hide built-in caption layer
+                    view.subtitleView?.visibility = android.view.View.GONE
                 },
                 modifier = Modifier
                     .fillMaxSize()
@@ -1029,7 +1029,6 @@ fun PlayerScreen(
             )
         }
 
-        // Night mode filter overlays
         if (isNightModeActive) {
             Box(
                 modifier = Modifier
@@ -1039,7 +1038,6 @@ fun PlayerScreen(
             )
         }
 
-        // Top-Center HUD Notification Pill (Fast Forward indicator or system status alerts)
         androidx.compose.animation.AnimatedVisibility(
             visible = isLongPressFastForwarding || (isIndicatorVisible && gestureIndicatorText != null),
             enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(initialOffsetY = { -it }),
@@ -1078,9 +1076,6 @@ fun PlayerScreen(
             }
         }
 
-        // ----------------------------------------------------------------------
-        // GESTURES VISUAL FEEDBACK OVERLAYS
-        // ----------------------------------------------------------------------
         if (showRewindOverlay) {
             Box(
                 modifier = Modifier
@@ -1203,7 +1198,7 @@ fun PlayerScreen(
         }
 
         // ----------------------------------------------------------------------
-        // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY
+        // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY (تعديل تصغير البوكس بالكامل)
         // ----------------------------------------------------------------------
         if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
             val currentOffset = localSubtitleOffset ?: subtitlePrefsState.verticalOffset
@@ -1217,26 +1212,12 @@ fun PlayerScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .onSizeChanged { parentHeightPx = it.height.toFloat() }
-                        .padding(bottom = bottomPaddingAnim, start = 16.dp, end = 16.dp),
+                        .padding(bottom = bottomPaddingAnim, start = 32.dp, end = 32.dp),
                     contentAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = verticalBias)
                 ) {
-                    Text(
-                        text = activeSubtitleText,
-                        color = subtitlePrefsState.textColor,
-                        fontSize = subtitlePrefsState.textSize.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        lineHeight = (subtitlePrefsState.textSize * 1.35f).sp,
-                        style = TextStyle(
-                            shadow = Shadow(
-                                color = Color.Black.copy(alpha = 0.95f),
-                                offset = Offset(1.5f, 1.5f),
-                                blurRadius = 3f
-                            )
-                        ),
+                    // التعديل الجذري هنا: البوكس المستقل ده يضمن الانكماش التام على عرض النص بدون التمدد العريض للشاشة
+                    Box(
                         modifier = Modifier
-                            // التعديل هنا: استخدام wrapContentSize ليطابق الصندوق مقاس النص الفعلي تماماً
-                            .wrapContentSize(Alignment.Center)
                             .background(
                                 color = if (isDraggingSubtitle) {
                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
@@ -1281,8 +1262,24 @@ fun PlayerScreen(
                                 isSubtitleCustomizationOpen = true
                             }
                             .padding(horizontal = 18.dp, vertical = 10.dp)
-                            .testTag("custom_subtitle_text")
-                    )
+                    ) {
+                        Text(
+                            text = activeSubtitleText,
+                            color = subtitlePrefsState.textColor,
+                            fontSize = subtitlePrefsState.textSize.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            lineHeight = (subtitlePrefsState.textSize * 1.35f).sp,
+                            style = TextStyle(
+                                shadow = Shadow(
+                                    color = Color.Black.copy(alpha = 0.95f),
+                                    offset = Offset(1.5f, 1.5f),
+                                    blurRadius = 3f
+                                )
+                            ),
+                            modifier = Modifier.testTag("custom_subtitle_text")
+                        )
+                    }
                 }
             }
         }
@@ -1303,7 +1300,6 @@ fun PlayerScreen(
                             colors = listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)
                         )
                     )
-                    // التعديل هنا: منع وصول النقرات العشوائية وتمريرها لمشغل اللمس بالخلفية
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -1443,7 +1439,6 @@ fun PlayerScreen(
                                 colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
                             )
                         )
-                        // التعديل هنا: استهلاك النقرات السفلية العشوائية على لوحة شريط المهام لمنع تسريبها للخلفية المشغلة
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
