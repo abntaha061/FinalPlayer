@@ -411,6 +411,9 @@ fun PlayerScreen(
     var isFilesListVisible by remember { mutableStateOf(false) }
     var isQuickSettingsOpen by remember { mutableStateOf(false) }
     var isBrightnessSliderVisible by remember { mutableStateOf(false) }
+    var isSpeedExpanded by remember { mutableStateOf(false) }
+    var isSubtitlesExpanded by remember { mutableStateOf(false) }
+    var isLongPressFastForwarding by remember { mutableStateOf(false) }
 
     // Native resolution detector
     var videoWidth by remember { mutableStateOf(0) }
@@ -660,8 +663,29 @@ fun PlayerScreen(
     }
 
     // Auto fade controls delay helper
-    LaunchedEffect(areControlsVisible, isPlayingState) {
-        if (areControlsVisible && isPlayingState && !isFilesListVisible && !isQuickSettingsOpen) {
+    LaunchedEffect(
+        areControlsVisible,
+        isPlayingState,
+        isFilesListVisible,
+        isQuickSettingsOpen,
+        isSpeedExpanded,
+        isSubtitlesExpanded,
+        isMoreOptionsSheetOpen,
+        isAudioTracksDialogOpen,
+        isSubtitlePanelViewOpen,
+        isSubtitleCustomizationOpen,
+        isToolbarCustomizerDialogOpen,
+        isSleepTimerDialogOpen,
+        isEqualizerOpen
+    ) {
+        if (areControlsVisible && isPlayingState &&
+            !isFilesListVisible && !isQuickSettingsOpen &&
+            !isSpeedExpanded && !isSubtitlesExpanded &&
+            !isMoreOptionsSheetOpen && !isAudioTracksDialogOpen &&
+            !isSubtitlePanelViewOpen && !isSubtitleCustomizationOpen &&
+            !isToolbarCustomizerDialogOpen && !isSleepTimerDialogOpen &&
+            !isEqualizerOpen
+        ) {
             delay(viewModel.getHideControlsDelay() * 1000L)
             areControlsVisible = false
             isBrightnessSliderVisible = false
@@ -796,6 +820,19 @@ fun PlayerScreen(
                             var pointerId = down.id
                             var pointerInputChange: PointerInputChange? = down
                             
+                            var wasPlayingBeforeFastForward = false
+                            var longPressJob: kotlinx.coroutines.Job? = scope.launch {
+                                delay(400)
+                                if (currentGestureType == "NONE" && !isLongPressFastForwarding) {
+                                    isLongPressFastForwarding = true
+                                    wasPlayingBeforeFastForward = player.isPlaying
+                                    player.setPlaybackSpeed(2.0f)
+                                    if (!wasPlayingBeforeFastForward) {
+                                        player.play()
+                                    }
+                                }
+                            }
+                            
                             while (pointerInputChange != null && pointerInputChange.pressed) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == pointerId }
@@ -807,6 +844,8 @@ fun PlayerScreen(
                                     val threshold = 16f
                                     if (currentGestureType == "NONE" && (kotlin.math.abs(totalX) >= threshold || kotlin.math.abs(totalY) >= threshold)) {
                                         hasMoved = true
+                                        longPressJob?.cancel()
+                                        longPressJob = null
                                         if (kotlin.math.abs(totalX) > kotlin.math.abs(totalY)) {
                                             currentGestureType = "SEEK"
                                             showSeekDragIndicator = true
@@ -877,6 +916,18 @@ fun PlayerScreen(
                                 } else {
                                     pointerInputChange = null
                                 }
+                            }
+                            
+                            longPressJob?.cancel()
+                            longPressJob = null
+                            
+                            if (isLongPressFastForwarding) {
+                                player.setPlaybackSpeed(speedMultiplier)
+                                if (!wasPlayingBeforeFastForward) {
+                                    player.pause()
+                                }
+                                isLongPressFastForwarding = false
+                                hasMoved = true
                             }
                             
                             showVolumeIndicator = false
@@ -986,6 +1037,45 @@ fun PlayerScreen(
                     .background(Color(0xFFE5A642).copy(alpha = 0.22f))
                     .background(Color.Black.copy(alpha = 0.18f))
             )
+        }
+
+        // Top-Center HUD Notification Pill (Fast Forward indicator or system status alerts)
+        androidx.compose.animation.AnimatedVisibility(
+            visible = isLongPressFastForwarding || (isIndicatorVisible && gestureIndicatorText != null),
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(initialOffsetY = { -it }),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 16.dp)
+        ) {
+            val pillText = if (isLongPressFastForwarding) "▶▶ 2x" else (gestureIndicatorText ?: "")
+            Box(
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.72f), shape = RoundedCornerShape(percent = 50))
+                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(percent = 50))
+                    .padding(vertical = 8.dp, horizontal = 18.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    if (isLongPressFastForwarding) {
+                        Icon(
+                            imageVector = Icons.Default.FastForward,
+                            contentDescription = "Fast Forwarding",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp).padding(end = 4.dp)
+                        )
+                    }
+                    Text(
+                        text = pillText,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                }
+            }
         }
 
         // ----------------------------------------------------------------------
@@ -1540,7 +1630,6 @@ fun PlayerScreen(
                         }
 
                         Box {
-                            var isSpeedExpanded by remember { mutableStateOf(false) }
                             IconButton(
                                 onClick = { isSpeedExpanded = true },
                                 modifier = Modifier.size(34.dp)
@@ -1574,7 +1663,6 @@ fun PlayerScreen(
 
                         if (subtitleLanguages.isNotEmpty()) {
                             Box {
-                                var isSubtitlesExpanded by remember { mutableStateOf(false) }
                                 IconButton(onClick = { isSubtitlesExpanded = true }) {
                                     Icon(
                                         imageVector = Icons.Default.ClosedCaption,
