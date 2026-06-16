@@ -609,7 +609,7 @@ fun PlayerScreen(
                 cleanedText = cleanedText.replace("Also, es\\s*\\n\\s*".toRegex(RegexOption.IGNORE_CASE), "Also, es ")
                 cleanedText = cleanedText.replace("es geht um\\s*\\n\\s*".toRegex(RegexOption.IGNORE_CASE), "es geht um ")
                 
-                // التعديل هنا: تنظيف مسافات الحشو الجانبية المخفية تماماً من كل سطر لضمان التماسك والانكماش
+                // تنظيف مسافات الحشو الجانبية المخفية تماماً من كل سطر لضمان التماسك والانكماش
                 cleanedText = cleanedText.lines().map { it.trim() }.joinToString("\n").trim()
                 
                 activeSubtitleText = cleanedText
@@ -1198,7 +1198,7 @@ fun PlayerScreen(
         }
 
         // ----------------------------------------------------------------------
-        // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY (تعديل تصغير البوكس بالكامل)
+        // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY (الأسلوب الاحترافي السطري)
         // ----------------------------------------------------------------------
         if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
             val currentOffset = localSubtitleOffset ?: subtitlePrefsState.verticalOffset
@@ -1215,22 +1215,12 @@ fun PlayerScreen(
                         .padding(bottom = bottomPaddingAnim, start = 32.dp, end = 32.dp),
                     contentAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = verticalBias)
                 ) {
-                    // التعديل الجذري هنا: البوكس المستقل ده يضمن الانكماش التام على عرض النص بدون التمدد العريض للشاشة
-                    Box(
+                    // الحاوية الرئيسية أصبحت العمود الذي يرتب السطور المنفصلة بشكل متناسق ككتلة واحدة قابلة للسحب
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp), // المسافة بين السطور مثل المشغلات الاحترافية
                         modifier = Modifier
-                            .background(
-                                color = if (isDraggingSubtitle) {
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                                } else {
-                                    subtitlePrefsState.backgroundColor
-                                },
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            .border(
-                                width = if (isDraggingSubtitle) 2.dp else 1.dp,
-                                color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(8.dp)
-                            )
+                            .wrapContentSize()
                             .pointerInput(parentHeightPx, subtitlePrefsState.verticalOffset) {
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = {
@@ -1261,24 +1251,43 @@ fun PlayerScreen(
                             .clickable {
                                 isSubtitleCustomizationOpen = true
                             }
-                            .padding(horizontal = 18.dp, vertical = 10.dp)
                     ) {
-                        Text(
-                            text = activeSubtitleText,
-                            color = subtitlePrefsState.textColor,
-                            fontSize = subtitlePrefsState.textSize.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            lineHeight = (subtitlePrefsState.textSize * 1.35f).sp,
-                            style = TextStyle(
-                                shadow = Shadow(
-                                    color = Color.Black.copy(alpha = 0.95f),
-                                    offset = Offset(1.5f, 1.5f),
-                                    blurRadius = 3f
+                        // نقوم بتقسيم نص الترجمة ديناميكياً لسطور منفصلة لكي ينكمش التظليل والحدود على مقاس كل سطر بالضبط
+                        activeSubtitleText.lines().filter { it.isNotBlank() }.forEach { singleLine ->
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        color = if (isDraggingSubtitle) {
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                        } else {
+                                            subtitlePrefsState.backgroundColor
+                                        },
+                                        shape = RoundedCornerShape(6.dp)
+                                    )
+                                    .border(
+                                        width = if (isDraggingSubtitle) 1.5.dp else 0.5.dp,
+                                        color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = singleLine,
+                                    color = subtitlePrefsState.textColor,
+                                    fontSize = subtitlePrefsState.textSize.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    style = TextStyle(
+                                        shadow = Shadow(
+                                            color = Color.Black.copy(alpha = 0.95f),
+                                            offset = Offset(1.5f, 1.5f),
+                                            blurRadius = 3f
+                                        )
+                                    ),
+                                    modifier = Modifier.testTag("custom_subtitle_text")
                                 )
-                            ),
-                            modifier = Modifier.testTag("custom_subtitle_text")
-                        )
+                            }
+                        }
                     }
                 }
             }
