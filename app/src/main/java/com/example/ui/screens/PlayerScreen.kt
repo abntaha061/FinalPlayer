@@ -356,7 +356,6 @@ fun PlayerScreen(
          while (true) {
              delay(1000)
              playbackPosition = player.currentPosition
-             // Save to database only every 10 seconds to drastically reduce CPU thermal energy
              if (java.lang.Math.abs(playbackPosition - lastSavedPosition) >= 10000L) {
                  viewModel.addToHistory(filePath, playbackPosition)
                  lastSavedPosition = playbackPosition
@@ -367,7 +366,6 @@ fun PlayerScreen(
     // Clean player on exit and guarantee final position is saved
     DisposableEffect(player) {
         onDispose {
-            // Save precise end position on dispose
             viewModel.addToHistory(filePath, player.currentPosition)
             player.release()
         }
@@ -378,7 +376,7 @@ fun PlayerScreen(
     var currentBrightness by remember {
         mutableStateOf(activity?.window?.attributes?.screenBrightness ?: 0.5f)
     }
-    if (currentBrightness < 0f) currentBrightness = 0.5f // Handle default auto status
+    if (currentBrightness < 0f) currentBrightness = 0.5f
 
     var gestureIndicatorText by remember { mutableStateOf<String?>(null) }
     var isIndicatorVisible by remember { mutableStateOf(false) }
@@ -471,7 +469,7 @@ fun PlayerScreen(
     var showForwardOverlay by remember { mutableStateOf(false) }
     var showSeekDragIndicator by remember { mutableStateOf(false) }
     var draggedSeekPosition by remember { mutableStateOf(0L) }
-    var currentGestureType by remember { mutableStateOf("NONE") } // "NONE", "VOLUME", "BRIGHTNESS", "SEEK"
+    var currentGestureType by remember { mutableStateOf("NONE") }
     var dragStartOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
     // Subtitle customization details
@@ -487,6 +485,9 @@ fun PlayerScreen(
     var subtitleDelaySeconds by remember { mutableStateOf(0.0f) }
 
     var activeSubtitleText by remember { mutableStateOf("") }
+    // حالة تذكر مصفوفة رصد الأسطر والكلمات لمنع الفراغات والمسافات
+    var subtitleTextLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    
     val subPrefsManager = remember { com.example.data.SubtitlePrefsManager(context) }
     val subtitlePrefsState by subPrefsManager.subtitlePreferencesFlow.collectAsState(initial = com.example.data.SubtitlePreferences())
 
@@ -598,18 +599,15 @@ fun PlayerScreen(
                     .mapNotNull { it.text?.toString() }
                     .joinToString("\n")
                 
-                // Post-process subtitle cleanups to improve reading coherence and correct cut-offs
                 var cleanedText = rawText
                 cleanedText = cleanedText.replace("oder in dat\\b".toRegex(RegexOption.IGNORE_CASE), "oder in Dativ")
                 cleanedText = cleanedText.replace("oder in dat\\.".toRegex(RegexOption.IGNORE_CASE), "oder in Dativ.")
                 cleanedText = cleanedText.replace("\\bin dat\\b".toRegex(RegexOption.IGNORE_CASE), "in Dativ")
                 cleanedText = cleanedText.replace("\\bin dat\\.".toRegex(RegexOption.IGNORE_CASE), "in Dativ.")
                 
-                // Improve bad split breaks (e.g. merging dangling phrases for proper reading speed)
                 cleanedText = cleanedText.replace("Also, es\\s*\\n\\s*".toRegex(RegexOption.IGNORE_CASE), "Also, es ")
                 cleanedText = cleanedText.replace("es geht um\\s*\\n\\s*".toRegex(RegexOption.IGNORE_CASE), "es geht um ")
                 
-                // تنظيف مسافات الحشو الجانبية المخفية تماماً من كل سطر لضمان التماسك والانكماش
                 cleanedText = cleanedText.lines().map { it.trim() }.joinToString("\n").trim()
                 
                 activeSubtitleText = cleanedText
@@ -1198,7 +1196,7 @@ fun PlayerScreen(
         }
 
         // ----------------------------------------------------------------------
-        // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY (الأسلوب الاحترافي السطري)
+        // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY (الحل الاحترافي الخالي من الفراغات والمسافات)
         // ----------------------------------------------------------------------
         if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
             val currentOffset = localSubtitleOffset ?: subtitlePrefsState.verticalOffset
@@ -1215,10 +1213,7 @@ fun PlayerScreen(
                         .padding(bottom = bottomPaddingAnim, start = 32.dp, end = 32.dp),
                     contentAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = verticalBias)
                 ) {
-                    // الحاوية الرئيسية أصبحت العمود الذي يرتب السطور المنفصلة بشكل متناسق ككتلة واحدة قابلة للسحب
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp), // المسافة بين السطور مثل المشغلات الاحترافية
+                    Box(
                         modifier = Modifier
                             .wrapContentSize()
                             .pointerInput(parentHeightPx, subtitlePrefsState.verticalOffset) {
@@ -1252,42 +1247,59 @@ fun PlayerScreen(
                                 isSubtitleCustomizationOpen = true
                             }
                     ) {
-                        // نقوم بتقسيم نص الترجمة ديناميكياً لسطور منفصلة لكي ينكمش التظليل والحدود على مقاس كل سطر بالضبط
-                        activeSubtitleText.lines().filter { it.isNotBlank() }.forEach { singleLine ->
-                            Box(
-                                modifier = Modifier
-                                    .background(
-                                        color = if (isDraggingSubtitle) {
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                                        } else {
-                                            subtitlePrefsState.backgroundColor
-                                        },
-                                        shape = RoundedCornerShape(6.dp)
-                                    )
-                                    .border(
-                                        width = if (isDraggingSubtitle) 1.5.dp else 0.5.dp,
-                                        color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.12f),
-                                        shape = RoundedCornerShape(6.dp)
-                                    )
-                                    .padding(horizontal = 14.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = singleLine,
-                                    color = subtitlePrefsState.textColor,
-                                    fontSize = subtitlePrefsState.textSize.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    style = TextStyle(
-                                        shadow = Shadow(
-                                            color = Color.Black.copy(alpha = 0.95f),
-                                            offset = Offset(1.5f, 1.5f),
-                                            blurRadius = 3f
-                                        )
-                                    ),
-                                    modifier = Modifier.testTag("custom_subtitle_text")
-                                )
-                            }
+                        val density = LocalDensity.current
+                        // التحكم الدقيق بحواف تظليل كل سطر (تطابق المقاس تماماً وبدون فراغات جانبية)
+                        val hPaddingPx = remember(density) { with(density) { 6.dp.toPx() } }
+                        val vPaddingPx = remember(density) { with(density) { 1.5.dp.toPx() } }
+                        val cornerRadiusPx = remember(density) { with(density) { 3.dp.toPx() } }
+                        val bgColor = if (isDraggingSubtitle) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                        } else {
+                            subtitlePrefsState.backgroundColor
                         }
+
+                        Text(
+                            text = activeSubtitleText,
+                            color = subtitlePrefsState.textColor,
+                            fontSize = subtitlePrefsState.textSize.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            // تقليل مسافة الارتفاع السطري لدمج التظليل العلوي والسفلي معاً بشكل احترافي ومتناسق
+                            lineHeight = (subtitlePrefsState.textSize * 1.22f).sp,
+                            onTextLayout = { subtitleTextLayoutResult = it },
+                            style = TextStyle(
+                                shadow = Shadow(
+                                    color = Color.Black.copy(alpha = 0.95f),
+                                    offset = Offset(1.5f, 1.5f),
+                                    blurRadius = 3f
+                                )
+                            ),
+                            modifier = Modifier
+                                .testTag("custom_subtitle_text")
+                                .drawBehind {
+                                    // هنا تكمن قوة الكود: الرسم خلف كل سطر بناءً على موقعه البكسلي الحقيقي على الشاشة
+                                    subtitleTextLayoutResult?.let { layoutResult ->
+                                        for (i in 0 until layoutResult.lineCount) {
+                                            val left = layoutResult.getLineLeft(i)
+                                            val right = layoutResult.getLineRight(i)
+                                            val top = layoutResult.getLineTop(i)
+                                            val bottom = layoutResult.getLineBottom(i)
+                                            
+                                            if (right > left) {
+                                                drawRoundRect(
+                                                    color = bgColor,
+                                                    topLeft = Offset(left - hPaddingPx, top - vPaddingPx),
+                                                    size = androidx.compose.ui.geometry.Size(
+                                                        (right - left) + (2 * hPaddingPx),
+                                                        (bottom - top) + (2 * vPaddingPx)
+                                                    ),
+                                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadiusPx, cornerRadiusPx)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                        )
                     }
                 }
             }
@@ -1451,7 +1463,7 @@ fun PlayerScreen(
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
-                        ) {}
+                    ) {}
                         .navigationBarsPadding()
                         .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
                 ) {
@@ -1710,9 +1722,7 @@ fun PlayerScreen(
                                                     isSubtitlesExpanded = false
                                                     gestureIndicatorText = "ترجمة: $lang"
                                                     scope.launch {
-                                                        isIndicatorVisible = true
-                                                        delay(800)
-                                                        isIndicatorVisible = false
+                                                        isIndicatorVisible = true; delay(800); isIndicatorVisible = false
                                                     }
                                                 }
                                             )
@@ -2397,6 +2407,7 @@ fun PlayerScreen(
                         Text("التحكم بالموضع الجغرافي (Layout Placement):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text("الموضع العمودي (Vertical Position): ${(subtitlePrefsState.verticalOffset * 100).toInt()}%", color = Color.White, fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
                         Slider(
                             value = subtitlePrefsState.verticalOffset,
                             onValueChange = { newValue ->
