@@ -1641,18 +1641,18 @@ fun VideosAndFoldersTab(
                                         lineHeight = 16.sp
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    val hasSubtitles = remember(video.path) {
+                                    val detectedSubFiles = remember(video.path) {
                                         try {
                                             val vf = java.io.File(video.path)
                                             val parent = vf.parentFile
                                             if (parent != null && parent.exists()) {
                                                 val baseName = vf.nameWithoutExtension
-                                                parent.listFiles()?.any { sib ->
+                                                parent.listFiles()?.filter { sib ->
                                                     val sName = sib.name
                                                     sName.startsWith(baseName) && (sName.endsWith(".srt", ignoreCase = true) || sName.endsWith(".vtt", ignoreCase = true))
-                                                } ?: false
-                                            } else false
-                                        } catch (e: Exception) { false }
+                                                }?.sortedBy { it.name } ?: emptyList()
+                                            } else emptyList()
+                                        } catch (e: Exception) { emptyList() }
                                     }
                                     val dateText = remember(video.dateModified) {
                                         try {
@@ -1666,14 +1666,24 @@ fun VideosAndFoldersTab(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        if (hasSubtitles) {
+                                        detectedSubFiles.forEach { subFile ->
+                                            val vf = remember(video.path) { java.io.File(video.path) }
+                                            val vBaseName = vf.nameWithoutExtension
+                                            val sName = subFile.name
+                                            val suffix = if (sName.length > vBaseName.length) {
+                                                sName.substring(vBaseName.length).removeSuffix(".srt").removeSuffix(".vtt").removeSuffix(".SRT").removeSuffix(".VTT")
+                                            } else {
+                                                ""
+                                            }
+                                            val cleanSuffix = if (suffix.startsWith(".")) suffix.substring(1) else suffix
+                                            val badgeLabel = if (cleanSuffix.isNotEmpty()) cleanSuffix.uppercase() else "SRT"
                                             Box(
                                                 modifier = Modifier
                                                     .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
                                                     .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
-                                                    text = "SRT",
+                                                    text = badgeLabel,
                                                     color = Color.White,
                                                     fontSize = 7.5.sp,
                                                     style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
@@ -2128,19 +2138,19 @@ fun VideoGridItem(
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    val hasSubtitles = remember(video.path) {
+                    val detectedSubFiles = remember(video.path) {
                         try {
                             val vf = java.io.File(video.path)
                             val parent = vf.parentFile
                             if (parent != null && parent.exists()) {
                                 val baseName = vf.nameWithoutExtension
-                                parent.listFiles()?.any { sib ->
+                                parent.listFiles()?.filter { sib ->
                                     val sName = sib.name
-                                    sName.startsWith(baseName) && (sName.endsWith(".srt", ignoreCase = true) || sName.endsWith(".vtt", ignoreCase = true))
-                                } ?: false
-                            } else false
-                        } catch (e: Exception) { false }
-                    }
+                                                    sName.startsWith(baseName) && (sName.endsWith(".srt", ignoreCase = true) || sName.endsWith(".vtt", ignoreCase = true))
+                                                }?.sortedBy { it.name } ?: emptyList()
+                                            } else emptyList()
+                                        } catch (e: Exception) { emptyList() }
+                                    }
                     Row(
                         modifier = Modifier.weight(1f),
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
@@ -2154,15 +2164,25 @@ fun VideoGridItem(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
                         )
-                        if (hasSubtitles) {
+                        detectedSubFiles.forEach { subFile ->
                             Spacer(modifier = Modifier.width(4.dp))
+                            val vf = remember(video.path) { java.io.File(video.path) }
+                            val vBaseName = vf.nameWithoutExtension
+                            val sName = subFile.name
+                            val suffix = if (sName.length > vBaseName.length) {
+                                sName.substring(vBaseName.length).removeSuffix(".srt").removeSuffix(".vtt").removeSuffix(".SRT").removeSuffix(".VTT")
+                            } else {
+                                ""
+                            }
+                            val cleanSuffix = if (suffix.startsWith(".")) suffix.substring(1) else suffix
+                            val badgeLabel = if (cleanSuffix.isNotEmpty()) cleanSuffix.uppercase() else "SRT"
                             Box(
                                 modifier = Modifier
                                     .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
                                     .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "SRT",
+                                    text = badgeLabel,
                                     color = Color.White,
                                     fontSize = 7.5.sp,
                                     style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
