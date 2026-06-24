@@ -1133,6 +1133,60 @@ fun toEasternArabicNumerals(input: String): String {
     return result
 }
 
+fun formatVideoSizeArabic(totalBytes: Long): String {
+    val gigabytes = totalBytes / (1024.0 * 1024.0 * 1024.0)
+    val megabytes = totalBytes / (1024.0 * 1024.0)
+    return when {
+        gigabytes >= 0.9 -> {
+            val formatted = "%.2f".format(gigabytes).trimEnd('0').trimEnd(',')
+            toEasternArabicNumerals(formatted) + " غيغابايت"
+        }
+        else -> {
+            val formatted = "%.0f".format(megabytes)
+            toEasternArabicNumerals(formatted) + " ميغابايت"
+        }
+    }
+}
+
+fun formatVideoDateArabic(timestamp: Long): String {
+    return try {
+        val locale = java.util.Locale("ar")
+        val sdf = java.text.SimpleDateFormat("d MMMM", locale)
+        val formatted = sdf.format(java.util.Date(timestamp))
+        toEasternArabicNumerals(formatted)
+    } catch (e: Exception) {
+        ""
+    }
+}
+
+fun getRelativeTimeArabic(viewedAt: Long): String {
+    val diff = System.currentTimeMillis() - viewedAt
+    val seconds = diff / 1000
+    val minutes = seconds / 60
+    val hours = minutes / 60
+    val days = hours / 24
+    
+    return when {
+        diff < 0 -> ""
+        seconds < 60 -> "تم التشغيل الآن"
+        minutes == 1L -> "تم التشغيل منذ دقيقة"
+        minutes == 2L -> "تم التشغيل منذ دقيقتين"
+        minutes in 3..10 -> "تم التشغيل منذ ${toEasternArabicNumerals(minutes.toString())} دقائق"
+        minutes < 60 -> "تم التشغيل منذ ${toEasternArabicNumerals(minutes.toString())} دقيقة"
+        hours == 1L -> "تم التشغيل منذ ساعة"
+        hours == 2L -> "تم التشغيل منذ ساعتين"
+        hours in 3..10 -> "تم التشغيل منذ ${toEasternArabicNumerals(hours.toString())} ساعات"
+        hours < 24 -> "تم التشغيل منذ ${toEasternArabicNumerals(hours.toString())} ساعة"
+        days == 1L -> "تم التشغيل أمس"
+        days == 2L -> "تم التشغيل منذ يومين"
+        days in 3..10 -> "تم التشغيل منذ ${toEasternArabicNumerals(days.toString())} أيام"
+        else -> {
+            val sdf = java.text.SimpleDateFormat("d MMMM yyyy", java.util.Locale("ar"))
+            "تم التشغيل في " + toEasternArabicNumerals(sdf.format(java.util.Date(viewedAt)))
+        }
+    }
+}
+
 fun formatFolderSizeArabic(totalBytes: Long): String {
     val gigabytes = totalBytes / (1024.0 * 1024.0 * 1024.0)
     val megabytes = totalBytes / (1024.0 * 1024.0)
@@ -1296,6 +1350,7 @@ fun VideosAndFoldersTab(
     var videoToRename by remember { mutableStateOf<MediaFile?>(null) }
     var newNameText by remember { mutableStateOf("") }
     var videoToDelete by remember { mutableStateOf<MediaFile?>(null) }
+    val historyList by viewModel.history.collectAsState(initial = emptyList())
 
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
     val accentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
@@ -1654,7 +1709,15 @@ fun VideosAndFoldersTab(
                                             } else emptyList()
                                         } catch (e: Exception) { emptyList() }
                                     }
-                                    val dateText = remember(video.dateModified) {
+                                    val dateText = remember(historyList, video.dateModified, video.path) {
+                                        val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
+                                        if (historyEntry != null) {
+                                            getRelativeTimeArabic(historyEntry.viewedAt)
+                                        } else {
+                                            formatVideoDateArabic(video.dateModified)
+                                        }
+                                    }
+                                    val oldDateText = remember(video.dateModified) {
                                         try {
                                             val sdf = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault())
                                             sdf.format(java.util.Date(video.dateModified))
@@ -1717,11 +1780,22 @@ fun VideosAndFoldersTab(
                                                 )
                                             }
                                         }
-                                        val sizeString = "%.1f MB".format(video.size / (1024f * 1024f))
+                                        val sizeString = formatVideoSizeArabic(video.size)
+                                        val dateText = remember(historyList, video.dateModified, video.path) {
+                                            val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
+                                            if (historyEntry != null) {
+                                                getRelativeTimeArabic(historyEntry.viewedAt)
+                                            } else {
+                                                formatVideoDateArabic(video.dateModified)
+                                            }
+                                        }
                                         Text(
                                             text = sizeString,
                                             fontSize = 11.sp,
-                                            color = Color.Gray
+                                            color = Color.Gray,
+                                            fontWeight = FontWeight.Normal,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                         if (dateText.isNotEmpty()) {
                                             Text(
@@ -1732,7 +1806,10 @@ fun VideosAndFoldersTab(
                                             Text(
                                                 text = dateText,
                                                 fontSize = 11.sp,
-                                                color = Color.Gray
+                                                color = Color.Gray,
+                                                fontWeight = FontWeight.Normal,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }
@@ -1819,6 +1896,7 @@ fun VideosAndFoldersTab(
                                             videoToDelete = video
                                         },
                                         isSelected = selectedPaths.contains(video.path),
+                                        historyList = historyList,
                                         onLongClick = {
                                             if (selectedPaths.contains(video.path)) {
                                                 selectedPaths.remove(video.path)
@@ -2011,6 +2089,7 @@ fun VideoGridItem(
     onDeleteClick: () -> Unit,
     isSelected: Boolean = false,
     onLongClick: (() -> Unit)? = null,
+    historyList: List<com.example.data.local.entities.HistoryEntity> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val thumbnail = rememberVideoThumbnail(video.path)
@@ -2264,12 +2343,12 @@ fun VideoGridItem(
                         }
                     }
                 }
-                val dateText = remember(video.dateModified) {
-                    try {
-                        val sdf = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault())
-                        sdf.format(java.util.Date(video.dateModified))
-                    } catch (e: Exception) {
-                        ""
+                val arabicDateText = remember(historyList, video.dateModified, video.path) {
+                    val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
+                    if (historyEntry != null) {
+                        getRelativeTimeArabic(historyEntry.viewedAt)
+                    } else {
+                        formatVideoDateArabic(video.dateModified)
                     }
                 }
                 Spacer(modifier = Modifier.height(2.dp))
@@ -2279,19 +2358,21 @@ fun VideoGridItem(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "%.1f MB".format(video.size / (1024f * 1024f)),
+                        text = formatVideoSizeArabic(video.size),
                         fontSize = 11.sp,
                         color = Color.Gray,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
                     )
-                    if (dateText.isNotEmpty()) {
+                    if (arabicDateText.isNotEmpty()) {
                         Text(
                             text = " • ",
                             fontSize = 11.sp,
                             color = Color.Gray.copy(alpha = 0.5f)
                         )
                         Text(
-                            text = dateText,
+                            text = arabicDateText,
                             fontSize = 11.sp,
                             color = Color.Gray,
                             fontWeight = FontWeight.Normal,
