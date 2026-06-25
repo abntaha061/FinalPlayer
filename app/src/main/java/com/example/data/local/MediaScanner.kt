@@ -272,7 +272,7 @@ class MediaScanner(private val mediaDao: MediaDao) {
             MediaStore.Video.Media.DISPLAY_NAME,
             MediaStore.Video.Media.DURATION,
             MediaStore.Video.Media.SIZE,
-            MediaStore.Video.Media.DATE_MODIFIED,
+            MediaStore.Video.Media.DATE_ADDED,
             MediaStore.Video.Media.WIDTH,
             MediaStore.Video.Media.HEIGHT
         )
@@ -287,7 +287,7 @@ class MediaScanner(private val mediaDao: MediaDao) {
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
                 val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
                 val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
-                val dateModCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
+                val dateAddedCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
                 val widthCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
                 val heightCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
 
@@ -296,14 +296,14 @@ class MediaScanner(private val mediaDao: MediaDao) {
                     if (shouldExcludeVideoFile(rawPath)) continue
                     val file = File(rawPath)
                     val path = try { file.canonicalPath } catch (e: Exception) { file.absolutePath }
-                    val dateMod = cursor.getLong(dateModCol) * 1000L
+                    val dateAddedVal = cursor.getLong(dateAddedCol) * 1000L
                     foundFiles.add(
                         MediaFile(
                             path = path,
                             title = cursor.getString(nameCol) ?: file.name,
                             duration = cursor.getLong(durationCol),
                             size = cursor.getLong(sizeCol),
-                            dateModified = dateMod,
+                            dateModified = dateAddedVal,
                             isVideo = true,
                             width = cursor.getInt(widthCol),
                             height = cursor.getInt(heightCol)

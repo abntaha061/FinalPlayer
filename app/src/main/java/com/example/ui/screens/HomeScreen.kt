@@ -71,6 +71,7 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
+    val screenContext = context
     val selectedPaths = remember { mutableStateListOf<String>() }
 
     // Observe DB States
@@ -1123,6 +1124,58 @@ data class QuickActionItem(
     val onClick: () -> Unit
 )
 
+data class SubtitleBadge(val path: String, val label: String)
+
+fun scanSubtitlesForFolder(videoPath: String): List<SubtitleBadge> {
+    try {
+        val videoFile = java.io.File(videoPath)
+        val parent = videoFile.parentFile
+        if (parent == null || !parent.exists()) return emptyList()
+        val subtitleExtensions = setOf("srt", "ass", "ssa", "sub")
+        val files = parent.listFiles() ?: return emptyList()
+        return files.filter { file ->
+            file.isFile && file.extension.lowercase(java.util.Locale.US) in subtitleExtensions
+        }.map { file ->
+            val fileName = file.name.lowercase(java.util.Locale.US)
+            val displayTag = when {
+                fileName.contains("ar-ar") -> "AR-AR"
+                fileName.contains("ar-en") -> "AR-EN"
+                fileName.contains("ar-orig") || fileName.contains("ar-original") -> "AR-ORIG"
+                fileName.contains("ar") || fileName.contains("arabic") -> "AR"
+                fileName.contains("en") || fileName.contains("english") -> "EN"
+                fileName.contains("orig") || fileName.contains("original") -> "ORIG"
+                else -> "ORIG"
+            }
+            SubtitleBadge(file.absolutePath, displayTag)
+        }.distinctBy { it.path }
+    } catch (e: Exception) {
+        return emptyList()
+    }
+}
+
+fun detectQuality(width: Int, height: Int, path: String, title: String): String {
+    val maxDim = maxOf(width, height)
+    return when {
+        maxDim >= 3840 -> "4K"
+        maxDim >= 1920 -> "1080p"
+        maxDim >= 1280 -> "720p"
+        maxDim >= 854  -> "480p"
+        maxDim >= 640  -> "360p"
+        maxDim > 0     -> "SD"
+        else -> {
+            // fallback to filename if no resolution data
+            val combined = "$path $title".lowercase(java.util.Locale.US)
+            when {
+                combined.contains("2160") || combined.contains("4k") -> "4K"
+                combined.contains("1080") -> "1080p"
+                combined.contains("720")  -> "720p"
+                combined.contains("480")  -> "480p"
+                else -> "1080p"
+            }
+        }
+    }
+}
+
 fun toEasternArabicNumerals(input: String): String {
     val western = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".")
     val eastern = listOf("٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩", ",")
@@ -1347,6 +1400,7 @@ fun VideosAndFoldersTab(
             onSelectedFolderPathChange(null)
         }
     }
+    val context = LocalContext.current
     var videoToRename by remember { mutableStateOf<MediaFile?>(null) }
     var newNameText by remember { mutableStateOf("") }
     var videoToDelete by remember { mutableStateOf<MediaFile?>(null) }
@@ -1548,10 +1602,14 @@ fun VideosAndFoldersTab(
                     }
                 }
             } else {
-                // Determine whether to show LIST layout or GRID layout in chunked rows
                 if (layoutMode == "LIST") {
                     items(displayVideos, key = { it.path }) { video ->
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                            val thumbnail = rememberVideoThumbnail(video.path)
+                            val currentTimeMs = System.currentTimeMillis()
+                            val threeDaysInMs = 3 * 24 * 60 * 60 * 1000L
+                            val isNewVideo = (currentTimeMs - video.dateModified) <= threeDaysInMs
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1578,13 +1636,13 @@ fun VideosAndFoldersTab(
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                val thumbnail = rememberVideoThumbnail(video.path)
+                                // Left: Thumbnail Area
                                 Box(
                                     modifier = Modifier
-                                        .size(width = 116.dp, height = 68.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                                        .background(Color.Black.copy(alpha = 0.2f)),
+                                        .size(width = 120.dp, height = 70.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF212121)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (thumbnail != null) {
@@ -1609,25 +1667,25 @@ fun VideosAndFoldersTab(
                                         )
                                     }
 
-                                    if (video.isNew) {
+                                    if (isNewVideo) {
                                         Box(
                                             modifier = Modifier
                                                 .align(Alignment.TopStart)
                                                 .padding(4.dp)
-                                                .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
-                                                .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
+                                                .background(Color(0xFFD32F2F), shape = RoundedCornerShape(2.dp))
+                                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                                            contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = "NEW",
                                                 color = Color.White,
-                                                fontSize = 7.5.sp,
-                                                style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
+                                                fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
                                     }
 
-                                    // Small elegant play overlay in list view
+                                    // Play icon overlay
                                     Box(
                                         modifier = Modifier
                                             .size(28.dp)
@@ -1642,8 +1700,8 @@ fun VideosAndFoldersTab(
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }
-                                    
-                                    // Duration badge overlay on bottom right
+
+                                    // Duration Badge
                                     val totalSeconds = video.duration / 1000
                                     val hours = totalSeconds / 3600
                                     val minutes = (totalSeconds % 3600) / 60
@@ -1658,7 +1716,7 @@ fun VideosAndFoldersTab(
                                             .align(Alignment.BottomEnd)
                                             .padding(4.dp)
                                             .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(2.dp))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
                                     ) {
                                         Text(
                                             text = durationText,
@@ -1684,183 +1742,148 @@ fun VideosAndFoldersTab(
                                         }
                                     }
                                 }
+
                                 Spacer(modifier = Modifier.width(12.dp))
+
+                                // Right: Details
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = video.title,
-                                        color = MaterialTheme.colorScheme.onSurface,
+                                        color = Color.White,
                                         fontSize = 13.sp,
-                                        fontWeight = FontWeight.Normal,
+                                        fontWeight = FontWeight.Medium,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                         lineHeight = 16.sp
                                     )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    val detectedSubFiles = remember(video.path) {
-                                        try {
-                                            val vf = java.io.File(video.path)
-                                            val parent = vf.parentFile
-                                            if (parent != null && parent.exists()) {
-                                                val baseName = vf.nameWithoutExtension
-                                                parent.listFiles()?.filter { sib ->
-                                                    val sName = sib.name
-                                                    sName.startsWith(baseName) && (sName.endsWith(".srt", ignoreCase = true) || sName.endsWith(".vtt", ignoreCase = true))
-                                                }?.sortedBy { it.name } ?: emptyList()
-                                            } else emptyList()
-                                        } catch (e: Exception) { emptyList() }
+
+                                    // Chips Row (Subtitles and Quality)
+                                    val subtitleBadges = remember(video.path) {
+                                        scanSubtitlesForFolder(video.path)
                                     }
-                                    val dateText = remember(historyList, video.dateModified, video.path) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    ) {
+                                        subtitleBadges.forEach { sub ->
+                                            val subtitleColor = when (sub.label) {
+                                                "AR" -> Color(0xFF1565C0)
+                                                "EN" -> Color(0xFF2E7D32)
+                                                "ORIG" -> Color(0xFF616161)
+                                                "AR-ORIG" -> Color(0xFF1565C0)
+                                                else -> Color(0xFF616161)
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .height(18.dp)
+                                                    .background(subtitleColor, RoundedCornerShape(2.dp))
+                                                    .padding(horizontal = 4.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = sub.label,
+                                                    color = Color.White,
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+
+                                        // Quality Badge
+                                        val quality = remember(video.width, video.height, video.path, video.title) {
+                                            detectQuality(video.width, video.height, video.path, video.title)
+                                        }
+                                        val qualityColor = when (quality) {
+                                            "1080p" -> Color(0xFF6A1B9A)
+                                            "720p" -> Color(0xFF00695C)
+                                            "480p" -> Color(0xFFEF6C00)
+                                            "360p" -> Color(0xFFAD1457)
+                                            "4K" -> Color(0xFFC62828)
+                                            else -> Color(0xFF616161)
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .height(18.dp)
+                                                .background(qualityColor, RoundedCornerShape(2.dp))
+                                                .padding(horizontal = 4.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = quality,
+                                                color = Color.White,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    // Metadata Line
+                                    val sizeStr = com.example.util.FileSizeFormatter.formatSize(video.size)
+                                    val dateStr = remember(historyList, video.dateModified, video.path) {
                                         val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
                                         if (historyEntry != null) {
                                             getRelativeTimeArabic(historyEntry.viewedAt)
                                         } else {
-                                            formatVideoDateArabic(video.dateModified)
+                                            com.example.util.DateFormatter.formatDate(video.dateModified / 1000L, context)
                                         }
                                     }
-                                    val oldDateText = remember(video.dateModified) {
-                                        try {
-                                            val sdf = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.getDefault())
-                                            sdf.format(java.util.Date(video.dateModified))
-                                        } catch (e: Exception) {
-                                            ""
-                                        }
-                                    }
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        detectedSubFiles.forEach { subFile ->
-                                            val vf = remember(video.path) { java.io.File(video.path) }
-                                            val vBaseName = vf.nameWithoutExtension
-                                            val sName = subFile.name
-                                            val suffix = if (sName.length > vBaseName.length) {
-                                                sName.substring(vBaseName.length).removeSuffix(".srt").removeSuffix(".vtt").removeSuffix(".SRT").removeSuffix(".VTT")
-                                            } else {
-                                                ""
-                                            }
-                                            val cleanSuffix = if (suffix.startsWith(".")) suffix.substring(1) else suffix
-                                            val badgeLabel = if (cleanSuffix.isNotEmpty()) cleanSuffix.uppercase() else "SRT"
-                                            Box(
-                                                modifier = Modifier
-                                                    .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = badgeLabel,
-                                                    color = Color.White,
-                                                    fontSize = 7.5.sp,
-                                                    style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                        if (video.width > 0 && video.height > 0) {
-                                            val resolutionText = remember(video.width, video.height) {
-                                                val minDim = minOf(video.width, video.height)
-                                                when {
-                                                    minDim >= 2160 -> "4K"
-                                                    minDim >= 1440 -> "2K"
-                                                    minDim >= 1080 -> "1080p"
-                                                    minDim >= 720 -> "720p"
-                                                    minDim >= 480 -> "480p"
-                                                    else -> "${video.width}x${video.height}"
-                                                }
-                                            }
-                                            Box(
-                                                modifier = Modifier
-                                                    .background(Color(0xFF34C759), RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = resolutionText,
-                                                    color = Color.White,
-                                                    fontSize = 7.5.sp,
-                                                    style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                        val sizeString = formatVideoSizeArabic(video.size)
-                                        val dateText = remember(historyList, video.dateModified, video.path) {
-                                            val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
-                                            if (historyEntry != null) {
-                                                getRelativeTimeArabic(historyEntry.viewedAt)
-                                            } else {
-                                                formatVideoDateArabic(video.dateModified)
-                                            }
-                                        }
-                                        Text(
-                                            text = sizeString,
-                                            fontSize = 11.sp,
-                                            color = Color.Gray,
-                                            fontWeight = FontWeight.Normal,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                        if (dateText.isNotEmpty()) {
-                                            Text(
-                                                text = "•",
-                                                fontSize = 11.sp,
-                                                color = Color.Gray.copy(alpha = 0.6f)
-                                            )
-                                            Text(
-                                                text = dateText,
-                                                fontSize = 11.sp,
-                                                color = Color.Gray,
-                                                fontWeight = FontWeight.Normal,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        }
-                                    }
+                                    Text(
+                                        text = "$sizeStr • $dateStr",
+                                        fontSize = 11.sp,
+                                        color = Color.Gray,
+                                        fontWeight = FontWeight.Normal,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
 
-                            // Offset 3-dots actions menu
-                            var isMenuExpanded by remember { mutableStateOf(false) }
-                            Box {
-                                IconButton(
-                                    onClick = { isMenuExpanded = true },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MoreVert,
-                                        contentDescription = "Options menu",
-                                        tint = Color.Gray
-                                    )
-                                }
-                                DropdownMenu(
-                                    expanded = isMenuExpanded,
-                                    onDismissRequest = { isMenuExpanded = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("تسمية الملف", fontSize = 13.sp) },
-                                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                        onClick = {
-                                            isMenuExpanded = false
-                                            videoToRename = video
-                                            newNameText = video.title
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("حذف الملف", fontSize = 13.sp) },
-                                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
-                                        onClick = {
-                                            isMenuExpanded = false
-                                            videoToDelete = video
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
-                                        leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                        onClick = {
-                                            isMenuExpanded = false
-                                            viewModel.setPrivateStatus(video, true)
-                                        }
-                                    )
+                                // Offset 3-dots actions menu
+                                var isMenuExpanded by remember { mutableStateOf(false) }
+                                Box {
+                                    IconButton(
+                                        onClick = { isMenuExpanded = true },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "Options menu",
+                                            tint = Color.Gray
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = isMenuExpanded,
+                                        onDismissRequest = { isMenuExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("تسمية الملف", fontSize = 13.sp) },
+                                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                            onClick = {
+                                                isMenuExpanded = false
+                                                videoToRename = video
+                                                newNameText = video.title
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("حذف الملف", fontSize = 13.sp) },
+                                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
+                                            onClick = {
+                                                isMenuExpanded = false
+                                                videoToDelete = video
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
+                                            leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                            onClick = {
+                                                isMenuExpanded = false
+                                                viewModel.setPrivateStatus(video, true)
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
                     }
                 } else {
                     // Modern 2-Column Grid Layout Chunk implementation avoiding nested lists error
