@@ -16,5 +16,7 @@ data class VideoItem(
     val duration: Long,
     val size: Long, // bytes
     val dateAdded: Long, // unix timestamp
-    val subtitles: List<SubtitleInfo>
+    val subtitles: List<SubtitleInfo>,
+    val width: Int = 0,
+    val height: Int = 0
 ) : Serializable

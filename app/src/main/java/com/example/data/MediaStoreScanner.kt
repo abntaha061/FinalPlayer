@@ -17,10 +17,12 @@ object MediaStoreScanner {
             MediaStore.Video.Media.DATA,
             MediaStore.Video.Media.DURATION,
             MediaStore.Video.Media.SIZE,
-            MediaStore.Video.Media.DATE_MODIFIED
+            MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.WIDTH,
+            MediaStore.Video.Media.HEIGHT
         )
         
-        // Query external storage for videos sorted by modification date descending
+        // Query external storage for videos sorted by added date descending
         val contentResolver = context.contentResolver
         val cursor = try {
             contentResolver.query(
@@ -28,7 +30,7 @@ object MediaStoreScanner {
                 projection,
                 null,
                 null,
-                "${MediaStore.Video.Media.DATE_MODIFIED} DESC"
+                "${MediaStore.Video.Media.DATE_ADDED} DESC"
             )
         } catch (e: Exception) {
             null
@@ -40,7 +42,9 @@ object MediaStoreScanner {
             val dataCol = c.getColumnIndex(MediaStore.Video.Media.DATA)
             val durationCol = c.getColumnIndex(MediaStore.Video.Media.DURATION)
             val sizeCol = c.getColumnIndex(MediaStore.Video.Media.SIZE)
-            val dateCol = c.getColumnIndex(MediaStore.Video.Media.DATE_MODIFIED)
+            val dateCol = c.getColumnIndex(MediaStore.Video.Media.DATE_ADDED)
+            val widthCol = c.getColumnIndex(MediaStore.Video.Media.WIDTH)
+            val heightCol = c.getColumnIndex(MediaStore.Video.Media.HEIGHT)
             
             while (c.moveToNext()) {
                 val id = if (idCol != -1) c.getLong(idCol) else 0L
@@ -49,6 +53,8 @@ object MediaStoreScanner {
                 val duration = if (durationCol != -1) c.getLong(durationCol) else 0L
                 val size = if (sizeCol != -1) c.getLong(sizeCol) else 0L
                 val dateAdded = if (dateCol != -1) c.getLong(dateCol) else 0L
+                val width = if (widthCol != -1) c.getInt(widthCol) else 0
+                val height = if (heightCol != -1) c.getInt(heightCol) else 0
                 
                 if (path.isNotEmpty() && File(path).exists()) {
                     val subtitles = scanSubtitlesForVideo(path)
@@ -60,7 +66,9 @@ object MediaStoreScanner {
                             duration = duration,
                             size = size,
                             dateAdded = dateAdded,
-                            subtitles = subtitles
+                            subtitles = subtitles,
+                            width = width,
+                            height = height
                         )
                     )
                 }
@@ -72,7 +80,6 @@ object MediaStoreScanner {
     
     private fun scanSubtitlesForVideo(videoPath: String): List<SubtitleInfo> {
         val videoFile = File(videoPath)
-        val videoNameNoExt = videoFile.nameWithoutExtension.lowercase()
         val parentFolder = videoFile.parentFile
         val subtitleExtensions = setOf("srt", "ass", "ssa", "sub")
         val matchingSubtitles = mutableListOf<SubtitleInfo>()
@@ -85,51 +92,52 @@ object MediaStoreScanner {
                         val ext = file.extension.lowercase()
                         if (ext in subtitleExtensions) {
                             val fileName = file.name.lowercase()
-                            // Match subtitles associated with this specific video file
-                            if (fileName.contains(videoNameNoExt)) {
-                                val language: String
-                                val displayTag: String
-                                
-                                when {
-                                    fileName.contains("ar-ar") -> {
-                                        language = "AR"
-                                        displayTag = "AR-AR"
-                                    }
-                                    fileName.contains("ar-en") -> {
-                                        language = "AR"
-                                        displayTag = "AR-EN"
-                                    }
-                                    fileName.contains("ar") || fileName.contains("arabic") -> {
-                                        language = "AR"
-                                        displayTag = "AR"
-                                    }
-                                    fileName.contains("en") || fileName.contains("english") -> {
-                                        language = "EN"
-                                        displayTag = "EN"
-                                    }
-                                    fileName.contains("orig") || fileName.contains("original") -> {
-                                        language = "ORIG"
-                                        displayTag = "ORIG"
-                                    }
-                                    else -> {
-                                        language = "ORIG"
-                                        displayTag = "ORIG"
-                                    }
+                            val language: String
+                            val displayTag: String
+                            
+                            when {
+                                fileName.contains("ar-ar") -> {
+                                    language = "AR"
+                                    displayTag = "AR-AR"
                                 }
-                                
-                                matchingSubtitles.add(
-                                    SubtitleInfo(
-                                        path = file.absolutePath,
-                                        language = language,
-                                        displayTag = displayTag
-                                    )
-                                )
+                                fileName.contains("ar-en") -> {
+                                    language = "AR"
+                                    displayTag = "AR-EN"
+                                }
+                                fileName.contains("ar-orig") || fileName.contains("ar-original") -> {
+                                    language = "AR-ORIG"
+                                    displayTag = "AR-ORIG"
+                                }
+                                fileName.contains("ar") || fileName.contains("arabic") -> {
+                                    language = "AR"
+                                    displayTag = "AR"
+                                }
+                                fileName.contains("en") || fileName.contains("english") -> {
+                                    language = "EN"
+                                    displayTag = "EN"
+                                }
+                                fileName.contains("orig") || fileName.contains("original") -> {
+                                    language = "ORIG"
+                                    displayTag = "ORIG"
+                                }
+                                else -> {
+                                    language = "ORIG"
+                                    displayTag = "ORIG"
+                                }
                             }
+                            
+                            matchingSubtitles.add(
+                                SubtitleInfo(
+                                    path = file.absolutePath,
+                                    language = language,
+                                    displayTag = displayTag
+                                )
+                            )
                         }
                     }
                 }
             }
         }
-        return matchingSubtitles
+        return matchingSubtitles.distinctBy { it.path }
     }
 }

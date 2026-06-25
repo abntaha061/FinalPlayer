@@ -153,13 +153,14 @@ fun VideoListItem(
                         "AR" -> Color(0xFF1565C0)
                         "EN" -> Color(0xFF2E7D32)
                         "ORIG" -> Color(0xFF616161)
+                        "AR-ORIG" -> Color(0xFF1565C0)
                         else -> Color(0xFF616161)
                     }
                     VideoChip(text = subtitle.displayTag.uppercase(Locale.US), backgroundColor = subtitleColor)
                 }
 
                 // Video Quality Chip
-                val quality = detectQuality(video.path, video.title)
+                val quality = detectQuality(video.width, video.height, video.path, video.title)
                 val qualityColor = when (quality) {
                     "1080p" -> Color(0xFF6A1B9A)
                     "720p" -> Color(0xFF00695C)
@@ -207,14 +208,25 @@ private fun formatDuration(durationMs: Long): String {
     }
 }
 
-private fun detectQuality(path: String, title: String): String {
-    val combined = "$path $title".lowercase(Locale.US)
+private fun detectQuality(width: Int, height: Int, path: String, title: String): String {
+    val maxDim = maxOf(width, height)
     return when {
-        combined.contains("2160") || combined.contains("4k") -> "4K"
-        combined.contains("1080") -> "1080p"
-        combined.contains("720") -> "720p"
-        combined.contains("480") -> "480p"
-        combined.contains("360") -> "360p"
-        else -> "1080p" // Default fallback
+        maxDim >= 3840 -> "4K"
+        maxDim >= 1920 -> "1080p"
+        maxDim >= 1280 -> "720p"
+        maxDim >= 854  -> "480p"
+        maxDim >= 640  -> "360p"
+        maxDim > 0     -> "SD"
+        else -> {
+            // fallback to filename if no resolution data
+            val combined = "$path $title".lowercase(Locale.US)
+            when {
+                combined.contains("2160") || combined.contains("4k") -> "4K"
+                combined.contains("1080") -> "1080p"
+                combined.contains("720")  -> "720p"
+                combined.contains("480")  -> "480p"
+                else -> "1080p"
+            }
+        }
     }
 }
