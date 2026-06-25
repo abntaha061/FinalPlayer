@@ -83,14 +83,15 @@ fun VideoListItem(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(4.dp)
+                        .padding(3.dp)
                         .background(Color(0xFFD32F2F), RoundedCornerShape(2.dp))
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .padding(horizontal = 3.dp, vertical = 1.dp)
                 ) {
                     Text(
                         text = "NEW",
                         color = Color.White,
-                        fontSize = 9.sp,
+                        fontSize = 8.sp,
+                        letterSpacing = 0.3.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -180,9 +181,9 @@ private fun VideoChip(
 ) {
     Box(
         modifier = Modifier
-            .height(18.dp)
+            .wrapContentSize()
             .background(backgroundColor, RoundedCornerShape(3.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .padding(horizontal = 5.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(

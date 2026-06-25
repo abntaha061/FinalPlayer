@@ -349,7 +349,6 @@ fun HomeScreen(
                             selected = false,
                             onClick = { isMovePickerOpen = true },
                             icon = { Icon(Icons.Default.DriveFileMove, contentDescription = "نقل") },
-                            label = { Text("نقل", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = Color.Transparent
                             )
@@ -358,7 +357,6 @@ fun HomeScreen(
                             selected = false,
                             onClick = { isCopyPickerOpen = true },
                             icon = { Icon(Icons.Default.ContentCopy, contentDescription = "نسخ") },
-                            label = { Text("نسخ", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = Color.Transparent
                             )
@@ -374,7 +372,6 @@ fun HomeScreen(
                                 }
                             },
                             icon = { Icon(Icons.Default.Edit, contentDescription = "إعادة تسمية") },
-                            label = { Text("تسمية", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = Color.Transparent
                             )
@@ -383,7 +380,6 @@ fun HomeScreen(
                             selected = false,
                             onClick = { isDeleteConfirmOpen = true },
                             icon = { Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color.Red) },
-                            label = { Text("حذف", fontSize = 10.sp, color = Color.Red, fontWeight = FontWeight.Bold) },
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = Color.Transparent
                             )
@@ -399,7 +395,6 @@ fun HomeScreen(
                             selected = selectedBottomTab == 0,
                             onClick = { selectedBottomTab = 0 },
                             icon = { RedCircleIcon(Icons.Default.VideoLibrary, selectedBottomTab == 0, "Videos", currentAccentColor) },
-                            label = { Text("الفيديوهات", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 0) FontWeight.Bold else FontWeight.Normal) },
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = Color.Transparent,
                                 selectedIconColor = Color.Unspecified,
@@ -410,7 +405,6 @@ fun HomeScreen(
                             selected = selectedBottomTab == 1,
                             onClick = { selectedBottomTab = 1 },
                             icon = { RedCircleIcon(Icons.Default.MusicNote, selectedBottomTab == 1, "Music", currentAccentColor) },
-                            label = { Text("الموسيقى", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 1) FontWeight.Bold else FontWeight.Normal) },
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = Color.Transparent,
                                 selectedIconColor = Color.Unspecified,
@@ -421,7 +415,6 @@ fun HomeScreen(
                             selected = selectedBottomTab == 2,
                             onClick = { selectedBottomTab = 2 },
                             icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 2, "Settings", currentAccentColor) },
-                            label = { Text("الإعدادات", fontSize = 10.sp, fontWeight = if (selectedBottomTab == 2) FontWeight.Bold else FontWeight.Normal) },
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = Color.Transparent,
                                 selectedIconColor = Color.Unspecified,
