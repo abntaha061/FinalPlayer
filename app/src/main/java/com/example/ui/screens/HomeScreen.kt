@@ -1601,7 +1601,7 @@ fun VideosAndFoldersTab(
                             val thumbnail = rememberVideoThumbnail(video.path)
                             val currentTimeMs = System.currentTimeMillis()
                             val threeDaysInMs = 3 * 24 * 60 * 60 * 1000L
-                            val isNewVideo = (currentTimeMs - video.dateModified) <= threeDaysInMs
+                            val isNewVideo = (currentTimeMs - video.dateModified) <= threeDaysInMs && video.isNew
 
                             Row(
                                 modifier = Modifier
@@ -1665,14 +1665,18 @@ fun VideosAndFoldersTab(
                                             modifier = Modifier
                                                 .align(Alignment.TopStart)
                                                 .padding(4.dp)
-                                                .background(Color(0xFFD32F2F), shape = RoundedCornerShape(2.dp))
-                                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                                                .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
+                                                .padding(horizontal = 3.dp, vertical = 0.5.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = "NEW",
                                                 color = Color.White,
-                                                fontSize = 9.sp,
+                                                fontSize = 7.5.sp,
+                                                style = androidx.compose.ui.text.TextStyle(
+                                                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                                                    lineHeight = 7.5.sp
+                                                ),
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
@@ -2155,7 +2159,7 @@ fun VideoGridItem(
                             .align(Alignment.TopStart)
                             .padding(4.dp)
                             .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
-                            .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
+                            .padding(horizontal = 3.dp, vertical = 0.5.dp), contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "NEW",

@@ -85,7 +85,7 @@ fun VideoListItem(
                         .align(Alignment.TopStart)
                         .padding(3.dp)
                         .background(Color(0xFFD32F2F), RoundedCornerShape(2.dp))
-                        .padding(horizontal = 3.dp, vertical = 1.dp)
+                        .padding(horizontal = 2.dp, vertical = 0.5.dp)
                 ) {
                     Text(
                         text = "NEW",
@@ -183,7 +183,7 @@ private fun VideoChip(
         modifier = Modifier
             .wrapContentSize()
             .background(backgroundColor, RoundedCornerShape(3.dp))
-            .padding(horizontal = 5.dp, vertical = 2.dp),
+            .padding(horizontal = 3.dp, vertical = 0.5.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(

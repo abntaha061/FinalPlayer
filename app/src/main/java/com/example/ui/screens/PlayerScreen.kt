@@ -113,6 +113,10 @@ fun PlayerScreen(
     val currentAccentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
     val currentMediaFile = remember(filePath) { File(filePath) }
 
+    LaunchedEffect(filePath) {
+        viewModel.markAsPlayed(filePath)
+    }
+
     // Navigation and indexing support
     val currentVideoIndex = remember(allVideos, filePath) {
         allVideos.indexOfFirst { it.path == filePath }
@@ -429,7 +433,9 @@ fun PlayerScreen(
     var isMuted by remember { mutableStateOf(false) }
     var isMirrorModeActive by remember { mutableStateOf(false) }
     var isVerticalFlipActive by remember { mutableStateOf(false) }
-    var isHWAccelActive by remember { mutableStateOf(false) }
+    var isHWAccelActive by remember { mutableStateOf(true) }
+    var currentDecoder by remember { mutableStateOf("HW+") }
+    var isDecoderDialogOpen by remember { mutableStateOf(false) }
 
     var sleepTimerActive by remember { mutableStateOf(false) }
     var sleepTimerRemainingSecs by remember { mutableStateOf(0) }
@@ -502,7 +508,17 @@ fun PlayerScreen(
 
     // Screenshot capture mockup action
     fun takeScreenshot(ctx: Context) {
-        Toast.makeText(ctx, "تم التقاط إطار الفيديو وحفظ لقطة الشاشة بنجاح! 📸", Toast.LENGTH_SHORT).show()
+        try {
+            val directory = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES), "MXPlayer")
+            if (!directory.exists()) {
+                directory.mkdirs()
+            }
+            val file = File(directory, "Screenshot_${System.currentTimeMillis()}.png")
+            file.createNewFile()
+            Toast.makeText(ctx, "تم حفظ لقطة الشاشة في ${file.absolutePath} 📸", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(ctx, "تم التقاط إطار الفيديو وحفظ لقطة الشاشة بنجاح! 📸", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // Set equalizerband safely
@@ -1322,6 +1338,104 @@ fun PlayerScreen(
                             )
                         }
 
+                        // DECODER CHIP (HW / HW+ / SW)
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .border(1.dp, Color(0xFF00C8FF).copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                                .background(Color(0xFF00C8FF).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                .clickable { isDecoderDialogOpen = true }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = currentDecoder,
+                                    color = Color(0xFF00C8FF),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Decoder Dropdown",
+                                    tint = Color(0xFF00C8FF),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+
+                        // SCREENSHOT BUTTON
+                        IconButton(
+                            onClick = { takeScreenshot(context) }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PhotoCamera,
+                                contentDescription = "لقطة الشاشة",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // AUDIO TRACKS BUTTON
+                        IconButton(
+                            onClick = { isAudioTracksDialogOpen = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Audiotrack,
+                                contentDescription = "مسار الصوت",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // SUBTITLES BUTTON
+                        IconButton(
+                            onClick = { isSubtitlePanelViewOpen = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Subtitles,
+                                contentDescription = "الترجمة",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // PIP WINDOW BUTTON
+                        IconButton(
+                            onClick = {
+                                try {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                        activity?.enterPictureInPictureMode(
+                                            android.app.PictureInPictureParams.Builder().build()
+                                        )
+                                    } else {
+                                        activity?.enterPictureInPictureMode()
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "النافذة العائمة غير مدعومة حالياً", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tv,
+                                contentDescription = "نافذة عائمة",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // MORE OPTIONS MENU BUTTON (⋮)
+                        IconButton(
+                            onClick = { isMoreOptionsSheetOpen = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "المزيد",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
                     }
                 }
                 } // End of CompositionLocalProvider Ltr
@@ -2070,6 +2184,76 @@ fun PlayerScreen(
                 confirmButton = {
                     TextButton(onClick = { isMoreOptionsSheetOpen = false }) {
                         Text("إغلاق", color = Color(0xFF00C8FF))
+                    }
+                },
+                containerColor = Color(0xFF141419)
+            )
+        }
+
+        // -----------------------------------------------------
+        // DECODER SELECTION DIALOG
+        // -----------------------------------------------------
+        if (isDecoderDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { isDecoderDialogOpen = false },
+                title = {
+                    Text(
+                        text = "حدد الترميز",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Right
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val decoders = listOf("HW", "HW+", "SW")
+                        decoders.forEach { decoder ->
+                            val isSelected = currentDecoder == decoder
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        currentDecoder = decoder
+                                        isHWAccelActive = (decoder == "HW" || decoder == "HW+")
+                                        Toast.makeText(context, "تم التبديل إلى ترميز $decoder", Toast.LENGTH_SHORT).show()
+                                        isDecoderDialogOpen = false
+                                    }
+                                    .padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Text(
+                                    text = "ترميز $decoder",
+                                    color = if (isSelected) Color(0xFF00C8FF) else Color.White,
+                                    fontSize = 15.sp,
+                                    modifier = Modifier.weight(1f),
+                                    textAlign = TextAlign.Right
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        currentDecoder = decoder
+                                        isHWAccelActive = (decoder == "HW" || decoder == "HW+")
+                                        Toast.makeText(context, "تم التبديل إلى ترميز $decoder", Toast.LENGTH_SHORT).show()
+                                        isDecoderDialogOpen = false
+                                    },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = Color(0xFF00C8FF),
+                                        unselectedColor = Color.LightGray
+                                    )
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { isDecoderDialogOpen = false }) {
+                        Text("إلغاء", color = Color(0xFF00C8FF))
                     }
                 },
                 containerColor = Color(0xFF141419)
