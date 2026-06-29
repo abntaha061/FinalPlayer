@@ -1661,13 +1661,35 @@ fun PlayerScreen(
                             )
                         }
 
+                        var rewindPressed by remember { mutableStateOf(false) }
+                        val rewindScale by animateFloatAsState(
+                            targetValue = if (rewindPressed) 0.75f else 1f,
+                            animationSpec = spring(
+                                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                                stiffness = androidx.compose.animation.core.Spring.StiffnessHigh
+                            ),
+                            label = "rewind_bounce"
+                        )
+                        LaunchedEffect(rewindPressed) {
+                            if (rewindPressed) {
+                                delay(120)
+                                rewindPressed = false
+                            }
+                        }
+
                         IconButton(
                             onClick = {
+                                rewindPressed = true
                                 val target = (player.currentPosition - seekStepSeconds * 1000L).coerceAtLeast(0)
                                 player.seekTo(target)
                                 currentPlayTime = target
                             },
-                            modifier = Modifier.size(34.dp)
+                            modifier = Modifier
+                                .size(34.dp)
+                                .graphicsLayer {
+                                    scaleX = rewindScale
+                                    scaleY = rewindScale
+                                }
                         ) {
                             Icon(
                                 imageVector = when (seekStepSeconds) {
@@ -1683,34 +1705,96 @@ fun PlayerScreen(
 
                         Spacer(modifier = Modifier.width(6.dp))
 
+                        // Pulse animation state
+                        val pulseAnim = remember { androidx.compose.animation.core.Animatable(1f) }
+                        LaunchedEffect(isPlayingState) {
+                            if (!isPlayingState) {
+                                while (true) {
+                                    pulseAnim.animateTo(
+                                        targetValue = 1.12f,
+                                        animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                                    )
+                                    pulseAnim.animateTo(
+                                        targetValue = 1f,
+                                        animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                                    )
+                                }
+                            } else {
+                                pulseAnim.snapTo(1f)
+                            }
+                        }
+
                         Box(
                             contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                                .clickable {
-                                    if (isPlayingState) player.pause() else player.play()
-                                }
-                                .testTag("player_play_pause")
+                            modifier = Modifier.size(52.dp)
                         ) {
-                            Icon(
-                                imageVector = if (isPlayingState) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = "Play Control Toggle",
-                                tint = Color.Black,
-                                modifier = Modifier.size(22.dp)
-                            )
+                            // Pulse ring خلف الزر
+                            if (!isPlayingState) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .graphicsLayer {
+                                            scaleX = pulseAnim.value
+                                            scaleY = pulseAnim.value
+                                            alpha = (1.4f - pulseAnim.value) * 0.6f
+                                        }
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                            shape = CircleShape
+                                        )
+                                )
+                            }
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
+                                    .clickable {
+                                        if (isPlayingState) player.pause() else player.play()
+                                    }
+                                    .testTag("player_play_pause")
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlayingState) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = "Play Control Toggle",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(6.dp))
 
+                        var forwardPressed by remember { mutableStateOf(false) }
+                        val forwardScale by animateFloatAsState(
+                            targetValue = if (forwardPressed) 0.75f else 1f,
+                            animationSpec = spring(
+                                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                                stiffness = androidx.compose.animation.core.Spring.StiffnessHigh
+                            ),
+                            label = "forward_bounce"
+                        )
+                        LaunchedEffect(forwardPressed) {
+                            if (forwardPressed) {
+                                delay(120)
+                                forwardPressed = false
+                            }
+                        }
+
                         IconButton(
                             onClick = {
+                                forwardPressed = true
                                 val target = (player.currentPosition + seekStepSeconds * 1000L).coerceAtMost(player.duration)
                                 player.seekTo(target)
                                 currentPlayTime = target
                             },
-                            modifier = Modifier.size(34.dp)
+                            modifier = Modifier
+                                .size(34.dp)
+                                .graphicsLayer {
+                                    scaleX = forwardScale
+                                    scaleY = forwardScale
+                                }
                         ) {
                             Icon(
                                 imageVector = when (seekStepSeconds) {
@@ -2807,6 +2891,24 @@ fun PlayerProgressSlider(
             val halfThumb = thumbSize / 2
             val thumbOffset = (widthDp * fraction - halfThumb).coerceIn(0.dp, widthDp - thumbSize)
 
+            // Glow ring خلف الـ thumb
+            Box(
+                modifier = Modifier
+                    .offset(x = thumbOffset - 4.dp)
+                    .size(16.dp)
+                    .align(Alignment.CenterStart)
+                    .background(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                currentAccentColor.copy(alpha = 0.45f),
+                                currentAccentColor.copy(alpha = 0f)
+                            )
+                        ),
+                        shape = CircleShape
+                    )
+            )
+
+            // الـ thumb الأصلي
             Box(
                 modifier = Modifier
                     .offset(x = thumbOffset)
