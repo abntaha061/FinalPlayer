@@ -30,6 +30,15 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MediaRepository(application)
     private val context = application.applicationContext
 
+    private val _subtitleOffsetY = MutableStateFlow(0f)
+    val subtitleOffsetY: StateFlow<Float> = _subtitleOffsetY.asStateFlow()
+
+    fun moveSubtitle(deltaY: Float) {
+        // Allow moving between -40% and +5% of screen height
+        _subtitleOffsetY.value = (_subtitleOffsetY.value + deltaY)
+            .coerceIn(-0.40f, 0.05f)
+    }
+
     // --- BACKGROUND AUDIO PLAYER ---
     @Volatile
     private var audioPlayer: ExoPlayer? = null

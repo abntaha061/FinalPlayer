@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -110,6 +111,7 @@ fun PlayerScreen(
         }
     }
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
+    val subtitleOffsetY by viewModel.subtitleOffsetY.collectAsState()
     val currentAccentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
     val currentMediaFile = remember(filePath) { File(filePath) }
 
@@ -1218,10 +1220,6 @@ fun PlayerScreen(
 
         // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY
         if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
-            val currentOffset = localSubtitleOffset ?: subtitlePrefsState.verticalOffset
-            val verticalBias = -1.0f + (currentOffset * 2.0f)
-
-            // Dynamic layout direction (German/English needs LTR for proper grammar/punctuation, Arabic needs RTL)
             val containsArabic = activeSubtitleText.any { it in '\u0600'..'\u06FF' }
             val layoutDirection = if (containsArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
 
@@ -1229,25 +1227,28 @@ fun PlayerScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .onSizeChanged { parentHeightPx = it.height.toFloat() }
-                        .padding(bottom = bottomPaddingAnim, start = 16.dp, end = 16.dp),
-                    contentAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = verticalBias)
                 ) {
-                    Text(
-                        text = activeSubtitleText,
-                        color = subtitlePrefsState.textColor,
-                        fontSize = subtitlePrefsState.textSize.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        lineHeight = (subtitlePrefsState.textSize * 1.35f).sp,
-                        style = TextStyle(
-                            shadow = Shadow(
-                                color = Color.Black.copy(alpha = 0.95f),
-                                offset = Offset(1.5f, 1.5f),
-                                blurRadius = 3f
-                            )
-                        ),
+                    Box(
                         modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(
+                                bottom = (80 + (subtitleOffsetY * -LocalConfiguration.current.screenHeightDp)).dp,
+                                start = 16.dp,
+                                end = 16.dp
+                            )
+                            .wrapContentSize()
+                            .pointerInput(Unit) {
+                                detectDragGestures(
+                                    onDragStart = { isDraggingSubtitle = true },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        val deltaFraction = dragAmount.y / 1000f
+                                        viewModel.moveSubtitle(deltaFraction)
+                                    },
+                                    onDragEnd   = { isDraggingSubtitle = false },
+                                    onDragCancel = { isDraggingSubtitle = false }
+                                )
+                            }
                             .background(
                                 color = if (isDraggingSubtitle) {
                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
@@ -1261,39 +1262,28 @@ fun PlayerScreen(
                                 color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.15f),
                                 shape = RoundedCornerShape(8.dp)
                             )
-                            .pointerInput(parentHeightPx, subtitlePrefsState.verticalOffset) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = {
-                                        isDraggingSubtitle = true
-                                        localSubtitleOffset = subtitlePrefsState.verticalOffset
-                                    },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        val delta = dragAmount.y / parentHeightPx
-                                        val current = localSubtitleOffset ?: subtitlePrefsState.verticalOffset
-                                        localSubtitleOffset = (current + delta).coerceIn(0.01f, 1.0f)
-                                    },
-                                    onDragEnd = {
-                                        isDraggingSubtitle = false
-                                        localSubtitleOffset?.let { finalOffset ->
-                                            scope.launch {
-                                                subPrefsManager.savePreferences(subtitlePrefsState.copy(verticalOffset = finalOffset))
-                                            }
-                                        }
-                                        localSubtitleOffset = null
-                                    },
-                                    onDragCancel = {
-                                        isDraggingSubtitle = false
-                                        localSubtitleOffset = null
-                                    }
-                                )
-                            }
                             .clickable {
                                 isSubtitleCustomizationOpen = true
                             }
                             .padding(horizontal = 18.dp, vertical = 10.dp)
                             .testTag("custom_subtitle_text")
-                    )
+                    ) {
+                        Text(
+                            text = activeSubtitleText,
+                            color = subtitlePrefsState.textColor,
+                            fontSize = subtitlePrefsState.textSize.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            lineHeight = (subtitlePrefsState.textSize * 1.35f).sp,
+                            style = TextStyle(
+                                shadow = Shadow(
+                                    color = Color.Black.copy(alpha = 0.95f),
+                                    offset = Offset(1.5f, 1.5f),
+                                    blurRadius = 3f
+                                )
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -2317,244 +2307,46 @@ fun PlayerScreen(
         // -----------------------------------------------------
         // SUBTITLE PANEL DIALOG (CC Overlay configuration)
         // -----------------------------------------------------
-        if (isSubtitlePanelViewOpen) {
-            AlertDialog(
-                onDismissRequest = { isSubtitlePanelViewOpen = false },
-                title = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("الترجمات (Subtitles)", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        IconButton(onClick = {
-                            try {
-                                subtitlePickerLauncher.launch(arrayOf("*/*"))
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "جاري فتح مستكشف الملفات الفرعية", Toast.LENGTH_SHORT).show()
-                            }
-                        }) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = "فولدر خارجي", tint = Color(0xFF00C8FF))
-                        }
-                    }
-                },
-                text = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        Button(
-                            onClick = {
-                                Toast.makeText(context, "البحث عن ترجمة عبر الإنترنت (OpenSubtitles)", Toast.LENGTH_SHORT).show()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26262B)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("البحث عن ترجمة عبر الإنترنت 🌐", color = Color(0xFF00C8FF), fontSize = 11.sp)
-                        }
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "ملفات الترجمة المكتشفة:",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.LightGray
-                        )
-                        
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    isSubtitleEnabled = !isSubtitleEnabled
-                                    player.trackSelectionParameters = player.trackSelectionParameters
-                                        .buildUpon()
-                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !isSubtitleEnabled)
-                                        .build()
-                                }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = isSubtitleEnabled,
-                                onCheckedChange = {
-                                    isSubtitleEnabled = it
-                                    player.trackSelectionParameters = player.trackSelectionParameters
-                                        .buildUpon()
-                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !it)
-                                        .build()
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("ترجمة عربية مدمجة (Automatic Arabic)", color = Color.White, fontSize = 12.sp)
-                        }
-
-                        detectedSubtitles.forEachIndexed { index, file ->
-                            val lang = subtitleLanguages.getOrNull(index) ?: "Default"
-                            val isChecked = isSubtitleEnabled && selectedSubtitleLang == lang
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        isSubtitleEnabled = true
-                                        selectedSubtitleLang = lang
-                                        player.trackSelectionParameters = player.trackSelectionParameters
-                                            .buildUpon()
-                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                            .setPreferredTextLanguage(lang)
-                                            .build()
-                                    }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = isChecked,
-                                    onCheckedChange = {
-                                        if (it) {
-                                            isSubtitleEnabled = true
-                                            selectedSubtitleLang = lang
-                                        } else {
-                                            isSubtitleEnabled = false
-                                        }
-                                        player.trackSelectionParameters = player.trackSelectionParameters
-                                            .buildUpon()
-                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !isSubtitleEnabled)
-                                            .build()
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(file.name, color = Color.White, fontSize = 11.sp, maxLines = 1)
-                            }
-                        }
-
-                        // Render manually added subtitle items
-                        manualSubs.forEachIndexed { index, pair ->
-                            val lang = "manual_${index}_${pair.first}"
-                            val isChecked = isSubtitleEnabled && selectedSubtitleLang == lang
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        isSubtitleEnabled = true
-                                        selectedSubtitleLang = lang
-                                        player.trackSelectionParameters = player.trackSelectionParameters
-                                            .buildUpon()
-                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                            .setPreferredTextLanguage(lang)
-                                            .build()
-                                    }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = isChecked,
-                                    onCheckedChange = {
-                                        if (it) {
-                                            isSubtitleEnabled = true
-                                            selectedSubtitleLang = lang
-                                        } else {
-                                            isSubtitleEnabled = false
-                                        }
-                                        player.trackSelectionParameters = player.trackSelectionParameters
-                                            .buildUpon()
-                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !isSubtitleEnabled)
-                                            .build()
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("📁 ${pair.first}", color = Color(0xFF00C8FF), fontSize = 11.sp, maxLines = 1)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        var isCollapsibleOpen by remember { mutableStateOf(true) }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isCollapsibleOpen = !isCollapsibleOpen }
-                                .padding(vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("خيارات المزامنة والتحكم الإضافية", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Text(if (isCollapsibleOpen) "▲" else "▼", color = Color.White, fontSize = 12.sp)
-                        }
-
-                        if (isCollapsibleOpen) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("مزامنة (Sync Offset):", color = Color.White, fontSize = 11.sp)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        IconButton(onClick = { subtitleDelaySeconds -= 0.5f }) {
-                                            Text("−", color = Color(0xFF00C8FF), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                        Text("${subtitleDelaySeconds}ث", color = Color.White, fontSize = 12.sp)
-                                        IconButton(onClick = { subtitleDelaySeconds += 0.5f }) {
-                                            Text("+", color = Color(0xFF00C8FF), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-
-                                var subSpeedPercent by remember { mutableStateOf(100) }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("سرعة المزامنة:", color = Color.White, fontSize = 11.sp)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        IconButton(onClick = { subSpeedPercent = (subSpeedPercent - 10).coerceAtLeast(50) }) {
-                                            Text("−", color = Color(0xFF00C8FF), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                        Text("$subSpeedPercent%", color = Color.White, fontSize = 12.sp)
-                                        IconButton(onClick = { subSpeedPercent = (subSpeedPercent + 10).coerceAtMost(200) }) {
-                                            Text("+", color = Color(0xFF00C8FF), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("خلفية سوداء خلف لوحة الترجمة:", color = Color.White, fontSize = 11.sp)
-                                    Checkbox(
-                                        checked = !isSubBgTransparent,
-                                        onCheckedChange = { isSubBgTransparent = !it }
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Button(
-                                    onClick = {
-                                        isSubtitleCustomizationOpen = true
-                                        isSubtitlePanelViewOpen = false
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8FF)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("تخصيص كامل المظهر والخطوط 🎨", color = Color.Black, fontSize = 11.sp)
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { isSubtitlePanelViewOpen = false }) {
-                        Text("تم", color = Color(0xFF00C8FF))
-                    }
-                },
-                containerColor = Color(0xFF141419)
-            )
-        }
+        SubtitleSettingsPanel(
+            isVisible = isSubtitlePanelViewOpen,
+            onDismiss = { isSubtitlePanelViewOpen = false },
+            isSubtitleEnabled = isSubtitleEnabled,
+            onSubtitleEnabledChange = { enabled ->
+                isSubtitleEnabled = enabled
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
+                    .build()
+            },
+            detectedSubtitles = detectedSubtitles,
+            subtitleLanguages = subtitleLanguages,
+            selectedSubtitleLang = selectedSubtitleLang,
+            onSelectedSubtitleLangChange = { lang ->
+                isSubtitleEnabled = true
+                selectedSubtitleLang = lang
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setPreferredTextLanguage(lang)
+                    .build()
+            },
+            manualSubs = manualSubs,
+            onAddSubtitleClick = {
+                try {
+                    subtitlePickerLauncher.launch(arrayOf("*/*"))
+                } catch (e: Exception) {
+                    Toast.makeText(context, "جاري فتح مستكشف الملفات الفرعية", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onCustomizeAppearanceClick = {
+                isSubtitleCustomizationOpen = true
+                isSubtitlePanelViewOpen = false
+            },
+            subtitleDelaySeconds = subtitleDelaySeconds,
+            onSubtitleDelaySecondsChange = { subtitleDelaySeconds = it },
+            isSubBgTransparent = isSubBgTransparent,
+            onSubBgTransparentChange = { isSubBgTransparent = it }
+        )
 
         // -----------------------------------------------------
         // SUBTITLE CUSTOMIZATION DIALOG (DataStore Persisted)
