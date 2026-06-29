@@ -65,6 +65,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.CaptionStyleCompat
 import com.example.ui.MediaViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -478,8 +479,51 @@ fun PlayerScreen(
     var singleTapJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var currentGestureType by remember { mutableStateOf("NONE") } // "NONE", "VOLUME", "BRIGHTNESS", "SEEK"
     var dragStartOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var bottomControlsHeightPx by remember { mutableStateOf(0) }
 
-    var subtitleStyle by remember { mutableStateOf(SubtitleStyle()) }
+    val sharedPrefs = remember { context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE) }
+    var subtitleStyle by remember {
+        val savedPadding = sharedPrefs.getFloat("sub_bottom_padding", 0.012f)
+        val savedTextSize = sharedPrefs.getFloat("sub_text_size", 1.0f)
+        val savedBold = sharedPrefs.getBoolean("sub_bold", false)
+        val savedItalic = sharedPrefs.getBoolean("sub_italic", false)
+        val savedBgEnabled = sharedPrefs.getBoolean("sub_bg_enabled", false)
+        val savedTextColor = sharedPrefs.getInt("sub_text_color", Color.White.toArgb())
+        val savedBgColor = sharedPrefs.getInt("sub_bg_color", Color.Black.copy(alpha = 0.5f).toArgb())
+        val savedAlignment = sharedPrefs.getInt("sub_alignment", android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL)
+        val savedEdgeType = sharedPrefs.getInt("sub_edge_type", CaptionStyleCompat.EDGE_TYPE_OUTLINE)
+        val savedEdgeColor = sharedPrefs.getInt("sub_edge_color", Color.Black.toArgb())
+        
+        mutableStateOf(
+            SubtitleStyle(
+                textSize = savedTextSize,
+                textColor = Color(savedTextColor),
+                backgroundColor = Color(savedBgColor),
+                backgroundEnabled = savedBgEnabled,
+                bold = savedBold,
+                italic = savedItalic,
+                alignment = savedAlignment,
+                bottomPadding = savedPadding,
+                edgeType = savedEdgeType,
+                edgeColor = Color(savedEdgeColor)
+            )
+        )
+    }
+
+    LaunchedEffect(subtitleStyle) {
+        sharedPrefs.edit()
+            .putFloat("sub_bottom_padding", subtitleStyle.bottomPadding)
+            .putFloat("sub_text_size", subtitleStyle.textSize)
+            .putBoolean("sub_bold", subtitleStyle.bold)
+            .putBoolean("sub_italic", subtitleStyle.italic)
+            .putBoolean("sub_bg_enabled", subtitleStyle.backgroundEnabled)
+            .putInt("sub_text_color", subtitleStyle.textColor.toArgb())
+            .putInt("sub_bg_color", subtitleStyle.backgroundColor.toArgb())
+            .putInt("sub_alignment", subtitleStyle.alignment)
+            .putInt("sub_edge_type", subtitleStyle.edgeType)
+            .putInt("sub_edge_color", subtitleStyle.edgeColor.toArgb())
+            .apply()
+    }
     var subtitleDelayMs by remember { mutableStateOf(0L) }
     var subtitleSpeed by remember { mutableStateOf(1.0f) }
     var isDraggingSubtitle by remember { mutableStateOf(false) }
@@ -764,11 +808,24 @@ fun PlayerScreen(
         else "1080p FHD"
     }
 
+    val isAnyPopupOpen = isQuickSettingsOpen ||
+            isDecoderDialogOpen ||
+            isSleepTimerDialogOpen ||
+            isEqualizerOpen ||
+            isMoreOptionsSheetOpen ||
+            isAudioTracksDialogOpen ||
+            isSubtitlePanelViewOpen ||
+            isSubtitleCustomizationOpen ||
+            isToolbarCustomizerDialogOpen
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(videoDuration, isLockedMode) {
+            .pointerInput(videoDuration, isLockedMode, isAnyPopupOpen) {
+                if (isAnyPopupOpen) {
+                    return@pointerInput
+                }
                 if (isLockedMode) {
                     detectTapGestures(
                         onTap = {
@@ -975,7 +1032,7 @@ fun PlayerScreen(
                                             currentPlayTime = target
                                             showRewindOverlay = true
                                             audiofySeekJob?.cancel()
-                                            audiofySeekSeconds = -10
+                                            // audiofySeekSeconds = -10
                                             audiofySeekJob = scope.launch {
                                                 delay(1200)
                                                 audiofySeekSeconds = null
@@ -990,7 +1047,7 @@ fun PlayerScreen(
                                             currentPlayTime = target
                                             showForwardOverlay = true
                                             audiofySeekJob?.cancel()
-                                            audiofySeekSeconds = 10
+                                            // audiofySeekSeconds = 10
                                             audiofySeekJob = scope.launch {
                                                 delay(1200)
                                                 audiofySeekSeconds = null
@@ -1222,35 +1279,7 @@ fun PlayerScreen(
             }
         }
 
-        // Temporal Seek Swipe Gesture Indicator (center bubble)
-        if (showSeekDragIndicator) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .background(Color.Black.copy(alpha = 0.82f), shape = RoundedCornerShape(16.dp))
-                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(16.dp))
-                    .padding(vertical = 18.dp, horizontal = 28.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.CompareArrows,
-                        contentDescription = "Seek",
-                        tint = Color(0xFF00C8FF),
-                        modifier = Modifier.size(36.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("تقديم / تأخير", color = Color.LightGray, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "${formatTime(draggedSeekPosition)} / ${formatTime(videoDuration)}",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-                }
-            }
-        }
+
 
         // 🎧 Audiofy-style Seek indicator at the Top Center of the screen
         AnimatedVisibility(
@@ -1298,7 +1327,7 @@ fun PlayerScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "${subtitleOffsetY.toInt()}",
+                        text = "${(subtitleStyle.bottomPadding * 1000).toInt()}",
                         color = Color.White,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
@@ -1329,7 +1358,17 @@ fun PlayerScreen(
                         else -> Alignment.BottomCenter
                     }
                     val bottomPadDp = (subtitleStyle.bottomPadding * 1000).dp
-                    val extraBottomPad = if (areControlsVisible && !isLockedMode) 56.dp else bottomPadDp
+                    val density = androidx.compose.ui.platform.LocalDensity.current
+                    val animatedExtraPad by animateDpAsState(
+                        targetValue = if (areControlsVisible && !isLockedMode) {
+                            with(density) { bottomControlsHeightPx.toDp() }
+                        } else {
+                            0.dp
+                        },
+                        animationSpec = spring(stiffness = 300f),
+                        label = "subtitle_rise"
+                    )
+                    val extraBottomPad = bottomPadDp + animatedExtraPad
                     Box(
                         modifier = Modifier
                             .align(gravityAlignment)
@@ -1350,7 +1389,7 @@ fun PlayerScreen(
                                                 change.consume()
                                                 val deltaY = change.position.y - change.previousPosition.y
                                                 val deltaRatio = deltaY / parentHeightPx
-                                                val newPadding = (subtitleStyle.bottomPadding - deltaRatio).coerceIn(0.0f, 0.15f)
+                                                val newPadding = (subtitleStyle.bottomPadding - deltaRatio).coerceIn(-0.03f, 0.30f)
                                                 subtitleStyle = subtitleStyle.copy(bottomPadding = newPadding)
                                                 dragChange = change
                                             } else {
@@ -1662,6 +1701,7 @@ fun PlayerScreen(
                                 colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
                             )
                         )
+                        .onSizeChanged { bottomControlsHeightPx = it.height }
                         .navigationBarsPadding()
                         .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
                 ) {
@@ -1751,7 +1791,7 @@ fun PlayerScreen(
                                 player.seekTo(target)
                                 currentPlayTime = target
                                 audiofySeekJob?.cancel()
-                                audiofySeekSeconds = -seekStepSeconds
+                                // audiofySeekSeconds = -seekStepSeconds
                                 audiofySeekJob = scope.launch {
                                     delay(1200)
                                     audiofySeekSeconds = null
@@ -1862,7 +1902,7 @@ fun PlayerScreen(
                                 player.seekTo(target)
                                 currentPlayTime = target
                                 audiofySeekJob?.cancel()
-                                audiofySeekSeconds = seekStepSeconds
+                                // audiofySeekSeconds = seekStepSeconds
                                 audiofySeekJob = scope.launch {
                                     delay(1200)
                                     audiofySeekSeconds = null
@@ -2145,381 +2185,343 @@ fun PlayerScreen(
         // -----------------------------------------------------
         // QUICK PLAYBACK OPTIONS DIALOG
         // -----------------------------------------------------
-        if (isQuickSettingsOpen) {
-            AlertDialog(
-                onDismissRequest = { isQuickSettingsOpen = false },
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "الإعدادات السريعة (Quick Settings)",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                },
-                text = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Text(
-                            text = "خطوة التخطي بالنقرة المزدوجة (Seek step):",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.LightGray,
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            val steps = listOf(5, 10, 15, 30, 60)
-                            steps.forEach { step ->
-                                FilterChip(
-                                    selected = seekStepSeconds == step,
-                                    onClick = { seekStepSeconds = step },
-                                    label = { Text("${step}ث") }
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(
-                            text = "مقياس ملء الشاشة (Scaling):",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.LightGray,
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            val scalingModes = listOf("FIT", "FILL", "STRETCH", "CROP")
-                            scalingModes.forEach { mode ->
-                                FilterChip(
-                                    selected = scaleMode == mode,
-                                    onClick = { scaleMode = mode },
-                                    label = { Text(mode) }
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(
-                            text = "حجم خط الترجمة (Subtitle text size):",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.LightGray,
-                        )
-                        var subSize by remember { mutableStateOf(viewModel.getSubtitleSize()) }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Slider(
-                                value = subSize,
-                                onValueChange = {
-                                    subSize = it
-                                    viewModel.saveSubtitleSize(it)
-                                    subtitleStyle = subtitleStyle.copy(textSize = it / 16f)
-                                },
-                                valueRange =  12f..30f,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("${subSize.toInt()}dp", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "تفعيل الترجمة التلقائية:",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.LightGray
-                            )
-                            Switch(
-                                checked = isSubtitleEnabled,
-                                onCheckedChange = {
-                                    isSubtitleEnabled = it
-                                    player.trackSelectionParameters = player.trackSelectionParameters
-                                        .buildUpon()
-                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !it)
-                                        .build()
-                                }
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { isQuickSettingsOpen = false }) {
-                        Text("تم الإغلاق (Apply)", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    }
-                },
-                containerColor = Color(0xFF141419)
+        SidePanel(
+            visible = isQuickSettingsOpen,
+            onDismissRequest = { isQuickSettingsOpen = false },
+            title = "الإعدادات السريعة (Quick Settings)"
+        ) {
+            Text(
+                text = "خطوة التخطي بالنقرة المزدوجة (Seek step):",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.LightGray,
+                modifier = Modifier.padding(bottom = 4.dp)
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                val steps = listOf(5, 10, 15, 30, 60)
+                steps.forEach { step ->
+                    FilterChip(
+                        selected = seekStepSeconds == step,
+                        onClick = { seekStepSeconds = step },
+                        label = { Text("${step}ث", fontSize = 11.sp) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "مقياس ملء الشاشة (Scaling):",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.LightGray,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                val scalingModes = listOf("FIT", "FILL", "STRETCH", "CROP")
+                scalingModes.forEach { mode ->
+                    FilterChip(
+                        selected = scaleMode == mode,
+                        onClick = { scaleMode = mode },
+                        label = { Text(mode, fontSize = 11.sp) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "حجم خط الترجمة (Subtitle text size):",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.LightGray,
+            )
+            var subSize by remember { mutableStateOf(viewModel.getSubtitleSize()) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Slider(
+                    value = subSize,
+                    onValueChange = {
+                        subSize = it
+                        viewModel.saveSubtitleSize(it)
+                        subtitleStyle = subtitleStyle.copy(textSize = it / 16f)
+                    },
+                    valueRange =  12f..30f,
+                    modifier = Modifier.weight(1f).height(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("${subSize.toInt()}dp", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "تفعيل الترجمة التلقائية:",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.LightGray
+                )
+                Switch(
+                    checked = isSubtitleEnabled,
+                    onCheckedChange = {
+                        isSubtitleEnabled = it
+                        player.trackSelectionParameters = player.trackSelectionParameters
+                            .buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !it)
+                            .build()
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+            Button(
+                onClick = { isQuickSettingsOpen = false },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("تم الحفظ والإغلاق", color = Color.White, fontSize = 13.sp)
+            }
         }
 
         // -----------------------------------------------------
         // MORE OPTIONS (⋮) BOTTOM SHEET DIALOG
         // -----------------------------------------------------
-        if (isMoreOptionsSheetOpen) {
-            AlertDialog(
-                onDismissRequest = { isMoreOptionsSheetOpen = false },
-                title = {
-                    Text(
-                        text = "خيارات إضافية (More Options)",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Right
-                    )
+        SidePanel(
+            visible = isMoreOptionsSheetOpen,
+            onDismissRequest = { isMoreOptionsSheetOpen = false },
+            title = "خيارات إضافية (More Options)"
+        ) {
+            val gridItems = listOf(
+                Pair("☰", "قوائم التشغيل") to {
+                    Toast.makeText(context, "مدير قوائم التشغيل نشط", Toast.LENGTH_SHORT).show()
                 },
-                text = {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        val gridItems = listOf(
-                            Pair("☰", "قوائم التشغيل") to {
-                                Toast.makeText(context, "مدير قوائم التشغيل نشط", Toast.LENGTH_SHORT).show()
-                            },
-                            Pair("⬛↕", "نسبة العرض") to {
-                                scaleMode = when (scaleMode) {
-                                    "FIT" -> "FILL"
-                                    "FILL" -> "STRETCH"
-                                    "STRETCH" -> "CROP"
-                                    else -> "FIT"
-                                }
-                                Toast.makeText(context, "حجم العرض: $scaleMode", Toast.LENGTH_SHORT).show()
-                            },
-                            Pair("🖥️", "نمط مخصص") to {
-                                isQuickSettingsOpen = true
+                Pair("⬛↕", "نسبة العرض") to {
+                    scaleMode = when (scaleMode) {
+                        "FIT" -> "FILL"
+                        "FILL" -> "STRETCH"
+                        "STRETCH" -> "CROP"
+                        else -> "FIT"
+                    }
+                    Toast.makeText(context, "حجم العرض: $scaleMode", Toast.LENGTH_SHORT).show()
+                },
+                Pair("🖥️", "نمط مخصص") to {
+                    isQuickSettingsOpen = true
+                    isMoreOptionsSheetOpen = false
+                },
+                Pair("🔖", "إشارة مرجعية") to {
+                    val bookPos = player.currentPosition
+                    val totalSec = bookPos / 1000
+                    val curStr = "%02d:%02d:%02d".format(totalSec / 3600, (totalSec % 3600) / 60, totalSec % 60)
+                    Toast.makeText(context, "تم حفظ الإشارة المرجعية عند $curStr", Toast.LENGTH_SHORT).show()
+                },
+                Pair("✂️", "قص الفيديو") to {
+                    Toast.makeText(context, "ميزة قص الفيديو مخصصة للأجهزة الكبيرة", Toast.LENGTH_SHORT).show()
+                },
+                Pair("❤️", "المفضلة") to {
+                    Toast.makeText(context, "تمت الإضافة للمفضلة بنجاح! ❤️", Toast.LENGTH_SHORT).show()
+                },
+                Pair("➕☰", "قائمة تشغيل") to {
+                    Toast.makeText(context, "محدد قوائم التشغيل متاح", Toast.LENGTH_SHORT).show()
+                },
+                Pair("ℹ️", "معلومات") to {
+                    val durationSec = player.duration / 1000
+                    val infoStr = "الملف: ${currentMediaFile.name}\nالدقة: $videoWidth x $videoHeight\nالحجم: %.2f MB\nالمدة: %02d:%02d:%02d".format(
+                        currentMediaFile.length() / (1024f * 1024f),
+                        durationSec / 3600,
+                        (durationSec % 3600) / 60,
+                        durationSec % 60
+                    )
+                    Toast.makeText(context, infoStr, Toast.LENGTH_LONG).show()
+                },
+                Pair("🔗", "مشاركة") to {
+                    try {
+                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "video/*"
+                            putExtra(android.content.Intent.EXTRA_STREAM, Uri.fromFile(currentMediaFile))
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shareIntent, "مشاركة الفيديو"))
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "جاري مشاركة الفيديو", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                Pair("🌐", "Cast") to {
+                    Toast.makeText(context, "البحث عن شاشات ذكية نشطة (Cast)...", Toast.LENGTH_SHORT).show()
+                },
+                Pair("💡", "المساعد") to {
+                    isTutorialOverlayVisible = true
+                    isMoreOptionsSheetOpen = false
+                },
+                Pair(">", "المزيد") to {
+                    Toast.makeText(context, "المزيد من الخيارات متاحة في الإعدادات العامة", Toast.LENGTH_SHORT).show()
+                }
+            )
+
+            androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
+                modifier = Modifier.height(350.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(gridItems.size) { index ->
+                    val item = gridItems[index]
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF26262B)),
+                        shape = RoundedCornerShape(0.dp), // SHARP CORNERS!
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .clickable {
+                                item.second()
                                 isMoreOptionsSheetOpen = false
-                            },
-                            Pair("🔖", "إشارة مرجعية") to {
-                                val bookPos = player.currentPosition
-                                val totalSec = bookPos / 1000
-                                val curStr = "%02d:%02d:%02d".format(totalSec / 3600, (totalSec % 3600) / 60, totalSec % 60)
-                                Toast.makeText(context, "تم حفظ الإشارة المرجعية عند $curStr", Toast.LENGTH_SHORT).show()
-                            },
-                            Pair("✂️", "قص الفيديو") to {
-                                Toast.makeText(context, "ميزة قص الفيديو مخصصة للأجهزة الكبيرة", Toast.LENGTH_SHORT).show()
-                            },
-                            Pair("❤️", "المفضلة") to {
-                                Toast.makeText(context, "تمت الإضافة للمفضلة بنجاح! ❤️", Toast.LENGTH_SHORT).show()
-                            },
-                            Pair("➕☰", "قائمة تشغيل") to {
-                                Toast.makeText(context, "محدد قوائم التشغيل متاح", Toast.LENGTH_SHORT).show()
-                            },
-                            Pair("ℹ️", "معلومات") to {
-                                val durationSec = player.duration / 1000
-                                val infoStr = "الملف: ${currentMediaFile.name}\nالدقة: $videoWidth x $videoHeight\nالحجم: %.2f MB\nالمدة: %02d:%02d:%02d".format(
-                                    currentMediaFile.length() / (1024f * 1024f),
-                                    durationSec / 3600,
-                                    (durationSec % 3600) / 60,
-                                    durationSec % 60
-                                )
-                                Toast.makeText(context, infoStr, Toast.LENGTH_LONG).show()
-                            },
-                            Pair("🔗", "مشاركة") to {
-                                try {
-                                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                        type = "video/*"
-                                        putExtra(android.content.Intent.EXTRA_STREAM, Uri.fromFile(currentMediaFile))
-                                    }
-                                    context.startActivity(android.content.Intent.createChooser(shareIntent, "مشاركة الفيديو"))
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "جاري مشاركة الفيديو", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            Pair("🌐", "Cast") to {
-                                Toast.makeText(context, "البحث عن شاشات ذكية نشطة (Cast)...", Toast.LENGTH_SHORT).show()
-                            },
-                            Pair("💡", "المساعد") to {
-                                isTutorialOverlayVisible = true
-                                isMoreOptionsSheetOpen = false
-                            },
-                            Pair(">", "المزيد") to {
-                                Toast.makeText(context, "المزيد من الخيارات متاحة في الإعدادات العامة", Toast.LENGTH_SHORT).show()
                             }
-                        )
-                        
-                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
-                            columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
-                            modifier = Modifier.height(260.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            items(gridItems.size) { index ->
-                                val item = gridItems[index]
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF26262B)),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(76.dp)
-                                        .clickable {
-                                            item.second()
-                                            isMoreOptionsSheetOpen = false
-                                        }
-                                ) {
-                                    Column(
-                                        modifier = Modifier.fillMaxSize().padding(4.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center
-                                    ) {
-                                        Text(item.first.first, fontSize = 20.sp, color = Color(0xFF00C8FF))
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = item.first.second,
-                                            fontSize = 10.sp,
-                                            color = Color.White,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
+                            Text(item.first.first, fontSize = 16.sp, color = Color(0xFF00C8FF))
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = item.first.second,
+                                fontSize = 10.sp,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
-                },
-                confirmButton = {
-                    TextButton(onClick = { isMoreOptionsSheetOpen = false }) {
-                        Text("إغلاق", color = Color(0xFF00C8FF))
-                    }
-                },
-                containerColor = Color(0xFF141419)
-            )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = { isMoreOptionsSheetOpen = false },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("إغلاق", color = Color.White, fontSize = 13.sp)
+            }
         }
 
         // -----------------------------------------------------
         // DECODER SELECTION DIALOG
         // -----------------------------------------------------
-        if (isDecoderDialogOpen) {
-            AlertDialog(
-                onDismissRequest = { isDecoderDialogOpen = false },
-                title = {
+        SidePanel(
+            visible = isDecoderDialogOpen,
+            onDismissRequest = { isDecoderDialogOpen = false },
+            title = "حدد الترميز (Decoder)"
+        ) {
+            val decoders = listOf("HW", "HW+", "SW")
+            decoders.forEach { decoder ->
+                val isSelected = currentDecoder == decoder
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            currentDecoder = decoder
+                            isHWAccelActive = (decoder == "HW" || decoder == "HW+")
+                            Toast.makeText(context, "تم التبديل إلى ترميز $decoder", Toast.LENGTH_SHORT).show()
+                            isDecoderDialogOpen = false
+                        }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End
+                ) {
                     Text(
-                        text = "حدد الترميز",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.fillMaxWidth(),
+                        text = "ترميز $decoder",
+                        color = if (isSelected) Color(0xFF00C8FF) else Color.White,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f),
                         textAlign = TextAlign.Right
                     )
-                },
-                text = {
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        val decoders = listOf("HW", "HW+", "SW")
-                        decoders.forEach { decoder ->
-                            val isSelected = currentDecoder == decoder
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        currentDecoder = decoder
-                                        isHWAccelActive = (decoder == "HW" || decoder == "HW+")
-                                        Toast.makeText(context, "تم التبديل إلى ترميز $decoder", Toast.LENGTH_SHORT).show()
-                                        isDecoderDialogOpen = false
-                                    }
-                                    .padding(vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                Text(
-                                    text = "ترميز $decoder",
-                                    color = if (isSelected) Color(0xFF00C8FF) else Color.White,
-                                    fontSize = 15.sp,
-                                    modifier = Modifier.weight(1f),
-                                    textAlign = TextAlign.Right
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                RadioButton(
-                                    selected = isSelected,
-                                    onClick = {
-                                        currentDecoder = decoder
-                                        isHWAccelActive = (decoder == "HW" || decoder == "HW+")
-                                        Toast.makeText(context, "تم التبديل إلى ترميز $decoder", Toast.LENGTH_SHORT).show()
-                                        isDecoderDialogOpen = false
-                                    },
-                                    colors = RadioButtonDefaults.colors(
-                                        selectedColor = Color(0xFF00C8FF),
-                                        unselectedColor = Color.LightGray
-                                    )
-                                )
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { isDecoderDialogOpen = false }) {
-                        Text("إلغاء", color = Color(0xFF00C8FF))
-                    }
-                },
-                containerColor = Color(0xFF141419)
-            )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = {
+                            currentDecoder = decoder
+                            isHWAccelActive = (decoder == "HW" || decoder == "HW+")
+                            Toast.makeText(context, "تم التبديل إلى ترميز $decoder", Toast.LENGTH_SHORT).show()
+                            isDecoderDialogOpen = false
+                        },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = Color(0xFF00C8FF),
+                            unselectedColor = Color.LightGray
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = { isDecoderDialogOpen = false },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("إلغاء", color = Color.White, fontSize = 13.sp)
+            }
         }
 
         // -----------------------------------------------------
         // AUDIO TRACK SELECTION DIALOG
         // -----------------------------------------------------
-        if (isAudioTracksDialogOpen) {
-            AlertDialog(
-                onDismissRequest = { isAudioTracksDialogOpen = false },
-                title = { Text("قنوات الصوت (Audio Tracks)", color = Color.White) },
-                text = {
-                    Column {
-                        val audioTracks = listOf(
-                            "القناة الأساسية الافتراضية (Default)",
-                            "قناة ستيريو عربية معدلة",
-                            "English alternate track",
-                            "كتم قناة الصوت فقط"
-                        )
-                        
-                        audioTracks.forEachIndexed { idx, label ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        if (idx == 3) {
-                                            player.volume = 0f
-                                            isMuted = true
-                                        } else {
-                                            player.volume = 1f
-                                            isMuted = false
-                                        }
-                                        gestureIndicatorText = "تم اختيار: $label"
-                                        isAudioTracksDialogOpen = false
-                                        scope.launch { isIndicatorVisible = true; delay(850); isIndicatorVisible = false }
-                                    }
-                                    .padding(vertical = 12.dp, horizontal = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(label, color = Color.White, fontSize = 13.sp)
-                                RadioButton(
-                                    selected = (idx == 0 && !isMuted) || (idx == 3 && isMuted),
-                                    onClick = null
-                                )
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { isAudioTracksDialogOpen = false }) {
-                        Text("إغلاق", color = Color(0xFF00C8FF))
-                    }
-                },
-                containerColor = Color(0xFF141419)
+        SidePanel(
+            visible = isAudioTracksDialogOpen,
+            onDismissRequest = { isAudioTracksDialogOpen = false },
+            title = "قنوات الصوت (Audio Tracks)"
+        ) {
+            val audioTracks = listOf(
+                "القناة الأساسية الافتراضية (Default)",
+                "قناة ستيريو عربية معدلة",
+                "English alternate track",
+                "كتم قناة الصوت فقط"
             )
+            
+            audioTracks.forEachIndexed { idx, label ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (idx == 3) {
+                                player.volume = 0f
+                                isMuted = true
+                            } else {
+                                player.volume = 1f
+                                isMuted = false
+                            }
+                            gestureIndicatorText = "تم اختيار: $label"
+                            isAudioTracksDialogOpen = false
+                            scope.launch { isIndicatorVisible = true; delay(850); isIndicatorVisible = false }
+                        }
+                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(label, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Right)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    RadioButton(
+                        selected = (idx == 0 && !isMuted) || (idx == 3 && isMuted),
+                        onClick = null
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = { isAudioTracksDialogOpen = false },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("إلغاء", color = Color.White, fontSize = 13.sp)
+            }
         }
 
         // -----------------------------------------------------
@@ -2615,219 +2617,205 @@ fun PlayerScreen(
         // -----------------------------------------------------
         // EQUALIZER BOTTOM SHEET DIALOG
         // -----------------------------------------------------
-        if (isEqualizerOpen) {
-            AlertDialog(
-                onDismissRequest = { isEqualizerOpen = false },
-                title = { Text("موازن الصوت (Equalizer Panel) 🎚️", color = Color.White) },
-                text = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
+        SidePanel(
+            visible = isEqualizerOpen,
+            onDismissRequest = { isEqualizerOpen = false },
+            title = "موازن الصوت (Equalizer Panel) 🎚️"
+        ) {
+            Text("مسبقات موازن الصوت (Presets):", color = Color.White, fontSize = 11.sp)
+            val eqPresetsList = listOf("Normal", "Bass Boost", "Treble Boost", "Flat", "Classical", "Rock")
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(vertical = 6.dp)
+            ) {
+                items(eqPresetsList.size) { idx ->
+                    FilterChip(
+                        selected = equalizerPresetIndex == idx,
+                        onClick = {
+                            equalizerPresetIndex = idx
+                            isEqualizerActive = true
+                            try {
+                                equalizerInstance?.usePreset(idx.toShort())
+                            } catch (e: Exception) {}
+                            
+                            equalizerBandLevels = when (idx) {
+                                1 -> floatArrayOf(0.8f, 0.4f, 0.1f, 0.1f, 0.1f)
+                                2 -> floatArrayOf(0.1f, 0.1f, 0.4f, 0.7f, 0.9f)
+                                3 -> floatArrayOf(0.0f, 0.0f, 0.0f, 0.0f, 0.0f)
+                                4 -> floatArrayOf(0.5f, 0.3f, 0.2f, 0.4f, 0.5f)
+                                5 -> floatArrayOf(0.6f, 0.4f, -0.1f, 0.4f, 0.7f)
+                                else -> floatArrayOf(0.2f, 0.2f, 0.2f, 0.2f, 0.2f)
+                            }
+                            Toast.makeText(context, "الوضع النشط: ${eqPresetsList[idx]}", Toast.LENGTH_SHORT).show()
+                        },
+                        label = { Text(eqPresetsList[idx], fontSize = 11.sp) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Text("ترددات موازنة الصوت (5-Band):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+            val bandFrequenciesList = listOf("60Hz", "230Hz", "910Hz", "4kHz", "14kHz")
+            repeat(5) { band ->
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("مسبقات موازن الصوت (Presets):", color = Color.White, fontSize = 11.sp)
-                        val eqPresetsList = listOf("عادي Normal", "مطور Bass Boost", "Treble Boost", "مسطح Flat", "كلاسيكي Classical", "روك وميتال Rock")
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(vertical = 6.dp)
-                        ) {
-                            items(eqPresetsList.size) { idx ->
-                                FilterChip(
-                                    selected = equalizerPresetIndex == idx,
-                                    onClick = {
-                                        equalizerPresetIndex = idx
-                                        isEqualizerActive = true
-                                        try {
-                                            equalizerInstance?.usePreset(idx.toShort())
-                                        } catch (e: Exception) {}
-                                        
-                                        equalizerBandLevels = when (idx) {
-                                            1 -> floatArrayOf(0.8f, 0.4f, 0.1f, 0.1f, 0.1f)
-                                            2 -> floatArrayOf(0.1f, 0.1f, 0.4f, 0.7f, 0.9f)
-                                            3 -> floatArrayOf(0.0f, 0.0f, 0.0f, 0.0f, 0.0f)
-                                            4 -> floatArrayOf(0.5f, 0.3f, 0.2f, 0.4f, 0.5f)
-                                            5 -> floatArrayOf(0.6f, 0.4f, -0.1f, 0.4f, 0.7f)
-                                            else -> floatArrayOf(0.2f, 0.2f, 0.2f, 0.2f, 0.2f)
-                                        }
-                                        Toast.makeText(context, "الوضع النشط: ${eqPresetsList[idx]}", Toast.LENGTH_SHORT).show()
-                                    },
-                                    label = { Text(eqPresetsList[idx]) }
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("ترددات موازنة الصوت (5-Band):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-
-                        val bandFrequenciesList = listOf("60Hz", "230Hz", "910Hz", "4kHz", "14kHz")
-                        repeat(5) { band ->
-                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(bandFrequenciesList[band], color = Color.White, fontSize = 11.sp)
-                                    val dbValue = (equalizerBandLevels[band] * 12).toInt()
-                                    Text("${if (dbValue > 0) "+" else ""}${dbValue} dB", color = Color.LightGray, fontSize = 11.sp)
-                                }
-                                Slider(
-                                    value = equalizerBandLevels[band],
-                                    onValueChange = { newVal ->
-                                        setEqualizerBand(band, newVal)
-                                        isEqualizerActive = true
-                                    },
-                                    valueRange = -1.0f..1.0f,
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = Color(0xFF00C8FF),
-                                        activeTrackColor = Color(0xFF00C8FF)
-                                    )
-                                )
-                            }
-                        }
+                        Text(bandFrequenciesList[band], color = Color.White, fontSize = 11.sp)
+                        val dbValue = (equalizerBandLevels[band] * 12).toInt()
+                        Text("${if (dbValue > 0) "+" else ""}${dbValue} dB", color = Color.LightGray, fontSize = 11.sp)
                     }
-                },
-                confirmButton = {
-                    TextButton(onClick = { isEqualizerOpen = false }) {
-                        Text("موافق", color = Color(0xFF00C8FF))
-                    }
-                },
-                containerColor = Color(0xFF141419)
-            )
+                    Slider(
+                        value = equalizerBandLevels[band],
+                        onValueChange = { newVal ->
+                            setEqualizerBand(band, newVal)
+                            isEqualizerActive = true
+                        },
+                        valueRange = -1.0f..1.0f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFF00C8FF),
+                            activeTrackColor = Color(0xFF00C8FF)
+                        ),
+                        modifier = Modifier.height(20.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = { isEqualizerOpen = false },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("موافق", color = Color.White, fontSize = 13.sp)
+            }
         }
 
         // -----------------------------------------------------
         // SLEEP TIMER DIALOG
         // -----------------------------------------------------
-        if (isSleepTimerDialogOpen) {
-            AlertDialog(
-                onDismissRequest = { isSleepTimerDialogOpen = false },
-                title = { Text("مؤقت النوم (Sleep Timer) ⏱", color = Color.White) },
-                text = {
-                    Column {
-                        Text("تحديد وقت إيقاف التشغيل التلقائي للفيديو الحالي:", color = Color.LightGray, fontSize = 12.sp)
-                        Spacer(modifier = Modifier.height(10.dp))
-                        
-                        val timesList = listOf(5, 10, 15, 30, 60)
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            timesList.forEach { mins ->
-                                Button(
-                                    onClick = {
-                                        sleepTimerInitialMinutes = mins
-                                        sleepTimerRemainingSecs = mins * 60
-                                        sleepTimerActive = true
-                                        isSleepTimerDialogOpen = false
-                                        gestureIndicatorText = "تم تفعيل مؤقت النوم: $mins دقيقة"
-                                        scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("$mins دقائق (Minutes)", color = Color.White)
-                                }
-                            }
-                            
-                            if (sleepTimerActive) {
-                                Button(
-                                    onClick = {
-                                        sleepTimerActive = false
-                                        sleepTimerRemainingSecs = 0
-                                        isSleepTimerDialogOpen = false
-                                        gestureIndicatorText = "مؤقت النوم: معطل"
-                                        scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.7f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("إيقاف المؤقت النشط", color = Color.White)
-                                }
-                            }
-                        }
+        SidePanel(
+            visible = isSleepTimerDialogOpen,
+            onDismissRequest = { isSleepTimerDialogOpen = false },
+            title = "مؤقت النوم (Sleep Timer) ⏱"
+        ) {
+            Text("تحديد وقت إيقاف التشغيل التلقائي للفيديو الحالي:", color = Color.LightGray, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            
+            val timesList = listOf(5, 10, 15, 30, 60)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                timesList.forEach { mins ->
+                    Button(
+                        onClick = {
+                            sleepTimerInitialMinutes = mins
+                            sleepTimerRemainingSecs = mins * 60
+                            sleepTimerActive = true
+                            isSleepTimerDialogOpen = false
+                            gestureIndicatorText = "تم تفعيل مؤقت النوم: $mins دقيقة"
+                            scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("$mins دقائق (Minutes)", color = Color.White, fontSize = 13.sp)
                     }
-                },
-                confirmButton = {
-                    TextButton(onClick = { isSleepTimerDialogOpen = false }) {
-                        Text("إلغاء", color = Color(0xFF00C8FF))
+                }
+                
+                if (sleepTimerActive) {
+                    Button(
+                        onClick = {
+                            sleepTimerActive = false
+                            sleepTimerRemainingSecs = 0
+                            isSleepTimerDialogOpen = false
+                            gestureIndicatorText = "مؤقت النوم: معطل"
+                            scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.7f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("إيقاف المؤقت النشط", color = Color.White, fontSize = 13.sp)
                     }
-                },
-                containerColor = Color(0xFF141419)
-            )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = { isSleepTimerDialogOpen = false },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("إلغاء", color = Color.White, fontSize = 13.sp)
+            }
         }
 
         // -----------------------------------------------------
         // TOOLBAR CUSTOMIZATION DIALOG
         // -----------------------------------------------------
-        if (isToolbarCustomizerDialogOpen) {
-            AlertDialog(
-                onDismissRequest = { isToolbarCustomizerDialogOpen = false },
-                title = { Text("تخصيص أزرار التحكم ✏️", color = Color.White) },
-                text = {
-                    val mxAllToolsList = listOf(
-                        "🌙" to "الوضع الليلي",
-                        "✏️" to "أدوات التخصيص",
-                        "🔀" to "تشغيل عشوائي",
-                        "🔁" to "تكرار",
-                        "🔇" to "كتم الصوت",
-                        "⏱" to "مؤقت النوم",
-                        "A↔B" to "تكرار AB",
-                        "🎚️" to "موازن الصوت",
-                        "1X" to "سرعة التحكم",
-                        "📷" to "لقطة شاشة",
-                        "▶⬛" to "التشغيل في الخلفية",
-                        "↩️" to "استدارة تلقائية",
-                        "Flip" to "عكس رأسي",
-                        "Mirror" to "وضع المرأة"
-                    )
-                    
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(280.dp)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        Text("اختر الأزرار النشطة للإظهار بالأداة السريعة:", color = Color.LightGray, fontSize = 11.sp)
-                        Spacer(modifier = Modifier.height(10.dp))
-                        
-                        mxAllToolsList.forEach { tool ->
-                            val isChecked = checkedExtendedTools.contains(tool.first)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        val newSet = if (isChecked) checkedExtendedTools - tool.first else checkedExtendedTools + tool.first
-                                        checkedExtendedTools = newSet
-                                        context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE)
-                                            .edit()
-                                            .putStringSet("tools", newSet)
-                                            .apply()
-                                    }
-                                    .padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("${tool.first} ${tool.second}", color = Color.White, fontSize = 12.sp)
-                                Checkbox(
-                                    checked = isChecked,
-                                    onCheckedChange = { _ ->
-                                        val newSet = if (isChecked) checkedExtendedTools - tool.first else checkedExtendedTools + tool.first
-                                        checkedExtendedTools = newSet
-                                        context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE)
-                                            .edit()
-                                            .putStringSet("tools", newSet)
-                                            .apply()
-                                    }
-                                )
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { isToolbarCustomizerDialogOpen = false }) {
-                        Text("حفظ وتعديل التفضيلات", color = Color(0xFF00C8FF))
-                    }
-                },
-                containerColor = Color(0xFF141419)
+        SidePanel(
+            visible = isToolbarCustomizerDialogOpen,
+            onDismissRequest = { isToolbarCustomizerDialogOpen = false },
+            title = "تخصيص أزرار التحكم ✏️"
+        ) {
+            val mxAllToolsList = listOf(
+                "🌙" to "الوضع الليلي",
+                "✏️" to "أدوات التخصيص",
+                "🔀" to "تشغيل عشوائي",
+                "🔁" to "تكرار",
+                "🔇" to "كتم الصوت",
+                "⏱" to "مؤقت النوم",
+                "A↔B" to "تكرار AB",
+                "🎚️" to "موازن الصوت",
+                "1X" to "سرعة التحكم",
+                "📷" to "لقطة شاشة",
+                "▶⬛" to "التشغيل في الخلفية",
+                "↩️" to "استدارة تلقائية",
+                "Flip" to "عكس رأسي",
+                "Mirror" to "وضع المرأة"
             )
+            
+            Text("اختر الأزرار النشطة للإظهار بالأداة السريعة:", color = Color.LightGray, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            
+            mxAllToolsList.forEach { tool ->
+                val isChecked = checkedExtendedTools.contains(tool.first)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val newSet = if (isChecked) checkedExtendedTools - tool.first else checkedExtendedTools + tool.first
+                            checkedExtendedTools = newSet
+                            context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE)
+                                .edit()
+                                .putStringSet("tools", newSet)
+                                .apply()
+                        }
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("${tool.first} ${tool.second}", color = Color.White, fontSize = 12.sp)
+                    Checkbox(
+                        checked = isChecked,
+                        onCheckedChange = { _ ->
+                            val newSet = if (isChecked) checkedExtendedTools - tool.first else checkedExtendedTools + tool.first
+                            checkedExtendedTools = newSet
+                            context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE)
+                                .edit()
+                                .putStringSet("tools", newSet)
+                                .apply()
+                        }
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = { isToolbarCustomizerDialogOpen = false },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("حفظ وتعديل التفضيلات", color = Color.White, fontSize = 13.sp)
+            }
         }
 
         // -----------------------------------------------------
@@ -2997,5 +2985,84 @@ fun PlayerProgressSlider(
             )
         }
         Text(totalStr, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+    }
+}
+
+@Composable
+fun SidePanel(
+    visible: Boolean,
+    onDismissRequest: () -> Unit,
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        enter = slideInHorizontally(initialOffsetX = { it }),
+        exit = slideOutHorizontally(targetOffsetX = { it }),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Semi-transparent background that dismisses when clicked
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) { onDismissRequest() }
+            )
+            
+            // Side panel container
+            Surface(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(if (isLandscape) 340.dp else 280.dp)
+                    .align(Alignment.CenterEnd), // Right side panel
+                color = Color(0xFF141419),
+                shape = RoundedCornerShape(0.dp), // SHARP CORNERS!
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                ) {
+                    // Header with title and close button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onDismissRequest) {
+                            Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.White)
+                        }
+                        Text(
+                            text = title,
+                            color = Color(0xFF00C8FF),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = 0.1f))
+                    
+                    // Main content
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        content()
+                    }
+                }
+            }
+        }
     }
 }

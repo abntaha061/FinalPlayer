@@ -13,7 +13,7 @@ data class SubtitleStyle(
     val italic: Boolean = false,
     val fontFamily: String = "default",
     val alignment: Int = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL,
-    val bottomPadding: Float = 0.05f,
+    val bottomPadding: Float = 0.012f,
     val edgeType: Int = CaptionStyleCompat.EDGE_TYPE_OUTLINE,
     val edgeColor: Color = Color.Black,
     val fitToVideo: Boolean = true

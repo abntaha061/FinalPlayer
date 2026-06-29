@@ -224,7 +224,7 @@ fun SubtitleSettingsPanel(
                             },
                             valueRange = -5000f..5000f,
                             steps = 100,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            modifier = Modifier.fillMaxWidth().height(20.dp)
                         )
 
                         Spacer(Modifier.height(8.dp))
@@ -248,7 +248,7 @@ fun SubtitleSettingsPanel(
                             },
                             valueRange = 0.5f..2.0f,
                             steps = 15,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            modifier = Modifier.fillMaxWidth().height(20.dp)
                         )
 
                     } else {
@@ -294,7 +294,8 @@ fun SubtitleSettingsPanel(
                             value = subtitleStyle.textSize,
                             onValueChange = { onSubtitleStyleChange(subtitleStyle.copy(textSize = it)) },
                             valueRange = 0.5f..2.0f,
-                            steps = 15
+                            steps = 15,
+                            modifier = Modifier.height(20.dp)
                         )
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -436,8 +437,9 @@ fun SubtitleSettingsPanel(
                         Slider(
                             value = subtitleStyle.bottomPadding,
                             onValueChange = { onSubtitleStyleChange(subtitleStyle.copy(bottomPadding = it)) },
-                            valueRange = 0.0f..0.15f,
-                            steps = 15
+                            valueRange = -0.03f..0.30f,
+                            steps = 33,
+                            modifier = Modifier.height(20.dp)
                         )
 
                         Spacer(modifier = Modifier.height(24.dp))
