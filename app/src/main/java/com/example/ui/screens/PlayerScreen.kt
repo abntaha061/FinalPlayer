@@ -494,6 +494,7 @@ fun PlayerScreen(
     var localSubtitleOffset by remember { mutableStateOf<Float?>(null) }
     var parentHeightPx by remember { mutableStateOf(1000f) }
     var isDraggingSubtitle by remember { mutableStateOf(false) }
+    var isSubtitlePressed by remember { mutableStateOf(false) }
 
     val bottomPaddingAnim by animateDpAsState(
         targetValue = if (areControlsVisible) 48.dp else 0.dp,
@@ -757,7 +758,7 @@ fun PlayerScreen(
     LaunchedEffect(videoWidth, videoHeight, filePath) {
         if (!hasAutoRotatedForCurrentVideo && videoWidth > 0 && videoHeight > 0) {
             val targetOrientation = if (videoWidth > videoHeight) {
-                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             } else {
                 android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
@@ -798,6 +799,17 @@ fun PlayerScreen(
                         
                         while (true) {
                             val down = awaitFirstDown(requireUnconsumed = false)
+                            if (isSubtitlePressed) {
+                                // Bypass all parent player gestures when dragging/pressing the subtitles
+                                var pointerId = down.id
+                                var pressInputChange: PointerInputChange? = down
+                                while (pressInputChange != null && pressInputChange.pressed) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == pointerId }
+                                    pressInputChange = if (change != null && change.pressed) change else null
+                                }
+                                continue
+                            }
                             val downTime = System.currentTimeMillis()
                             val startPos = down.position
                             isDraggingRightSide = startPos.x > size.width / 2f
@@ -1218,10 +1230,39 @@ fun PlayerScreen(
             }
         }
 
+        // Subtitle Drag vertical position indicator
+        if (isDraggingSubtitle) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(12.dp))
+                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(12.dp))
+                    .padding(vertical = 16.dp, horizontal = 24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "↕",
+                        color = Color(0xFF00C8FF),
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${subtitleOffsetY.toInt()}",
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
         // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY
         if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
             val containsArabic = activeSubtitleText.any { it in '\u0600'..'\u06FF' }
             val layoutDirection = if (containsArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
+            val densityVal = LocalDensity.current.density
 
             CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                 Box(
@@ -1232,22 +1273,37 @@ fun PlayerScreen(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(
-                                bottom = (80 + (subtitleOffsetY * -LocalConfiguration.current.screenHeightDp)).dp,
+                                bottom = subtitleOffsetY.dp,
                                 start = 16.dp,
                                 end = 16.dp
                             )
                             .wrapContentSize()
                             .pointerInput(Unit) {
-                                detectDragGestures(
-                                    onDragStart = { isDraggingSubtitle = true },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        val deltaFraction = dragAmount.y / 1000f
-                                        viewModel.moveSubtitle(deltaFraction)
-                                    },
-                                    onDragEnd   = { isDraggingSubtitle = false },
-                                    onDragCancel = { isDraggingSubtitle = false }
-                                )
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        isSubtitlePressed = true
+                                        isDraggingSubtitle = true
+                                        
+                                        var pointerId = down.id
+                                        var dragChange: PointerInputChange? = down
+                                        while (dragChange != null && dragChange.pressed) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.firstOrNull { it.id == pointerId }
+                                            if (change != null && change.pressed) {
+                                                change.consume()
+                                                val deltaY = change.position.y - change.previousPosition.y
+                                                val deltaDp = deltaY / densityVal
+                                                viewModel.moveSubtitle(deltaDp)
+                                                dragChange = change
+                                            } else {
+                                                dragChange = null
+                                            }
+                                        }
+                                        isSubtitlePressed = false
+                                        isDraggingSubtitle = false
+                                    }
+                                }
                             }
                             .background(
                                 color = if (isDraggingSubtitle) {
@@ -2345,7 +2401,80 @@ fun PlayerScreen(
             subtitleDelaySeconds = subtitleDelaySeconds,
             onSubtitleDelaySecondsChange = { subtitleDelaySeconds = it },
             isSubBgTransparent = isSubBgTransparent,
-            onSubBgTransparentChange = { isSubBgTransparent = it }
+            onSubBgTransparentChange = { isSubBgTransparent = it },
+            filePath = filePath,
+            videoDurationMs = videoDuration,
+            onSubtitleFileGenerated = { file ->
+                val dispName = file.name
+                val uri = Uri.fromFile(file)
+                val currentPos = player.currentPosition
+                
+                val compositeConfigs = mutableListOf<MediaItem.SubtitleConfiguration>()
+                detectedSubtitles.forEachIndexed { idx, f ->
+                    val fLang = subtitleLanguages.getOrNull(idx) ?: "ar"
+                    val subUri = Uri.fromFile(f)
+                    val isSrt = f.name.endsWith(".srt", ignoreCase = true)
+                    val mimeType = if (isSrt) "application/x-subrip" else "text/vtt"
+                    compositeConfigs.add(
+                        MediaItem.SubtitleConfiguration.Builder(subUri)
+                            .setMimeType(mimeType)
+                            .setLanguage(fLang)
+                            .setSelectionFlags(if (idx == 0) C.SELECTION_FLAG_DEFAULT else 0)
+                            .build()
+                    )
+                }
+                
+                manualSubs.forEachIndexed { idx, pair ->
+                    val subUri = pair.second
+                    val isSrt = pair.first.endsWith(".srt", ignoreCase = true)
+                    val mimeType = if (isSrt) "application/x-subrip" else "text/vtt"
+                    val lang = "manual_${idx}_${pair.first}"
+                    compositeConfigs.add(
+                        MediaItem.SubtitleConfiguration.Builder(subUri)
+                            .setMimeType(mimeType)
+                            .setLanguage(lang)
+                            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                            .build()
+                    )
+                }
+                
+                val newIsSrt = dispName.endsWith(".srt", ignoreCase = true)
+                val newMimeType = if (newIsSrt) "application/x-subrip" else "text/vtt"
+                val newLang = "manual_${manualSubs.size}_$dispName"
+                
+                val newConfig = MediaItem.SubtitleConfiguration.Builder(uri)
+                    .setMimeType(newMimeType)
+                    .setLanguage(newLang)
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
+                compositeConfigs.add(newConfig)
+                
+                manualSubs.add(Pair(dispName, uri))
+                
+                val videoFile = File(filePath)
+                val videoUri = if (filePath.startsWith("http://") || filePath.startsWith("https://") || filePath.startsWith("content://") || filePath.startsWith("file://")) {
+                    Uri.parse(filePath)
+                } else {
+                    Uri.fromFile(videoFile)
+                }
+                
+                val newMediaItem = MediaItem.Builder()
+                    .setUri(videoUri)
+                    .setSubtitleConfigurations(compositeConfigs)
+                    .build()
+                    
+                player.setMediaItem(newMediaItem)
+                player.prepare()
+                player.seekTo(currentPos)
+                
+                isSubtitleEnabled = true
+                selectedSubtitleLang = newLang
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setPreferredTextLanguage(newLang)
+                    .build()
+            }
         )
 
         // -----------------------------------------------------

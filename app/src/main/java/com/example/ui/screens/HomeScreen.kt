@@ -1124,10 +1124,14 @@ fun scanSubtitlesForFolder(videoPath: String): List<SubtitleBadge> {
         val videoFile = java.io.File(videoPath)
         val parent = videoFile.parentFile
         if (parent == null || !parent.exists()) return emptyList()
-        val subtitleExtensions = setOf("srt", "ass", "ssa", "sub")
+        val subtitleExtensions = setOf("srt", "ass", "ssa", "sub", "vtt")
         val files = parent.listFiles() ?: return emptyList()
+        val videoBaseName = videoFile.nameWithoutExtension.lowercase(java.util.Locale.US)
+        
         return files.filter { file ->
-            file.isFile && file.extension.lowercase(java.util.Locale.US) in subtitleExtensions
+            file.isFile && 
+            file.extension.lowercase(java.util.Locale.US) in subtitleExtensions &&
+            file.name.lowercase(java.util.Locale.US).startsWith(videoBaseName)
         }.map { file ->
             val fileName = file.name.lowercase(java.util.Locale.US)
             val displayTag = when {
@@ -1773,16 +1777,16 @@ fun VideosAndFoldersTab(
                                             }
                                             Box(
                                                 modifier = Modifier
-                                                    .height(18.dp)
                                                     .background(subtitleColor, RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 4.dp),
+                                                    .padding(horizontal = 3.dp, vertical = 1.dp),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
                                                     text = sub.label,
                                                     color = Color.White,
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    lineHeight = 8.sp
                                                 )
                                             }
                                         }
@@ -1801,16 +1805,16 @@ fun VideosAndFoldersTab(
                                         }
                                         Box(
                                             modifier = Modifier
-                                                .height(18.dp)
                                                 .background(qualityColor, RoundedCornerShape(2.dp))
-                                                .padding(horizontal = 4.dp),
+                                                .padding(horizontal = 3.dp, vertical = 1.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = quality,
                                                 color = Color.White,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                lineHeight = 8.sp
                                             )
                                         }
                                     }

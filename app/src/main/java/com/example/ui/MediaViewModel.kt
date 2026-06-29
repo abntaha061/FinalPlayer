@@ -30,13 +30,12 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MediaRepository(application)
     private val context = application.applicationContext
 
-    private val _subtitleOffsetY = MutableStateFlow(0f)
+    private val _subtitleOffsetY = MutableStateFlow(80f) // default bottom padding in DP
     val subtitleOffsetY: StateFlow<Float> = _subtitleOffsetY.asStateFlow()
 
-    fun moveSubtitle(deltaY: Float) {
-        // Allow moving between -40% and +5% of screen height
-        _subtitleOffsetY.value = (_subtitleOffsetY.value + deltaY)
-            .coerceIn(-0.40f, 0.05f)
+    fun moveSubtitle(deltaDp: Float) {
+        _subtitleOffsetY.value = (_subtitleOffsetY.value - deltaDp)
+            .coerceIn(8f, 380f)
     }
 
     // --- BACKGROUND AUDIO PLAYER ---
