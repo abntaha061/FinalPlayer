@@ -1,31 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
     <group
-        android:scaleX="0.18"
-        android:scaleY="0.18"
-        android:translateX="5.04"
-        android:translateY="7.92">
-        
+        android:translateX="-23.0">
         <path
-            android:pathData="M 120 160 L 120 352 Q 120 432, 189 392 L 355 296 Q 424 256, 355 216 L 189 120 Q 120 80, 120 160 Z">
-            <aapt:attr name="android:fillColor">
-                <gradient
-                    android:type="linear"
-                    android:startX="120"
-                    android:startY="80"
-                    android:endX="424"
-                    android:endY="432">
-                    <item android:offset="0.0" android:color="#2BB8FF" />  <!-- Bright cloud cyan/blue -->
-                    <item android:offset="0.45" android:color="#8A64FF" /> <!-- Deep glowing violet/indigo -->
-                    <item android:offset="1.0" android:color="#E054F1" />  <!-- Hot magenta/pink -->
-                </gradient>
-            </aapt:attr>
-        </path>
+            android:pathData="M320,280V744H420V550H580V450H420V380H650V280H320Z"
+            android:fillColor="#FFFFFF" />
+        <path
+            android:pathData="M540,500L750,612L540,724V500Z"
+            android:fillColor="#FFFFFF" />
     </group>
 </vector>
