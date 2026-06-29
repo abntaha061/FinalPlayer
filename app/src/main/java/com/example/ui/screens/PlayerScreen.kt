@@ -1368,7 +1368,7 @@ fun PlayerScreen(
                         animationSpec = spring(stiffness = 300f),
                         label = "subtitle_rise"
                     )
-                    val extraBottomPad = bottomPadDp + animatedExtraPad
+                    val extraBottomPad = (bottomPadDp + animatedExtraPad).coerceAtLeast(0.dp)
                     Box(
                         modifier = Modifier
                             .align(gravityAlignment)
