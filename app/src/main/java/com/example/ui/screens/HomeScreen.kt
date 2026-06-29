@@ -2328,7 +2328,7 @@ fun VideosAndFoldersTab(
                     }
                 }
             } else {
-                if (selectedFolderPath != null || searchQuery.isNotBlank() || viewContentMode == "LIST" || viewContentMode == "FILES") {
+                if (viewContentMode == "LIST" || viewContentMode == "FILES" || (viewContentMode != "GRID" && (selectedFolderPath != null || searchQuery.isNotBlank()))) {
                     items(displayVideos, key = { it.path }) { video ->
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             val thumbnail = rememberVideoThumbnail(video.path)
