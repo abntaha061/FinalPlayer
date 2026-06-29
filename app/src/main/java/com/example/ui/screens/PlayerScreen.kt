@@ -472,6 +472,10 @@ fun PlayerScreen(
     var showForwardOverlay by remember { mutableStateOf(false) }
     var showSeekDragIndicator by remember { mutableStateOf(false) }
     var draggedSeekPosition by remember { mutableStateOf(0L) }
+    var dragStartPlaybackTime by remember { mutableStateOf(0L) }
+    var audiofySeekSeconds by remember { mutableStateOf<Int?>(null) }
+    var audiofySeekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var singleTapJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var currentGestureType by remember { mutableStateOf("NONE") } // "NONE", "VOLUME", "BRIGHTNESS", "SEEK"
     var dragStartOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
@@ -818,6 +822,7 @@ fun PlayerScreen(
                             draggedBrightness = realBright
                             currentBrightness = realBright
                             draggedSeekPosition = player.currentPosition
+                            dragStartPlaybackTime = player.currentPosition
                             
                             var hasMoved = false
                             currentGestureType = "NONE"
@@ -830,6 +835,8 @@ fun PlayerScreen(
                                 delay(400)
                                 if (currentGestureType == "NONE" && !isLongPressFastForwarding) {
                                     isLongPressFastForwarding = true
+                                    singleTapJob?.cancel()
+                                    singleTapJob = null
                                     wasPlayingBeforeFastForward = player.isPlaying
                                     player.setPlaybackSpeed(2.0f)
                                     if (!wasPlayingBeforeFastForward) {
@@ -851,6 +858,8 @@ fun PlayerScreen(
                                         hasMoved = true
                                         longPressJob?.cancel()
                                         longPressJob = null
+                                        singleTapJob?.cancel()
+                                        singleTapJob = null
                                         if (kotlin.math.abs(totalX) > kotlin.math.abs(totalY)) {
                                             currentGestureType = "SEEK"
                                             showSeekDragIndicator = true
@@ -911,6 +920,8 @@ fun PlayerScreen(
                                                     val deltaRatio = dragAmountX / size.width.toFloat()
                                                     val deltaMs = (deltaRatio * spanMs).toLong()
                                                     val targetPosition = (draggedSeekPosition + deltaMs).coerceIn(0L, videoDuration)
+                                                    audiofySeekJob?.cancel()
+                                                    audiofySeekSeconds = ((targetPosition - dragStartPlaybackTime) / 1000).toInt()
                                                     draggedSeekPosition = targetPosition
                                                     player.seekTo(targetPosition)
                                                     currentPlayTime = targetPosition
@@ -938,6 +949,13 @@ fun PlayerScreen(
                             showVolumeIndicator = false
                             showBrightnessIndicator = false
                             showSeekDragIndicator = false
+                            if (currentGestureType == "SEEK") {
+                                audiofySeekJob?.cancel()
+                                audiofySeekJob = scope.launch {
+                                    delay(1200)
+                                    audiofySeekSeconds = null
+                                }
+                            }
                             
                             if (!hasMoved) {
                                 val upTime = System.currentTimeMillis()
@@ -946,12 +964,22 @@ fun PlayerScreen(
                                         kotlin.math.abs(startPos.x - lastTapPosition.x) < 50f && 
                                         kotlin.math.abs(startPos.y - lastTapPosition.y) < 50f) {
                                         
+                                        // Cancel the single tap controls toggle job so that player controls/progress bar do not appear
+                                        singleTapJob?.cancel()
+                                        singleTapJob = null
+                                        
                                         val fraction = startPos.x / size.width.toFloat()
                                         if (fraction < 0.35f) {
                                             val target = (player.currentPosition - 10000).coerceAtLeast(0)
                                             player.seekTo(target)
                                             currentPlayTime = target
                                             showRewindOverlay = true
+                                            audiofySeekJob?.cancel()
+                                            audiofySeekSeconds = -10
+                                            audiofySeekJob = scope.launch {
+                                                delay(1200)
+                                                audiofySeekSeconds = null
+                                            }
                                             scope.launch {
                                                 delay(700)
                                                 showRewindOverlay = false
@@ -961,6 +989,12 @@ fun PlayerScreen(
                                             player.seekTo(target)
                                             currentPlayTime = target
                                             showForwardOverlay = true
+                                            audiofySeekJob?.cancel()
+                                            audiofySeekSeconds = 10
+                                            audiofySeekJob = scope.launch {
+                                                delay(1200)
+                                                audiofySeekSeconds = null
+                                            }
                                             scope.launch {
                                                 delay(700)
                                                 showForwardOverlay = false
@@ -975,9 +1009,15 @@ fun PlayerScreen(
                                         lastTapTime = 0L
                                         lastTapPosition = androidx.compose.ui.geometry.Offset.Zero
                                     } else {
-                                        areControlsVisible = !areControlsVisible
-                                        if (!areControlsVisible) {
-                                            isBrightnessSliderVisible = false
+                                        // Delay the single tap action to allow potential double taps to cancel it,
+                                        // keeping controls hidden on 10s seek
+                                        singleTapJob?.cancel()
+                                        singleTapJob = scope.launch {
+                                            delay(250)
+                                            areControlsVisible = !areControlsVisible
+                                            if (!areControlsVisible) {
+                                                isBrightnessSliderVisible = false
+                                            }
                                         }
                                         
                                         lastTapTime = upTime
@@ -1209,6 +1249,33 @@ fun PlayerScreen(
                         fontSize = 18.sp
                     )
                 }
+            }
+        }
+
+        // 🎧 Audiofy-style Seek indicator at the Top Center of the screen
+        AnimatedVisibility(
+            visible = audiofySeekSeconds != null,
+            enter = fadeIn() + scaleIn(initialScale = 0.85f),
+            exit = fadeOut() + scaleOut(targetScale = 0.85f),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 28.dp)
+        ) {
+            val delta = audiofySeekSeconds ?: 0
+            val sign = if (delta > 0) "+" else ""
+            Box(
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.65f), shape = RoundedCornerShape(50))
+                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.25f), shape = RoundedCornerShape(50))
+                    .padding(vertical = 6.dp, horizontal = 18.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "$sign${delta}s",
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp
+                )
             }
         }
 
@@ -1683,6 +1750,12 @@ fun PlayerScreen(
                                 val target = (player.currentPosition - seekStepSeconds * 1000L).coerceAtLeast(0)
                                 player.seekTo(target)
                                 currentPlayTime = target
+                                audiofySeekJob?.cancel()
+                                audiofySeekSeconds = -seekStepSeconds
+                                audiofySeekJob = scope.launch {
+                                    delay(1200)
+                                    audiofySeekSeconds = null
+                                }
                             },
                             modifier = Modifier
                                 .size(34.dp)
@@ -1788,6 +1861,12 @@ fun PlayerScreen(
                                 val target = (player.currentPosition + seekStepSeconds * 1000L).coerceAtMost(player.duration)
                                 player.seekTo(target)
                                 currentPlayTime = target
+                                audiofySeekJob?.cancel()
+                                audiofySeekSeconds = seekStepSeconds
+                                audiofySeekJob = scope.launch {
+                                    delay(1200)
+                                    audiofySeekSeconds = null
+                                }
                             },
                             modifier = Modifier
                                 .size(34.dp)
