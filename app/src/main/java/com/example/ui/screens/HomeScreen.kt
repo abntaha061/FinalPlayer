@@ -33,6 +33,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -113,10 +114,9 @@ fun HomeScreen(
     var selectedSubTabIndex by remember { mutableStateOf(0) } // 0 = Videos, 1 = Favorites/Playlists, 2 = Vault
 
     // Display & sorting configurations
-    var layoutMode by remember { mutableStateOf("LIST") } // "GRID", "LIST"
-    var viewContentMode by remember { mutableStateOf("FOLDERS") } // "FOLDERS", "FILES", "ALL_FOLDERS"
-    var sortOption by remember { mutableStateOf("TITLE") } // "TITLE", "DATE", "SIZE", "DURATION", "PATH", "RESOLUTION"
-    var sortDirection by remember { mutableStateOf("DESCENDING") } // "ASCENDING", "DESCENDING"
+    var viewContentMode by rememberSaveable { mutableStateOf("ALL_FOLDERS") } // "GRID", "LIST", "FOLDERS", "FILES", "ALL_FOLDERS"
+    var sortOption by rememberSaveable { mutableStateOf("TITLE") } // "TITLE", "DATE", "SIZE", "DURATION", "PATH", "RESOLUTION"
+    var sortDirection by rememberSaveable { mutableStateOf("DESCENDING") } // "ASCENDING", "DESCENDING"
     var isOptionsSheetVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
@@ -304,7 +304,7 @@ fun HomeScreen(
                                                 Icon(Icons.Default.Search, contentDescription = "Search bar")
                                             }
                                             IconButton(onClick = { isOptionsSheetVisible = true }) {
-                                                Icon(Icons.Default.Tune, contentDescription = "Display options Dialog")
+                                                Icon(Icons.Default.FilterList, contentDescription = "Display options Dialog")
                                             }
                                         }
                                     }
@@ -545,7 +545,6 @@ fun HomeScreen(
                                 scannedFolders = scannedFolders,
                                 onPlayFile = onPlayFile,
                                 viewModel = viewModel,
-                                layoutMode = layoutMode,
                                 viewContentMode = viewContentMode,
                                 onViewContentModeChange = { viewContentMode = it },
                                 sortOption = sortOption,
@@ -559,7 +558,16 @@ fun HomeScreen(
                                 onShowCleaner = { isCleanerVisible = true },
                                 selectedFolderPath = selectedFolderPath,
                                 onSelectedFolderPathChange = { viewModel.setSelectedFolderPath(it) },
-                                selectedPaths = selectedPaths
+                                selectedPaths = selectedPaths,
+                                showExtension = showExtension,
+                                showDuration = showDuration,
+                                showThumbnail = showThumbnail,
+                                showFramerate = showFramerate,
+                                showResolution = showResolution,
+                                showWatchTime = showWatchTime,
+                                showDate = showDate,
+                                showSize = showSize,
+                                showPath = showPath
                             )
                             1 -> PlaylistsAndFavoritesTab(
                                 playlists = playlistsList,
@@ -820,158 +828,332 @@ fun HomeScreen(
         )
     }
 
-    // --- DISPLAY AND SORT OPTIONS CUSTOM DIALOG ---
+    // --- DISPLAY AND SORT OPTIONS CUSTOM BOTTOM SHEET ---
     if (isOptionsSheetVisible) {
-        AlertDialog(
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
             onDismissRequest = { isOptionsSheetVisible = false },
-            title = {
-                Text(
-                    text = "طريقة الفرز والعرض (Display & Sort)",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // 1. التصميم (List / Grid layout)
-                    Text("التصميم (Layout)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            sheetState = sheetState,
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+            containerColor = MaterialTheme.colorScheme.surface,
+            scrimColor = Color.Black.copy(alpha = 0.5f)
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 1. طريقة العرض والتصميم
+                item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        listOf("GRID" to "شبكة", "LIST" to "قائمة").forEach { (code, label) ->
-                            val isSelected = layoutMode == code
-                            Surface(
-                                onClick = { layoutMode = code },
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(vertical = 10.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-
-                    // 2. طريقة العرض (Content Grouping)
-                    Text("طريقة العرض (View Mode)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf("FOLDERS" to "مجلدات", "FILES" to "ملفات", "ALL_FOLDERS" to "كافة").forEach { (code, label) ->
-                            val isSelected = viewContentMode == code
-                            Surface(
-                                onClick = { viewContentMode = code },
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(vertical = 10.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-
-                    // 3. فرز (Sort attributes)
-                    Text("فرز حسب (Sort By)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val sortOptions = listOf(
-                            "TITLE" to "العنوان",
-                            "DATE" to "التاريخ",
-                            "SIZE" to "الحجم",
-                            "DURATION" to "المدة",
-                            "PATH" to "المسار",
-                            "RESOLUTION" to "الدقة"
+                        Text(
+                            text = "التصميم",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                        sortOptions.chunked(3).forEach { rowOptions ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Text(
+                            text = "طريقة العرض",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val viewOptions = listOf(
+                            "GRID" to (Icons.Default.GridView to "شبكة"),
+                            "LIST" to (Icons.Default.ViewList to "قائمة"),
+                            "FOLDERS" to (Icons.Default.Folder to "مجلدات"),
+                            "FILES" to (Icons.Default.InsertDriveFile to "ملفات"),
+                            "ALL_FOLDERS" to (Icons.Default.FolderOpen to "كافة")
+                        )
+                        viewOptions.forEach { (code, pair) ->
+                            val (icon, label) = pair
+                            val isSelected = viewContentMode == code
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isSelected) currentAccentColor else Color.Transparent)
+                                    .clickable { viewContentMode = code }
+                                    .padding(vertical = 8.dp)
                             ) {
-                                rowOptions.forEach { (code, label) ->
-                                    val isSelected = sortOption == code
-                                    Surface(
-                                        onClick = { sortOption = code },
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text(
-                                            text = label,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            textAlign = TextAlign.Center,
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                        )
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = label,
+                                    modifier = Modifier.size(32.dp),
+                                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.Gray
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Divider
+                item {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                }
+
+                // 2. فرز
+                item {
+                    Text(
+                        text = "فرز",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.End
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val sortOptions = listOf(
+                            "DURATION" to (Icons.Outlined.Timer to "المدة"),
+                            "SIZE" to (Icons.Default.Storage to "الحجم"),
+                            "LAST_PLAYED" to (Icons.Default.AccessTime to "المشاهدة"),
+                            "DATE" to (Icons.Default.CalendarToday to "التاريخ"),
+                            "TITLE" to (Icons.Default.SortByAlpha to "العنوان"),
+                            "RESOLUTION" to (Icons.Default.Hd to "الدقة"),
+                            "PATH" to (Icons.Default.Link to "المسار"),
+                            "TYPE" to (Icons.Default.Save to "النوع")
+                        )
+                        items(sortOptions) { (code, pair) ->
+                            val (icon, label) = pair
+                            val isSelected = sortOption == code
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .width(72.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isSelected) currentAccentColor else Color.Transparent)
+                                    .clickable { sortOption = code }
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = label,
+                                    modifier = Modifier.size(32.dp),
+                                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.Gray
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = label,
+                                    fontSize = 11.sp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val isDesc = sortDirection == "DESCENDING"
+                        Button(
+                            onClick = { sortDirection = "DESCENDING" },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isDesc) currentAccentColor else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (isDesc) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("الأجدد ↓", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        val isAsc = sortDirection == "ASCENDING"
+                        Button(
+                            onClick = { sortDirection = "ASCENDING" },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isAsc) currentAccentColor else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (isAsc) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("الأقدم ↑", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // Divider
+                item {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                }
+
+                // 3. الحقول (Collapsible)
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isFieldsSectionExpanded = !isFieldsSectionExpanded }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Icon(
+                            imageVector = if (isFieldsSectionExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Toggle Fields",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "الحقول",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    if (isFieldsSectionExpanded) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val fields = listOf(
+                            "showExtension" to "لاحقة الملف",
+                            "showDuration" to "المدة",
+                            "showThumbnail" to "الصورة",
+                            "showFramerate" to "سرعة الإطار",
+                            "showResolution" to "الدقة",
+                            "showWatchTime" to "وقت المشاهدة",
+                            "showDate" to "التاريخ",
+                            "showSize" to "الحجم",
+                            "showPath" to "المسار"
+                        )
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            fields.chunked(3).forEach { rowFields ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    rowFields.forEach { (fieldKey, label) ->
+                                        val checked = when (fieldKey) {
+                                            "showExtension" -> showExtension
+                                            "showDuration" -> showDuration
+                                            "showThumbnail" -> showThumbnail
+                                            "showFramerate" -> showFramerate
+                                            "showResolution" -> showResolution
+                                            "showWatchTime" -> showWatchTime
+                                            "showDate" -> showDate
+                                            "showSize" -> showSize
+                                            "showPath" -> showPath
+                                            else -> false
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    when (fieldKey) {
+                                                        "showExtension" -> showExtension = !showExtension
+                                                        "showDuration" -> showDuration = !showDuration
+                                                        "showThumbnail" -> showThumbnail = !showThumbnail
+                                                        "showFramerate" -> showFramerate = !showFramerate
+                                                        "showResolution" -> showResolution = !showResolution
+                                                        "showWatchTime" -> showWatchTime = !showWatchTime
+                                                        "showDate" -> showDate = !showDate
+                                                        "showSize" -> showSize = !showSize
+                                                        "showPath" -> showPath = !showPath
+                                                    }
+                                                }
+                                                .padding(vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.End
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.sp,
+                                                textAlign = TextAlign.End,
+                                                modifier = Modifier.weight(1f),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Checkbox(
+                                                checked = checked,
+                                                onCheckedChange = { newValue ->
+                                                    when (fieldKey) {
+                                                        "showExtension" -> showExtension = newValue
+                                                        "showDuration" -> showDuration = newValue
+                                                        "showThumbnail" -> showThumbnail = newValue
+                                                        "showFramerate" -> showFramerate = newValue
+                                                        "showResolution" -> showResolution = newValue
+                                                        "showWatchTime" -> showWatchTime = newValue
+                                                        "showDate" -> showDate = newValue
+                                                        "showSize" -> showSize = newValue
+                                                        "showPath" -> showPath = newValue
+                                                    }
+                                                },
+                                                colors = CheckboxDefaults.colors(checkedColor = currentAccentColor),
+                                                modifier = Modifier.scale(0.85f)
+                                            )
+                                        }
+                                    }
+                                    if (rowFields.size < 3) {
+                                        Spacer(modifier = Modifier.weight((3 - rowFields.size).toFloat()))
                                     }
                                 }
                             }
                         }
                     }
+                }
 
-                    // 4. فرز اتجاه (Direction)
-                    Text("الترتيب (Order)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                // 4. الأزرار السفلية
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        listOf("DESCENDING" to "الأحدث", "ASCENDING" to "الأقدم").forEach { (code, label) ->
-                            val isSelected = sortDirection == code
-                            Surface(
-                                onClick = { sortDirection = code },
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(vertical = 10.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
+                        Button(
+                            onClick = { isOptionsSheetVisible = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = currentAccentColor),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("اكتمل", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        OutlinedButton(
+                            onClick = { isOptionsSheetVisible = false },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, currentAccentColor)
+                        ) {
+                            Text("إلغاء", color = currentAccentColor, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
-            },
-            confirmButton = {
-                Button(onClick = { isOptionsSheetVisible = false }) {
-                    Text("اكتمل")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { isOptionsSheetVisible = false }) {
-                    Text("إلغاء")
-                }
             }
-        )
+        }
     }
 
     // --- QUICK ACTION DIALOG 1: FILE TRANSFER ---
@@ -1384,7 +1566,6 @@ fun VideosAndFoldersTab(
     scannedFolders: List<ScannedFolder>,
     onPlayFile: (String) -> Unit,
     viewModel: MediaViewModel,
-    layoutMode: String,
     viewContentMode: String,
     onViewContentModeChange: (String) -> Unit,
     sortOption: String,
@@ -1692,7 +1873,7 @@ fun VideosAndFoldersTab(
                         }
                     }
                 } else {
-                    if (layoutMode == "LIST") {
+                    if (false) {
                         items(displayVideos, key = { "all_file_${it.path}" }) { video ->
                             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                                 val thumbnail = rememberVideoThumbnail(video.path)
@@ -2147,7 +2328,7 @@ fun VideosAndFoldersTab(
                     }
                 }
             } else {
-                if (layoutMode == "LIST") {
+                if (selectedFolderPath != null || searchQuery.isNotBlank() || viewContentMode == "LIST" || viewContentMode == "FILES") {
                     items(displayVideos, key = { it.path }) { video ->
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             val thumbnail = rememberVideoThumbnail(video.path)
@@ -3076,6 +3257,386 @@ fun VideoGridItem(
                         fontWeight = FontWeight.Normal,
                         maxLines = 1,
                         softWrap = false
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun VideoListItem(
+    video: MediaFile,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onFavoriteClick: () -> Unit,
+    onVaultClick: () -> Unit,
+    onRenameClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    isSelected: Boolean,
+    historyList: List<com.example.data.local.entities.HistoryEntity> = emptyList(),
+    showExtension: Boolean,
+    showDuration: Boolean,
+    showThumbnail: Boolean,
+    showFramerate: Boolean,
+    showResolution: Boolean,
+    showWatchTime: Boolean,
+    showDate: Boolean,
+    showSize: Boolean,
+    showPath: Boolean
+) {
+    val context = LocalContext.current
+    val isNewVideo = remember(video.dateModified, video.isNew) {
+        val currentTimeMs = System.currentTimeMillis()
+        val threeDaysInMs = 3 * 24 * 60 * 60 * 1000L
+        (currentTimeMs - video.dateModified) <= threeDaysInMs && video.isNew
+    }
+
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (showThumbnail) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 120.dp, height = 70.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                        .background(Color(0xFF212121)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val thumbnail = rememberVideoThumbnail(video.path)
+                    if (thumbnail != null) {
+                        Image(
+                            bitmap = thumbnail,
+                            contentDescription = "Video thumbnail",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                                        )
+                                    )
+                                )
+                        )
+                    }
+
+                    if (isNewVideo) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(4.dp)
+                                .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
+                                .padding(horizontal = 3.dp, vertical = 0.5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "NEW",
+                                color = Color.White,
+                                fontSize = 7.5.sp,
+                                style = androidx.compose.ui.text.TextStyle(
+                                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                                    lineHeight = 7.5.sp
+                                ),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Play icon overlay
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                            .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    // Duration Badge
+                    if (showDuration) {
+                        val totalSeconds = video.duration / 1000
+                        val hours = totalSeconds / 3600
+                        val minutes = (totalSeconds % 3600) / 60
+                        val seconds = totalSeconds % 60
+                        val durationText = if (hours > 0) {
+                            "%d:%02d:%02d".format(hours, minutes, seconds)
+                        } else {
+                            "%d:%02d".format(minutes, seconds)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(4.dp)
+                                .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(2.dp))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = durationText,
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Playback progress bar
+                    if (showWatchTime && video.lastPlayPosition > 0 && video.duration > 0) {
+                        val progress = video.lastPlayPosition.toFloat() / video.duration
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .background(Color.Gray.copy(alpha = 0.5f))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
+                        }
+                    }
+
+                    if (isSelected) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Selected",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+            } else {
+                // Show clean placeholder file icon instead of full thumbnail
+                Box(
+                    modifier = Modifier
+                        .size(width = 60.dp, height = 50.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF212121)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.InsertDriveFile,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+
+            // Right: Details
+            Column(modifier = Modifier.weight(1f)) {
+                val displayTitle = remember(video.title, showExtension) {
+                    if (showExtension) video.title else video.title.substringBeforeLast(".")
+                }
+                Text(
+                    text = displayTitle,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 16.sp
+                )
+
+                // Chips Row
+                val subtitleBadges = remember(video.path) {
+                    scanSubtitlesForFolder(video.path)
+                }
+                if (showResolution || showFramerate || subtitleBadges.isNotEmpty()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    ) {
+                        subtitleBadges.forEach { sub ->
+                            val subtitleColor = when (sub.label) {
+                                "AR" -> Color(0xFF1565C0)
+                                "EN" -> Color(0xFF2E7D32)
+                                "ORIG" -> Color(0xFF616161)
+                                "AR-ORIG" -> Color(0xFF1565C0)
+                                else -> Color(0xFF616161)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .background(subtitleColor, RoundedCornerShape(2.dp))
+                                    .padding(horizontal = 3.dp, vertical = 1.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = sub.label,
+                                    color = Color.White,
+                                    fontSize = 7.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    style = androidx.compose.ui.text.TextStyle(
+                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                            includeFontPadding = false
+                                        )
+                                    )
+                                )
+                            }
+                        }
+
+                        if (showResolution) {
+                            val quality = remember(video.width, video.height, video.path, video.title) {
+                                detectQuality(video.width, video.height, video.path, video.title)
+                            }
+                            val qualityColor = when (quality) {
+                                "1080p" -> Color(0xFF6A1B9A)
+                                "720p" -> Color(0xFF00695C)
+                                "480p" -> Color(0xFFEF6C00)
+                                "360p" -> Color(0xFFAD1457)
+                                "4K" -> Color(0xFFC62828)
+                                else -> Color(0xFF616161)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .background(qualityColor, RoundedCornerShape(2.dp))
+                                    .padding(horizontal = 3.dp, vertical = 1.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = quality,
+                                    color = Color.White,
+                                    fontSize = 7.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    style = androidx.compose.ui.text.TextStyle(
+                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                            includeFontPadding = false
+                                        )
+                                    )
+                                )
+                            }
+                        }
+
+                        if (showFramerate) {
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFFE65100), RoundedCornerShape(2.dp))
+                                    .padding(horizontal = 3.dp, vertical = 1.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "30 FPS",
+                                    color = Color.White,
+                                    fontSize = 7.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    style = androidx.compose.ui.text.TextStyle(
+                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                            includeFontPadding = false
+                                        )
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Metadata Line
+                val metaParts = remember(video.size, video.dateModified, video.path, showSize, showDate, showPath, historyList) {
+                    val parts = mutableListOf<String>()
+                    if (showSize) {
+                        parts.add(com.example.util.FileSizeFormatter.formatSize(video.size))
+                    }
+                    if (showDate) {
+                        val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
+                        val dateStr = if (historyEntry != null) {
+                            getRelativeTimeArabic(historyEntry.viewedAt)
+                        } else {
+                            com.example.util.DateFormatter.formatDate(video.dateModified / 1000L, context)
+                        }
+                        parts.add(dateStr)
+                    }
+                    if (showPath) {
+                        parts.add(video.path)
+                    }
+                    parts.joinToString(" • ")
+                }
+                if (metaParts.isNotEmpty()) {
+                    Text(
+                        text = metaParts,
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        fontWeight = FontWeight.Normal,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+
+            // Offset 3-dots actions menu
+            var isMenuExpanded by remember { mutableStateOf(false) }
+            Box {
+                IconButton(
+                    onClick = { isMenuExpanded = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Options menu",
+                        tint = Color.Gray
+                    )
+                }
+                DropdownMenu(
+                    expanded = isMenuExpanded,
+                    onDismissRequest = { isMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("تسمية الملف", fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        onClick = {
+                            isMenuExpanded = false
+                            onRenameClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("حذف الملف", fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
+                        onClick = {
+                            isMenuExpanded = false
+                            onDeleteClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        onClick = {
+                            isMenuExpanded = false
+                            onVaultClick()
+                        }
                     )
                 }
             }
