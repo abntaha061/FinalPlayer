@@ -194,14 +194,27 @@ fun SettingsScreen(
                 ) {
                     val colorsList = remember {
                         listOf(
-                            "#FFD500F9" to "أرجواني كودياك (Magenta)",
-                            "#FFFF3366" to "وردي نيون (Pink)",
+                            "#FFD500F9" to "أرجواني كودياك (Kodiak Magenta)",
+                            "#FFFF3366" to "وردي نيون (Neon Pink)",
                             "#FF007AFF" to "أزرق ملكي (iOS Blue)",
-                            "#FF00E5FF" to "سماوي نيون (Cyan)",
-                            "#FF4CD964" to "أخضر عشبي (Green)",
-                            "#FFFF9500" to "برتقالي ناري (Orange)",
-                            "#FFFF5252" to "أحمر مرجاني (Coral)",
-                            "#FF9C27B0" to "بنفسجي عميق (Violet)"
+                            "#FF00E5FF" to "سماوي نيون (Neon Cyan)",
+                            "#FF4CD964" to "أخضر عشبي (Lawn Green)",
+                            "#FFFF9500" to "برتقالي ناري (Fiery Orange)",
+                            "#FFFF5252" to "أحمر مرجاني (Coral Red)",
+                            "#FF9C27B0" to "بنفسجي عميق (Deep Violet)",
+                            // New vibrant and modern colors requested by user
+                            "#FF3A86FF" to "أزرق كهربائي (Electric Blue)",
+                            "#FF06D6A0" to "أخضر نعناعي (Mint Green)",
+                            "#FF009688" to "فيروزي كلاسيكي (Classic Teal)",
+                            "#FF00A86B" to "أخضر زمردي (Emerald Green)",
+                            "#FF7209B7" to "بنفسجي كهربائي (Electric Violet)",
+                            "#FF8338EC" to "لافندر نيون (Neon Lavender)",
+                            "#FFF15BB5" to "وردي أوركيد (Orchid Pink)",
+                            "#FFFF70A6" to "خوخي دافئ (Warm Peach)",
+                            "#FFE63946" to "أحمر الغروب (Sunset Crimson)",
+                            "#FFFB5607" to "برتقالي مشرق (Radiant Orange)",
+                            "#FFFFB300" to "ذهبي مشمس (Sunny Gold)",
+                            "#FF3F51B5" to "أزرق نيلج (Indigo Blue)"
                         )
                     }
 

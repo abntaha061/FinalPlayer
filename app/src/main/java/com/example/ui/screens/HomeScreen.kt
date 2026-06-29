@@ -121,7 +121,7 @@ fun HomeScreen(
     var selectedSubTabIndex by remember { mutableStateOf(0) } // 0 = Videos, 1 = Favorites/Playlists, 2 = Vault
 
     // Display & sorting configurations
-    var viewContentMode by rememberSaveable { mutableStateOf("ALL_FOLDERS") } // "GRID", "LIST", "FOLDERS", "FILES", "ALL_FOLDERS"
+    var viewContentMode by rememberSaveable { mutableStateOf("FOLDERS") } // "GRID", "LIST", "FOLDERS", "FILES", "ALL_FOLDERS"
     var sortOption by rememberSaveable { mutableStateOf("TITLE") } // "TITLE", "DATE", "SIZE", "DURATION", "PATH", "RESOLUTION"
     var sortDirection by rememberSaveable { mutableStateOf("DESCENDING") } // "ASCENDING", "DESCENDING"
     var isOptionsSheetVisible by remember { mutableStateOf(false) }
@@ -211,7 +211,7 @@ fun HomeScreen(
                                 actions = {
                                     IconButton(onClick = {
                                         val allPaths = mutableListOf<String>()
-                                        if (viewContentMode == "FOLDERS" && selectedFolderPath == null) {
+                                        if (selectedFolderPath == null) {
                                             val foldersWithVideos = videoList.mapNotNull { video ->
                                                 File(video.path).parentFile?.absolutePath
                                             }.distinct()
@@ -1746,6 +1746,9 @@ fun VideosAndFoldersTab(
         }
     }
 
+    val columns = 2
+    val videoChunks = remember(displayVideos, columns) { displayVideos.chunked(columns) }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1753,7 +1756,7 @@ fun VideosAndFoldersTab(
             .testTag("videos_and_folders_tab")
     ) {
         // --- CONTENT SPLITTING OR DIRECT VIEW ---
-        if (selectedFolderPath == null && searchQuery.isBlank() && (viewContentMode == "FOLDERS" || viewContentMode == "ALL_FOLDERS")) {
+        if (selectedFolderPath == null && searchQuery.isBlank()) {
             // Folders rendering list mode
             if (derivedFoldersList.isEmpty()) {
                 item {
@@ -1765,16 +1768,14 @@ fun VideosAndFoldersTab(
                     }
                 }
             } else {
-                if (viewContentMode == "ALL_FOLDERS") {
-                    item {
-                        Text(
-                            text = "المجلدات (${derivedFoldersList.size})",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                    }
+                item {
+                    Text(
+                        text = "المجلدات (${derivedFoldersList.size})",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
                 }
                 items(derivedFoldersList, key = { "folder_${it.folderPath}" }) { folder ->
                     val isDark = androidx.compose.foundation.isSystemInDarkTheme()
@@ -1788,7 +1789,7 @@ fun VideosAndFoldersTab(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
-                                .frostedGlass(isDark = isDark, shape = RoundedCornerShape(14.dp))
+                                .frostedGlass(isDark = isDark, shape = RoundedCornerShape(14.dp), drawBorder = false)
                                 .combinedClickable(
                                     onClick = {
                                         if (selectedPaths.isNotEmpty()) {
@@ -1869,7 +1870,7 @@ fun VideosAndFoldersTab(
             }
 
             // In ALL_FOLDERS mode, also render all files below folders
-            if (viewContentMode == "ALL_FOLDERS") {
+            if (false) {
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
@@ -2267,8 +2268,6 @@ fun VideosAndFoldersTab(
                         }
                     } else {
                         // Modern 2-Column Grid Layout Chunk implementation
-                        val columns = 2
-                        val videoChunks = displayVideos.chunked(columns)
                         videoChunks.forEachIndexed { idx, chunk ->
                             item(key = "all_chunk_${chunk.firstOrNull()?.path ?: "chunk_$idx"}") {
                                 Row(
@@ -2722,8 +2721,6 @@ fun VideosAndFoldersTab(
                         }
                     } else {
                         // Modern 2-Column Grid Layout Chunk implementation avoiding nested lists error
-                    val columns = 2
-                    val videoChunks = displayVideos.chunked(columns)
                     videoChunks.forEachIndexed { idx, chunk ->
                         item(key = chunk.firstOrNull()?.path ?: "chunk_$idx") {
                             Row(
@@ -2978,7 +2975,7 @@ fun VideoGridItem(
     Card(
         modifier = modifier
             .padding(vertical = 6.dp)
-            .frostedGlass(isDark = isDark, shape = RoundedCornerShape(12.dp))
+            .frostedGlass(isDark = isDark, shape = RoundedCornerShape(12.dp), drawBorder = false)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = { onLongClick?.invoke() }
@@ -3765,7 +3762,7 @@ fun MusicPlayerTab(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .frostedGlass(isDark = isDark, shape = RoundedCornerShape(14.dp))
+                                    .frostedGlass(isDark = isDark, shape = RoundedCornerShape(14.dp), drawBorder = false)
                                     .clickable { onPlayFile(track.path) }
                                     .padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically

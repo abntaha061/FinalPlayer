@@ -20,7 +20,8 @@ import androidx.compose.ui.unit.dp
 fun Modifier.frostedGlass(
     isDark: Boolean,
     shape: Shape = RoundedCornerShape(16.dp),
-    opacity: Float = if (isDark) 0.08f else 0.45f
+    opacity: Float = if (isDark) 0.08f else 0.45f,
+    drawBorder: Boolean = true
 ): Modifier {
     val brush = remember(isDark, opacity) {
         Brush.verticalGradient(
@@ -52,9 +53,13 @@ fun Modifier.frostedGlass(
             }
         )
     }
-    return this
-        .background(brush = brush, shape = shape)
-        .border(width = 1.dp, brush = borderBrush, shape = shape)
+    return if (drawBorder) {
+        this
+            .background(brush = brush, shape = shape)
+            .border(width = 1.dp, brush = borderBrush, shape = shape)
+    } else {
+        this.background(brush = brush, shape = shape)
+    }
 }
 
 @Composable

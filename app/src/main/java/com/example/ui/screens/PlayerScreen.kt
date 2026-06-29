@@ -406,8 +406,35 @@ fun PlayerScreen(
 
     // Pinch-to-zoom parameters
     var scale by remember { mutableStateOf(1f) }
-    val transformableState = rememberTransformableState { zoomChange, _, _ ->
-        scale = (scale * zoomChange).coerceIn(1.0f, 4.0f)
+    var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var containerSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+
+    LaunchedEffect(filePath) {
+        scale = 1.0f
+        offset = androidx.compose.ui.geometry.Offset.Zero
+    }
+
+    val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
+        val oldScale = scale
+        scale = (scale * zoomChange).coerceIn(0.25f, 4.0f)
+        
+        val rawX = offset.x + panChange.x * scale
+        val rawY = offset.y + panChange.y * scale
+        
+        val w = containerSize.width.toFloat()
+        val h = containerSize.height.toFloat()
+        
+        if (w > 0f && h > 0f) {
+            val maxOffsetX = if (scale > 1.0f) (scale - 1.0f) * w / 2.0f else 0f
+            val maxOffsetY = if (scale > 1.0f) (scale - 1.0f) * h / 2.0f else 0f
+            
+            offset = androidx.compose.ui.geometry.Offset(
+                x = rawX.coerceIn(-maxOffsetX, maxOffsetX),
+                y = rawY.coerceIn(-maxOffsetY, maxOffsetY)
+            )
+        } else {
+            offset = androidx.compose.ui.geometry.Offset(rawX, rawY)
+        }
     }
 
     // Sub-menus visible states
@@ -860,6 +887,7 @@ fun PlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .onSizeChanged { containerSize = it }
             .pointerInput(videoDuration, isLockedMode, isAnyPopupOpen, isPip) {
                 if (isPip || isAnyPopupOpen) {
                     return@pointerInput
@@ -942,6 +970,25 @@ fun PlayerScreen(
                             
                             while (pointerInputChange != null && pointerInputChange.pressed) {
                                 val event = awaitPointerEvent()
+                                // Check for multi-touch (pinch-to-zoom)
+                                val activePointers = event.changes.filter { it.pressed }
+                                if (activePointers.size > 1) {
+                                    // Multi-touch active! Cancel single finger gesture tracking
+                                    currentGestureType = "NONE"
+                                    showVolumeIndicator = false
+                                    showBrightnessIndicator = false
+                                    showSeekDragIndicator = false
+                                    longPressJob?.cancel()
+                                    longPressJob = null
+                                    singleTapJob?.cancel()
+                                    singleTapJob = null
+                                    if (isLongPressFastForwarding) {
+                                        player.setPlaybackSpeed(speedMultiplier)
+                                        isLongPressFastForwarding = false
+                                    }
+                                    pointerInputChange = null
+                                    break
+                                }
                                 val change = event.changes.firstOrNull { it.id == pointerId }
                                 if (change != null && change.pressed) {
                                     pointerInputChange = change
@@ -1164,7 +1211,9 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .graphicsLayer(
                         scaleX = if (isMirrorModeActive) -scale else scale,
-                        scaleY = if (isVerticalFlipActive) -scale else scale
+                        scaleY = if (isVerticalFlipActive) -scale else scale,
+                        translationX = offset.x,
+                        translationY = offset.y
                     )
                     .onGloballyPositioned { layoutCoordinates ->
                         val bounds = layoutCoordinates.boundsInWindow()
