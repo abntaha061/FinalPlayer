@@ -1326,16 +1326,29 @@ data class QuickActionItem(
 
 data class SubtitleBadge(val path: String, val label: String)
 
+private val folderFilesCache = android.util.LruCache<String, Array<java.io.File>>(100)
+private val subtitleCache = android.util.LruCache<String, List<SubtitleBadge>>(1000)
+
 fun scanSubtitlesForFolder(videoPath: String): List<SubtitleBadge> {
+    val cachedBadge = subtitleCache.get(videoPath)
+    if (cachedBadge != null) return cachedBadge
+
     try {
         val videoFile = java.io.File(videoPath)
-        val parent = videoFile.parentFile
-        if (parent == null || !parent.exists()) return emptyList()
+        val parent = videoFile.parentFile ?: return emptyList()
+        val parentPath = parent.absolutePath
+        if (!parent.exists()) return emptyList()
+
+        var files = folderFilesCache.get(parentPath)
+        if (files == null) {
+            files = parent.listFiles() ?: emptyArray()
+            folderFilesCache.put(parentPath, files)
+        }
+
         val subtitleExtensions = setOf("srt", "ass", "ssa", "sub", "vtt")
-        val files = parent.listFiles() ?: return emptyList()
         val videoBaseName = videoFile.nameWithoutExtension.lowercase(java.util.Locale.US)
         
-        return files.filter { file ->
+        val result = files.filter { file ->
             file.isFile && 
             file.extension.lowercase(java.util.Locale.US) in subtitleExtensions &&
             file.name.lowercase(java.util.Locale.US).startsWith(videoBaseName)
@@ -1352,6 +1365,9 @@ fun scanSubtitlesForFolder(videoPath: String): List<SubtitleBadge> {
             }
             SubtitleBadge(file.absolutePath, displayTag)
         }.distinctBy { it.path }
+
+        subtitleCache.put(videoPath, result)
+        return result
     } catch (e: Exception) {
         return emptyList()
     }
@@ -1405,15 +1421,21 @@ fun formatVideoSizeArabic(totalBytes: Long): String {
     }
 }
 
+private val arabicDateSdf = ThreadLocal.withInitial {
+    java.text.SimpleDateFormat("d MMMM", java.util.Locale("ar"))
+}
+
 fun formatVideoDateArabic(timestamp: Long): String {
     return try {
-        val locale = java.util.Locale("ar")
-        val sdf = java.text.SimpleDateFormat("d MMMM", locale)
-        val formatted = sdf.format(java.util.Date(timestamp))
+        val formatted = arabicDateSdf.get().format(java.util.Date(timestamp))
         toEasternArabicNumerals(formatted)
     } catch (e: Exception) {
         ""
     }
+}
+
+private val arabicRelativeSdf = ThreadLocal.withInitial {
+    java.text.SimpleDateFormat("d MMMM yyyy", java.util.Locale("ar"))
 }
 
 fun getRelativeTimeArabic(viewedAt: Long): String {
@@ -1438,8 +1460,8 @@ fun getRelativeTimeArabic(viewedAt: Long): String {
         days == 2L -> "تم التشغيل منذ يومين"
         days in 3..10 -> "تم التشغيل منذ ${toEasternArabicNumerals(days.toString())} أيام"
         else -> {
-            val sdf = java.text.SimpleDateFormat("d MMMM yyyy", java.util.Locale("ar"))
-            "تم التشغيل في " + toEasternArabicNumerals(sdf.format(java.util.Date(viewedAt)))
+            val formatted = arabicRelativeSdf.get().format(java.util.Date(viewedAt))
+            "تم التشغيل في " + toEasternArabicNumerals(formatted)
         }
     }
 }
