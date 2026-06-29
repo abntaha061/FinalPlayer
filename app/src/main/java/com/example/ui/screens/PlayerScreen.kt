@@ -475,31 +475,13 @@ fun PlayerScreen(
     var currentGestureType by remember { mutableStateOf("NONE") } // "NONE", "VOLUME", "BRIGHTNESS", "SEEK"
     var dragStartOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
-    // Subtitle customization details
-    var subAlignment by remember { mutableStateOf("Center") }
-    var subPadding by remember { mutableStateOf(8) }
-    var isSubBgTransparent by remember { mutableStateOf(true) }
-    var isSubFitVideo by remember { mutableStateOf(true) }
-    var subFontName by remember { mutableStateOf("Default") }
-    var subFontSize by remember { mutableStateOf(20f) }
-    var subTextColor by remember { mutableStateOf(Color.White) }
-    var isSubShadowEnabled by remember { mutableStateOf(true) }
-    var subShadowIntensity by remember { mutableStateOf(2f) }
-    var subtitleDelaySeconds by remember { mutableStateOf(0.0f) }
-
-    var activeSubtitleText by remember { mutableStateOf("") }
-    val subPrefsManager = remember { com.example.data.SubtitlePrefsManager(context) }
-    val subtitlePrefsState by subPrefsManager.subtitlePreferencesFlow.collectAsState(initial = com.example.data.SubtitlePreferences())
-
-    var localSubtitleOffset by remember { mutableStateOf<Float?>(null) }
-    var parentHeightPx by remember { mutableStateOf(1000f) }
+    var subtitleStyle by remember { mutableStateOf(SubtitleStyle()) }
+    var subtitleDelayMs by remember { mutableStateOf(0L) }
+    var subtitleSpeed by remember { mutableStateOf(1.0f) }
     var isDraggingSubtitle by remember { mutableStateOf(false) }
     var isSubtitlePressed by remember { mutableStateOf(false) }
-
-    val bottomPaddingAnim by animateDpAsState(
-        targetValue = if (areControlsVisible) 48.dp else 0.dp,
-        label = "subtitle_bottom_padding"
-    )
+    var parentHeightPx by remember { mutableStateOf(1000f) }
+    var activeSubtitleText by remember { mutableStateOf("") }
 
     var checkedExtendedTools by remember {
         mutableStateOf(
@@ -1261,26 +1243,30 @@ fun PlayerScreen(
         // 💬 CUSTOM COMPOSE CLICKABLE SUBTITLE OVERLAY
         if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
             val containsArabic = activeSubtitleText.any { it in '\u0600'..'\u06FF' }
-            val layoutDirection = if (containsArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
-
-            CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+            val layoutDir = if (containsArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
+            CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .onSizeChanged { parentHeightPx = it.height.toFloat().coerceAtLeast(100f) }
                 ) {
-                    val biasOffset = if (areControlsVisible && !isLockedMode) -0.12f else 0f
-                    val verticalBias = ((subtitlePrefsState.verticalOffset * 2f) - 1f + biasOffset).coerceIn(-1f, 1f)
-                    
+                    val gravityAlignment = when (subtitleStyle.alignment) {
+                        android.view.Gravity.TOP or android.view.Gravity.LEFT -> Alignment.TopStart
+                        android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL -> Alignment.TopCenter
+                        android.view.Gravity.TOP or android.view.Gravity.RIGHT -> Alignment.TopEnd
+                        android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.LEFT -> Alignment.CenterStart
+                        android.view.Gravity.CENTER -> Alignment.Center
+                        android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.RIGHT -> Alignment.CenterEnd
+                        android.view.Gravity.BOTTOM or android.view.Gravity.LEFT -> Alignment.BottomStart
+                        android.view.Gravity.BOTTOM or android.view.Gravity.RIGHT -> Alignment.BottomEnd
+                        else -> Alignment.BottomCenter
+                    }
+                    val bottomPadDp = (subtitleStyle.bottomPadding * 1000).dp
+                    val extraBottomPad = if (areControlsVisible && !isLockedMode) 56.dp else bottomPadDp
                     Box(
                         modifier = Modifier
-                            .align(BiasAlignment(horizontalBias = 0f, verticalBias = verticalBias))
-                            .padding(
-                                start = 16.dp,
-                                end = 16.dp,
-                                bottom = 4.dp,
-                                top = 4.dp
-                            )
+                            .align(gravityAlignment)
+                            .padding(start = 16.dp, end = 16.dp, bottom = extraBottomPad, top = 4.dp)
                             .wrapContentSize()
                             .pointerInput(Unit) {
                                 awaitPointerEventScope {
@@ -1288,7 +1274,6 @@ fun PlayerScreen(
                                         val down = awaitFirstDown(requireUnconsumed = false)
                                         isSubtitlePressed = true
                                         isDraggingSubtitle = true
-                                        
                                         var pointerId = down.id
                                         var dragChange: PointerInputChange? = down
                                         while (dragChange != null && dragChange.pressed) {
@@ -1298,11 +1283,8 @@ fun PlayerScreen(
                                                 change.consume()
                                                 val deltaY = change.position.y - change.previousPosition.y
                                                 val deltaRatio = deltaY / parentHeightPx
-                                                val currentOffset = subtitlePrefsState.verticalOffset
-                                                val newOffset = (currentOffset + deltaRatio).coerceIn(0.01f, 1.0f)
-                                                scope.launch {
-                                                    subPrefsManager.savePreferences(subtitlePrefsState.copy(verticalOffset = newOffset))
-                                                }
+                                                val newPadding = (subtitleStyle.bottomPadding - deltaRatio).coerceIn(0.0f, 0.15f)
+                                                subtitleStyle = subtitleStyle.copy(bottomPadding = newPadding)
                                                 dragChange = change
                                             } else {
                                                 dragChange = null
@@ -1314,40 +1296,46 @@ fun PlayerScreen(
                                 }
                             }
                             .background(
-                                color = if (isDraggingSubtitle) {
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                                } else {
-                                    subtitlePrefsState.backgroundColor
-                                },
+                                color = if (!subtitleStyle.backgroundEnabled) Color.Transparent
+                                        else if (isDraggingSubtitle) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                        else subtitleStyle.backgroundColor,
                                 shape = RoundedCornerShape(4.dp)
                             )
                             .border(
-                                width = if (isDraggingSubtitle) 1.5.dp else 1.dp,
-                                color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.15f),
+                                width = if (isDraggingSubtitle) 1.5.dp else 0.dp,
+                                color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.Transparent,
                                 shape = RoundedCornerShape(4.dp)
                             )
-                            .clickable {
-                                isSubtitleCustomizationOpen = true
-                            }
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
-                            .testTag("custom_subtitle_text")
+                            .clickable { isSubtitleCustomizationOpen = true }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
+                        val fontWeight = if (subtitleStyle.bold) FontWeight.Bold else FontWeight.Normal
+                        val fontStyle = if (subtitleStyle.italic)
+                            androidx.compose.ui.text.font.FontStyle.Italic
+                        else
+                            androidx.compose.ui.text.font.FontStyle.Normal
+                        val shadowStyle = when (subtitleStyle.edgeType) {
+                            androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW -> Shadow(
+                                color = subtitleStyle.edgeColor.copy(alpha = 0.95f),
+                                offset = Offset(2f, 2f), blurRadius = 4f
+                            )
+                            androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE -> Shadow(
+                                color = subtitleStyle.edgeColor.copy(alpha = 0.95f),
+                                offset = Offset(1.5f, 1.5f), blurRadius = 3f
+                            )
+                            else -> null
+                        }
                         Text(
                             text = activeSubtitleText,
-                            color = subtitlePrefsState.textColor,
-                            fontSize = subtitlePrefsState.textSize.sp,
-                            fontWeight = FontWeight.Bold,
+                            color = subtitleStyle.textColor,
+                            fontSize = (16f * subtitleStyle.textSize).sp,
+                            fontWeight = fontWeight,
+                            fontStyle = fontStyle,
                             textAlign = TextAlign.Center,
-                            lineHeight = (subtitlePrefsState.textSize * 1.15f).sp,
+                            lineHeight = (16f * subtitleStyle.textSize * 1.2f).sp,
                             style = TextStyle(
-                                shadow = Shadow(
-                                    color = Color.Black.copy(alpha = 0.95f),
-                                    offset = Offset(1.5f, 1.5f),
-                                    blurRadius = 3f
-                                ),
-                                platformStyle = androidx.compose.ui.text.PlatformTextStyle(
-                                    includeFontPadding = false
-                                )
+                                shadow = shadowStyle,
+                                platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)
                             )
                         )
                     }
@@ -2073,7 +2061,7 @@ fun PlayerScreen(
                                 onValueChange = {
                                     subSize = it
                                     viewModel.saveSubtitleSize(it)
-                                    subFontSize = it
+                                    subtitleStyle = subtitleStyle.copy(textSize = it / 16f)
                                 },
                                 valueRange =  12f..30f,
                                 modifier = Modifier.weight(1f)
@@ -2399,92 +2387,56 @@ fun PlayerScreen(
             },
             manualSubs = manualSubs,
             onAddSubtitleClick = {
-                try {
-                    subtitlePickerLauncher.launch(arrayOf("*/*"))
-                } catch (e: Exception) {
-                    Toast.makeText(context, "جاري فتح مستكشف الملفات الفرعية", Toast.LENGTH_SHORT).show()
-                }
+                try { subtitlePickerLauncher.launch(arrayOf("*/*")) } catch (e: Exception) { }
             },
             onCustomizeAppearanceClick = {
                 isSubtitleCustomizationOpen = true
                 isSubtitlePanelViewOpen = false
             },
-            subtitleDelaySeconds = subtitleDelaySeconds,
-            onSubtitleDelaySecondsChange = { subtitleDelaySeconds = it },
-            isSubBgTransparent = isSubBgTransparent,
-            onSubBgTransparentChange = { isSubBgTransparent = it },
+            subtitleDelayMs = subtitleDelayMs,
+            onSubtitleDelayMsChange = { subtitleDelayMs = it },
+            subtitleSpeed = subtitleSpeed,
+            onSubtitleSpeedChange = { subtitleSpeed = it },
+            subtitleStyle = subtitleStyle,
+            onSubtitleStyleChange = { subtitleStyle = it },
             filePath = filePath,
             videoDurationMs = videoDuration,
             onSubtitleFileGenerated = { file ->
                 val dispName = file.name
-                val uri = Uri.fromFile(file)
+                val uri = android.net.Uri.fromFile(file)
                 val currentPos = player.currentPosition
-                
-                val compositeConfigs = mutableListOf<MediaItem.SubtitleConfiguration>()
+                val compositeConfigs = mutableListOf<androidx.media3.common.MediaItem.SubtitleConfiguration>()
                 detectedSubtitles.forEachIndexed { idx, f ->
                     val fLang = subtitleLanguages.getOrNull(idx) ?: "ar"
-                    val subUri = Uri.fromFile(f)
+                    val subUri = android.net.Uri.fromFile(f)
                     val isSrt = f.name.endsWith(".srt", ignoreCase = true)
                     val mimeType = if (isSrt) "application/x-subrip" else "text/vtt"
                     compositeConfigs.add(
-                        MediaItem.SubtitleConfiguration.Builder(subUri)
-                            .setMimeType(mimeType)
-                            .setLanguage(fLang)
-                            .setSelectionFlags(if (idx == 0) C.SELECTION_FLAG_DEFAULT else 0)
-                            .build()
+                        androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(subUri)
+                            .setMimeType(mimeType).setLanguage(fLang)
+                            .setSelectionFlags(if (idx == 0) C.SELECTION_FLAG_DEFAULT else 0).build()
                     )
                 }
-                
-                manualSubs.forEachIndexed { idx, pair ->
-                    val subUri = pair.second
-                    val isSrt = pair.first.endsWith(".srt", ignoreCase = true)
-                    val mimeType = if (isSrt) "application/x-subrip" else "text/vtt"
-                    val lang = "manual_${idx}_${pair.first}"
-                    compositeConfigs.add(
-                        MediaItem.SubtitleConfiguration.Builder(subUri)
-                            .setMimeType(mimeType)
-                            .setLanguage(lang)
-                            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                            .build()
-                    )
-                }
-                
+                val newLang = "manual_${manualSubs.size}_$dispName"
                 val newIsSrt = dispName.endsWith(".srt", ignoreCase = true)
                 val newMimeType = if (newIsSrt) "application/x-subrip" else "text/vtt"
-                val newLang = "manual_${manualSubs.size}_$dispName"
-                
-                val newConfig = MediaItem.SubtitleConfiguration.Builder(uri)
-                    .setMimeType(newMimeType)
-                    .setLanguage(newLang)
-                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                    .build()
-                compositeConfigs.add(newConfig)
-                
+                compositeConfigs.add(
+                    androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(uri)
+                        .setMimeType(newMimeType).setLanguage(newLang)
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
+                )
                 manualSubs.add(Pair(dispName, uri))
-                
-                val videoFile = File(filePath)
-                val videoUri = if (filePath.startsWith("http://") || filePath.startsWith("https://") || filePath.startsWith("content://") || filePath.startsWith("file://")) {
-                    Uri.parse(filePath)
-                } else {
-                    Uri.fromFile(videoFile)
-                }
-                
-                val newMediaItem = MediaItem.Builder()
-                    .setUri(videoUri)
-                    .setSubtitleConfigurations(compositeConfigs)
-                    .build()
-                    
+                val videoUri = android.net.Uri.fromFile(java.io.File(filePath))
+                val newMediaItem = androidx.media3.common.MediaItem.Builder()
+                    .setUri(videoUri).setSubtitleConfigurations(compositeConfigs).build()
                 player.setMediaItem(newMediaItem)
                 player.prepare()
                 player.seekTo(currentPos)
-                
                 isSubtitleEnabled = true
                 selectedSubtitleLang = newLang
-                player.trackSelectionParameters = player.trackSelectionParameters
-                    .buildUpon()
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .setPreferredTextLanguage(newLang)
-                    .build()
+                    .setPreferredTextLanguage(newLang).build()
             }
         )
 
@@ -2492,133 +2444,9 @@ fun PlayerScreen(
         // SUBTITLE CUSTOMIZATION DIALOG (DataStore Persisted)
         // -----------------------------------------------------
         if (isSubtitleCustomizationOpen) {
-            AlertDialog(
-                onDismissRequest = { isSubtitleCustomizationOpen = false },
-                title = { Text("تخصيص نصوص الترجمة (Customize Subtitles) ✏️", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-                text = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(350.dp)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        Text("التحكم بالموضع الجغرافي (Layout Placement):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("الموضع العمودي (Vertical Position): ${(subtitlePrefsState.verticalOffset * 100).toInt()}%", color = Color.White, fontSize = 11.sp)
-                        Slider(
-                            value = subtitlePrefsState.verticalOffset,
-                            onValueChange = { newValue ->
-                                scope.launch {
-                                    subPrefsManager.savePreferences(subtitlePrefsState.copy(verticalOffset = newValue))
-                                }
-                            },
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF00C8FF),
-                                activeTrackColor = Color(0xFF00C8FF)
-                            ),
-                            valueRange = 0.1f..1.0f
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("خيارات الخط والحجم (Typography Settings):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("حجم الخط (Text Size): ${subtitlePrefsState.textSize.toInt()}sp", color = Color.White, fontSize = 11.sp)
-                        Slider(
-                            value = subtitlePrefsState.textSize,
-                            onValueChange = { newValue ->
-                                scope.launch {
-                                    subPrefsManager.savePreferences(subtitlePrefsState.copy(textSize = newValue))
-                                }
-                            },
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF00C8FF),
-                                activeTrackColor = Color(0xFF00C8FF)
-                            ),
-                            valueRange = 12f..48f
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("لون خط الترجمة (Text Color):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val colorsList = listOf(
-                                Color.White,
-                                Color.Yellow,
-                                Color.Cyan,
-                                Color.Green,
-                                Color(0xFFFF5252),
-                                Color(0xFFFFA500),
-                                Color(0xFFFFC0CB)
-                            )
-                            colorsList.forEach { col ->
-                                Box(
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .background(col)
-                                        .border(
-                                            2.dp,
-                                            if (subtitlePrefsState.textColorArgb == col.toArgb()) Color(0xFF00C8FF) else Color.Transparent,
-                                            CircleShape
-                                        )
-                                        .clickable {
-                                            scope.launch {
-                                                subPrefsManager.savePreferences(subtitlePrefsState.copy(textColorArgb = col.toArgb()))
-                                            }
-                                        }
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text("لون خلفية نص الترجمة (Background Overlay):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val bgColorsList = listOf(
-                                Color.Transparent to "شفاف",
-                                Color.Black.copy(alpha = 0.3f) to "خفيف",
-                                Color.Black.copy(alpha = 0.6f) to "متوسط",
-                                Color.Black to "داكن",
-                                Color(0xFF1C1326).copy(alpha = 0.7f) to "بنفسجي"
-                            )
-                            bgColorsList.forEach { (col, label) ->
-                                Box(
-                                    modifier = Modifier
-                                        .height(34.dp)
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (col == Color.Transparent) Color.DarkGray.copy(alpha = 0.3f) else col)
-                                        .border(
-                                            2.dp,
-                                            if (subtitlePrefsState.backgroundColorArgb == col.toArgb()) Color(0xFF00C8FF) else Color.Transparent,
-                                            RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable {
-                                            scope.launch {
-                                                subPrefsManager.savePreferences(subtitlePrefsState.copy(backgroundColorArgb = col.toArgb()))
-                                            }
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { isSubtitleCustomizationOpen = false }) {
-                        Text("تم الإعداد", color = Color(0xFF00C8FF), fontWeight = FontWeight.Bold)
-                    }
-                },
-                containerColor = Color(0xFF141419)
-            )
+            isSubtitlePanelViewOpen = true
+            isSubtitleCustomizationOpen = false
+        }
 
 
         // -----------------------------------------------------
@@ -2884,7 +2712,6 @@ fun PlayerScreen(
             }
         }
     }
-}
 }
 
 // Helper formatting method
