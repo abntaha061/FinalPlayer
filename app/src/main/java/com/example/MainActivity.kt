@@ -59,11 +59,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 
 class MainActivity : ComponentActivity() {
+    private val viewModel: MediaViewModel by lazy {
+        androidx.lifecycle.ViewModelProvider(this)[MediaViewModel::class.java]
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val viewModel: MediaViewModel = viewModel()
             val appThemeMode by viewModel.appThemeModeState.collectAsState()
             val isDark = when (appThemeMode) {
                 "LIGHT" -> false
@@ -71,17 +74,65 @@ class MainActivity : ComponentActivity() {
                 else -> androidx.compose.foundation.isSystemInDarkTheme()
             }
             MyApplicationTheme(darkTheme = isDark) {
-                MainNavigationRoot()
+                MainNavigationRoot(viewModel)
+            }
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode) {
+            return
+        }
+        if (viewModel.activePlayingVideoPath.value != null) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    enterPictureInPictureMode(
+                        android.app.PictureInPictureParams.Builder().build()
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    enterPictureInPictureMode()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        viewModel.setPipMode(isInPictureInPictureMode)
+    }
+
+    fun updatePipParams(aspectRatio: android.util.Rational?, sourceRect: android.graphics.Rect?, autoEnter: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val builder = android.app.PictureInPictureParams.Builder()
+                if (autoEnter && aspectRatio != null) {
+                    val value = aspectRatio.numerator.toFloat() / aspectRatio.denominator.toFloat()
+                    if (value in 0.4184f..2.39f) {
+                        builder.setAspectRatio(aspectRatio)
+                    }
+                }
+                if (autoEnter && sourceRect != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    builder.setSourceRectHint(sourceRect)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    builder.setAutoEnterEnabled(autoEnter)
+                }
+                setPictureInPictureParams(builder.build())
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
 }
 
 @Composable
-fun MainNavigationRoot() {
+fun MainNavigationRoot(viewModel: MediaViewModel = viewModel()) {
     val context = LocalContext.current
     val navController = rememberNavController()
-    val viewModel: MediaViewModel = viewModel()
 
     // 1. Declare Permission requirements
     val requiredPermissions = remember {
@@ -203,7 +254,7 @@ fun MainNavigationRoot() {
         }
     }
 
-    var activePlayingFilePath by rememberSaveable { mutableStateOf<String?>(null) }
+    val activePlayingFilePath by viewModel.activePlayingVideoPath.collectAsState()
 
     val appThemeMode by viewModel.appThemeModeState.collectAsState()
     val isDark = when (appThemeMode) {
@@ -422,7 +473,7 @@ fun MainNavigationRoot() {
                         viewModel.markAsPlayed(path)
                     }
                 } else {
-                    activePlayingFilePath = path
+                    viewModel.setActivePlayingVideoPath(path)
                     viewModel.markAsPlayed(path)
                 }
             }
@@ -463,8 +514,8 @@ fun MainNavigationRoot() {
                     PlayerScreen(
                         filePath = activePlayingFilePath!!,
                         viewModel = viewModel,
-                        onBack = { activePlayingFilePath = null },
-                        onNavigateToVideo = { activePlayingFilePath = it }
+                        onBack = { viewModel.setActivePlayingVideoPath(null) },
+                        onNavigateToVideo = { viewModel.setActivePlayingVideoPath(it) }
                     )
                 } else if (isFullPlayerOpen) {
                     MusicLyricsPlayerScreen(

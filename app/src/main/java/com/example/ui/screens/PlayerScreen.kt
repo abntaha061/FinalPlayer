@@ -58,6 +58,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -113,6 +115,7 @@ fun PlayerScreen(
     }
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
     val subtitleOffsetY by viewModel.subtitleOffsetY.collectAsState()
+    val isPip by viewModel.isPipMode.collectAsState()
     val currentAccentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
     val currentMediaFile = remember(filePath) { File(filePath) }
 
@@ -429,6 +432,26 @@ fun PlayerScreen(
     // Read settings or setup scale mode
     var scaleMode by remember { mutableStateOf(viewModel.getDefaultScaleMode()) }
 
+    val mainActivity = context as? com.example.MainActivity
+    var videoSourceRect by remember { mutableStateOf<android.graphics.Rect?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            mainActivity?.updatePipParams(null, null, false)
+        }
+    }
+
+    LaunchedEffect(videoWidth, videoHeight, videoSourceRect, isPip) {
+        if (!isPip) {
+            val aspectRational = if (videoWidth > 0 && videoHeight > 0) {
+                android.util.Rational(videoWidth, videoHeight)
+            } else {
+                android.util.Rational(16, 9)
+            }
+            mainActivity?.updatePipParams(aspectRational, videoSourceRect, true)
+        }
+    }
+
     // -----------------------------------------------------
     // MX PLAYER CUSTOM STATES AND VARIABLES
     // -----------------------------------------------------
@@ -462,6 +485,21 @@ fun PlayerScreen(
     var isSubtitleCustomizationOpen by remember { mutableStateOf(false) }
     var isToolbarCustomizerDialogOpen by remember { mutableStateOf(false) }
     var isTutorialOverlayVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isPip) {
+        if (isPip) {
+            areControlsVisible = false
+            isQuickSettingsOpen = false
+            isDecoderDialogOpen = false
+            isSleepTimerDialogOpen = false
+            isEqualizerOpen = false
+            isMoreOptionsSheetOpen = false
+            isAudioTracksDialogOpen = false
+            isSubtitlePanelViewOpen = false
+            isSubtitleCustomizationOpen = false
+            isToolbarCustomizerDialogOpen = false
+        }
+    }
 
     // Interactive gestures and swipe visual states in player
     var isDraggingRightSide by remember { mutableStateOf(false) }
@@ -822,8 +860,8 @@ fun PlayerScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(videoDuration, isLockedMode, isAnyPopupOpen) {
-                if (isAnyPopupOpen) {
+            .pointerInput(videoDuration, isLockedMode, isAnyPopupOpen, isPip) {
+                if (isPip || isAnyPopupOpen) {
                     return@pointerInput
                 }
                 if (isLockedMode) {
@@ -1128,6 +1166,15 @@ fun PlayerScreen(
                         scaleX = if (isMirrorModeActive) -scale else scale,
                         scaleY = if (isVerticalFlipActive) -scale else scale
                     )
+                    .onGloballyPositioned { layoutCoordinates ->
+                        val bounds = layoutCoordinates.boundsInWindow()
+                        videoSourceRect = android.graphics.Rect(
+                            bounds.left.toInt(),
+                            bounds.top.toInt(),
+                            bounds.right.toInt(),
+                            bounds.bottom.toInt()
+                        )
+                    }
             )
         }
 
@@ -1143,7 +1190,7 @@ fun PlayerScreen(
 
         // Top-Center HUD Notification Pill (Fast Forward indicator or system status alerts)
         androidx.compose.animation.AnimatedVisibility(
-            visible = isLongPressFastForwarding || (isIndicatorVisible && gestureIndicatorText != null),
+            visible = !isPip && (isLongPressFastForwarding || (isIndicatorVisible && gestureIndicatorText != null)),
             enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(initialOffsetY = { -it }),
             exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }),
             modifier = Modifier
@@ -1599,7 +1646,7 @@ fun PlayerScreen(
         // SCREEN LOCK MODE INDICATOR
         // -----------------------------------------------------
         AnimatedVisibility(
-            visible = isLockedMode && areControlsVisible,
+            visible = !isPip && isLockedMode && areControlsVisible,
             modifier = Modifier.align(Alignment.Center)
         ) {
             Button(
@@ -1627,7 +1674,7 @@ fun PlayerScreen(
         // ON-SCREEN COMPACT SLIDER FOR BRIGHTNESS
         // -----------------------------------------------------
         AnimatedVisibility(
-            visible = isBrightnessSliderVisible && areControlsVisible && !isLockedMode,
+            visible = !isPip && isBrightnessSliderVisible && areControlsVisible && !isLockedMode,
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically(),
             modifier = Modifier

@@ -57,6 +57,21 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private val _isFullPlayerOpen = MutableStateFlow(false)
     val isFullPlayerOpen: StateFlow<Boolean> = _isFullPlayerOpen.asStateFlow()
 
+    // --- VIDEO PLAYBACK PIP STATES ---
+    private val _activePlayingVideoPath = MutableStateFlow<String?>(null)
+    val activePlayingVideoPath: StateFlow<String?> = _activePlayingVideoPath.asStateFlow()
+
+    fun setActivePlayingVideoPath(path: String?) {
+        _activePlayingVideoPath.value = path
+    }
+
+    private val _isPipMode = MutableStateFlow(false)
+    val isPipMode: StateFlow<Boolean> = _isPipMode.asStateFlow()
+
+    fun setPipMode(active: Boolean) {
+        _isPipMode.value = active
+    }
+
     private fun getAudioPlayer(): ExoPlayer {
         if (audioPlayer == null) {
             audioPlayer = ExoPlayer.Builder(context).build().apply {
