@@ -120,6 +120,16 @@ fun HomeScreen(
     var isOptionsSheetVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
+    var showExtension by rememberSaveable { mutableStateOf(true) }
+    var showDuration by rememberSaveable { mutableStateOf(true) }
+    var showThumbnail by rememberSaveable { mutableStateOf(true) }
+    var showFramerate by rememberSaveable { mutableStateOf(true) }
+    var showResolution by rememberSaveable { mutableStateOf(true) }
+    var showWatchTime by rememberSaveable { mutableStateOf(true) }
+    var showDate by rememberSaveable { mutableStateOf(true) }
+    var showSize by rememberSaveable { mutableStateOf(true) }
+    var showPath by rememberSaveable { mutableStateOf(false) }
+    var isFieldsSectionExpanded by rememberSaveable { mutableStateOf(true) }
 
     var isMovePickerOpen by remember { mutableStateOf(false) }
     var isCopyPickerOpen by remember { mutableStateOf(false) }
@@ -1388,7 +1398,16 @@ fun VideosAndFoldersTab(
     onShowCleaner: () -> Unit,
     selectedFolderPath: String?,
     onSelectedFolderPathChange: (String?) -> Unit,
-    selectedPaths: MutableList<String>
+    selectedPaths: MutableList<String>,
+    showExtension: Boolean = true,
+    showDuration: Boolean = true,
+    showThumbnail: Boolean = true,
+    showFramerate: Boolean = true,
+    showResolution: Boolean = true,
+    showWatchTime: Boolean = true,
+    showDate: Boolean = true,
+    showSize: Boolean = true,
+    showPath: Boolean = false
 ) {
     BackHandler(enabled = selectedFolderPath != null || selectedPaths.isNotEmpty()) {
         if (selectedPaths.isNotEmpty()) {
@@ -1424,17 +1443,13 @@ fun VideosAndFoldersTab(
     }
 
     // Derive folders list if database list is empty as a failover
-    val derivedFoldersList = remember(videoList, scannedFolders) {
+    val derivedFoldersList = remember(videoList, scannedFolders, sortOption, sortDirection, historyList) {
         val foldersWithVideos = videoList.mapNotNull { video ->
             File(video.path).parentFile?.absolutePath
         }.distinct()
 
-        val validScannedFolders = scannedFolders.filter { folder ->
-            foldersWithVideos.contains(folder.folderPath)
-        }
-
-        if (validScannedFolders.isNotEmpty()) {
-            validScannedFolders
+        val rawFolders = if (scannedFolders.isNotEmpty()) {
+            scannedFolders.filter { foldersWithVideos.contains(it.folderPath) }
         } else {
             foldersWithVideos.map { p ->
                 val count = videoList.count { File(it.path).parentFile?.absolutePath == p }
@@ -1446,6 +1461,42 @@ fun VideosAndFoldersTab(
                 )
             }
         }
+
+        val sortedFolders = when (sortOption) {
+            "TITLE" -> rawFolders.sortedBy { File(it.folderPath).name.lowercase() }
+            "DATE" -> rawFolders.sortedBy { folder ->
+                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                folderVideos.maxOfOrNull { it.dateModified } ?: 0L
+            }
+            "SIZE" -> rawFolders.sortedBy { folder ->
+                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                folderVideos.sumOf { it.size }
+            }
+            "DURATION" -> rawFolders.sortedBy { folder ->
+                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                folderVideos.sumOf { it.duration }
+            }
+            "PATH" -> rawFolders.sortedBy { it.folderPath.lowercase() }
+            "LAST_PLAYED" -> rawFolders.sortedBy { folder ->
+                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                folderVideos.mapNotNull { v -> historyList.firstOrNull { it.mediaFilePath == v.path }?.viewedAt }.maxOrNull() ?: 0L
+            }
+            "STATUS" -> rawFolders.sortedBy { folder ->
+                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                folderVideos.count { it.isNew }
+            }
+            "RESOLUTION" -> rawFolders.sortedBy { folder ->
+                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                folderVideos.maxOfOrNull { it.width * it.height } ?: 0
+            }
+            "TYPE" -> rawFolders.sortedBy { folder ->
+                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                folderVideos.firstOrNull()?.let { File(it.path).extension.lowercase() } ?: ""
+            }
+            else -> rawFolders.sortedBy { File(it.folderPath).name.lowercase() }
+        }
+
+        if (sortDirection == "DESCENDING") sortedFolders.reversed() else sortedFolders
     }
 
     // Process searches
@@ -1458,7 +1509,7 @@ fun VideosAndFoldersTab(
     }
 
     // Sort videos according to selected sorting options
-    val sortedVideos = remember(searchedVideos, sortOption, sortDirection) {
+    val sortedVideos = remember(searchedVideos, sortOption, sortDirection, historyList) {
         val comparator = when (sortOption) {
             "TITLE" -> compareBy<MediaFile> { it.title.lowercase() }
             "DATE" -> compareBy<MediaFile> { it.dateModified }
@@ -1466,6 +1517,17 @@ fun VideosAndFoldersTab(
             "DURATION" -> compareBy<MediaFile> { it.duration }
             "PATH" -> compareBy<MediaFile> { it.path }
             "RESOLUTION" -> compareBy<MediaFile> { it.width * it.height }
+            "LAST_PLAYED" -> compareBy<MediaFile> { video ->
+                historyList.firstOrNull { it.mediaFilePath == video.path }?.viewedAt ?: 0L
+            }
+            "STATUS" -> compareBy<MediaFile> { video ->
+                val inHistory = historyList.firstOrNull { it.mediaFilePath == video.path }
+                if (video.isNew) 2 else if (inHistory != null) 1 else 0
+            }
+            "FRAMERATE" -> compareBy<MediaFile> { video ->
+                video.width * video.height
+            }
+            "TYPE" -> compareBy<MediaFile> { File(it.path).extension.lowercase() }
             else -> compareBy<MediaFile> { it.title.lowercase() }
         }
         val sorted = searchedVideos.sortedWith(comparator)
@@ -1495,7 +1557,7 @@ fun VideosAndFoldersTab(
             .testTag("videos_and_folders_tab")
     ) {
         // --- CONTENT SPLITTING OR DIRECT VIEW ---
-        if (viewContentMode == "FOLDERS" && selectedFolderPath == null && searchQuery.isBlank()) {
+        if (selectedFolderPath == null && searchQuery.isBlank() && (viewContentMode == "FOLDERS" || viewContentMode == "ALL_FOLDERS")) {
             // Folders rendering list mode
             if (derivedFoldersList.isEmpty()) {
                 item {
@@ -1507,7 +1569,18 @@ fun VideosAndFoldersTab(
                     }
                 }
             } else {
-                items(derivedFoldersList, key = { it.folderPath }) { folder ->
+                if (viewContentMode == "ALL_FOLDERS") {
+                    item {
+                        Text(
+                            text = "المجلدات (${derivedFoldersList.size})",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                }
+                items(derivedFoldersList, key = { "folder_${it.folderPath}" }) { folder ->
                     val folderName = File(folder.folderPath).name
                     val stats = folderStatsMap[folder.folderPath] ?: FolderStats(0, 0, 0)
                     val filesCount = stats.filesCount
@@ -1541,8 +1614,10 @@ fun VideosAndFoldersTab(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val folderNewVideosCount = stats.newVideosCount
-                            MXFolderIcon(folderName = folderName, filesCount = folderNewVideosCount, isSelected = selectedPaths.contains(folder.folderPath), accentColor = accentColor)
-                            Spacer(modifier = Modifier.width(16.dp))
+                            if (showThumbnail) {
+                                MXFolderIcon(folderName = folderName, filesCount = folderNewVideosCount, isSelected = selectedPaths.contains(folder.folderPath), accentColor = accentColor)
+                                Spacer(modifier = Modifier.width(16.dp))
+                            }
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
@@ -1555,6 +1630,16 @@ fun VideosAndFoldersTab(
                                         modifier = Modifier.weight(1f, fill = false)
                                     )
                                 }
+                                if (showPath) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = folder.folderPath,
+                                        fontSize = 10.sp,
+                                        color = Color.Gray,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
@@ -1562,18 +1647,481 @@ fun VideosAndFoldersTab(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                                         fontSize = 11.5.sp
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(3.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = formatFolderSizeArabic(totalBytes),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Medium
+                                    if (showSize) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(3.dp))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = formatFolderSizeArabic(totalBytes),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // In ALL_FOLDERS mode, also render all files below folders
+            if (viewContentMode == "ALL_FOLDERS") {
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "الملفات (${displayVideos.size})",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+
+                if (displayVideos.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("لا توجد مقاطع فيديو (No videos detected)", color = Color.Gray)
+                        }
+                    }
+                } else {
+                    if (layoutMode == "LIST") {
+                        items(displayVideos, key = { "all_file_${it.path}" }) { video ->
+                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                val thumbnail = rememberVideoThumbnail(video.path)
+                                val currentTimeMs = System.currentTimeMillis()
+                                val threeDaysInMs = 3 * 24 * 60 * 60 * 1000L
+                                val isNewVideo = (currentTimeMs - video.dateModified) <= threeDaysInMs && video.isNew
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = {
+                                                if (selectedPaths.isNotEmpty()) {
+                                                    if (selectedPaths.contains(video.path)) {
+                                                        selectedPaths.remove(video.path)
+                                                    } else {
+                                                        selectedPaths.add(video.path)
+                                                    }
+                                                } else {
+                                                    onPlayFile(video.path)
+                                                }
+                                            },
+                                            onLongClick = {
+                                                if (selectedPaths.contains(video.path)) {
+                                                    selectedPaths.remove(video.path)
+                                                } else {
+                                                    selectedPaths.add(video.path)
+                                                }
+                                            }
                                         )
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (showThumbnail) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(width = 120.dp, height = 70.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                                                .background(Color(0xFF212121)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            val thumb = rememberVideoThumbnail(video.path)
+                                            if (thumb != null) {
+                                                Image(
+                                                    bitmap = thumb,
+                                                    contentDescription = "Video thumbnail",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .background(
+                                                            brush = Brush.verticalGradient(
+                                                                colors = listOf(
+                                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                                                                )
+                                                            )
+                                                        )
+                                                )
+                                            }
+
+                                            if (isNewVideo) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .align(Alignment.TopStart)
+                                                        .padding(4.dp)
+                                                        .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
+                                                        .padding(horizontal = 3.dp, vertical = 0.5.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = "NEW",
+                                                        color = Color.White,
+                                                        fontSize = 7.5.sp,
+                                                        style = androidx.compose.ui.text.TextStyle(
+                                                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                                                            lineHeight = 7.5.sp
+                                                        ),
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+
+                                            // Play icon overlay
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(28.dp)
+                                                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                                    .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.PlayArrow,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+
+                                            // Duration Badge
+                                            if (showDuration) {
+                                                val totalSeconds = video.duration / 1000
+                                                val hours = totalSeconds / 3600
+                                                val minutes = (totalSeconds % 3600) / 60
+                                                val seconds = totalSeconds % 60
+                                                val durationText = if (hours > 0) {
+                                                    "%d:%02d:%02d".format(hours, minutes, seconds)
+                                                } else {
+                                                    "%d:%02d".format(minutes, seconds)
+                                                }
+                                                Box(
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomEnd)
+                                                        .padding(4.dp)
+                                                        .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(2.dp))
+                                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = durationText,
+                                                        color = Color.White,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+
+                                            // Playback progress bar
+                                            if (showWatchTime && video.lastPlayPosition > 0 && video.duration > 0) {
+                                                val progress = video.lastPlayPosition.toFloat() / video.duration
+                                                Box(
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomStart)
+                                                        .fillMaxWidth()
+                                                        .height(3.dp)
+                                                        .background(Color.Gray.copy(alpha = 0.5f))
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxHeight()
+                                                            .fillMaxWidth(progress.coerceIn(0f, 1f))
+                                                            .background(MaterialTheme.colorScheme.primary)
+                                                    )
+                                                }
+                                            }
+
+                                            if (selectedPaths.contains(video.path)) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .background(Color.Black.copy(alpha = 0.5f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.CheckCircle,
+                                                        contentDescription = "Selected",
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(32.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                    } else {
+                                        // Show clean placeholder file icon instead of full thumbnail
+                                        Box(
+                                            modifier = Modifier
+                                                .size(width = 60.dp, height = 50.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color(0xFF212121)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.InsertDriveFile,
+                                                contentDescription = null,
+                                                tint = Color.White.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                    }
+
+                                    // Right: Details
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        val displayTitle = remember(video.title, showExtension) {
+                                            if (showExtension) video.title else video.title.substringBeforeLast(".")
+                                        }
+                                        Text(
+                                            text = displayTitle,
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            lineHeight = 16.sp
+                                        )
+
+                                        // Chips Row
+                                        val subtitleBadges = remember(video.path) {
+                                            scanSubtitlesForFolder(video.path)
+                                        }
+                                        if (showResolution || showFramerate || subtitleBadges.isNotEmpty()) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                modifier = Modifier.padding(vertical = 4.dp)
+                                            ) {
+                                                subtitleBadges.forEach { sub ->
+                                                    val subtitleColor = when (sub.label) {
+                                                        "AR" -> Color(0xFF1565C0)
+                                                        "EN" -> Color(0xFF2E7D32)
+                                                        "ORIG" -> Color(0xFF616161)
+                                                        "AR-ORIG" -> Color(0xFF1565C0)
+                                                        else -> Color(0xFF616161)
+                                                    }
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .background(subtitleColor, RoundedCornerShape(2.dp))
+                                                            .padding(horizontal = 3.dp, vertical = 1.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = sub.label,
+                                                            color = Color.White,
+                                                            fontSize = 7.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            style = androidx.compose.ui.text.TextStyle(
+                                                                platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                                    includeFontPadding = false
+                                                                )
+                                                            )
+                                                        )
+                                                    }
+                                                }
+
+                                                if (showResolution) {
+                                                    val quality = remember(video.width, video.height, video.path, video.title) {
+                                                        detectQuality(video.width, video.height, video.path, video.title)
+                                                    }
+                                                    val qualityColor = when (quality) {
+                                                        "1080p" -> Color(0xFF6A1B9A)
+                                                        "720p" -> Color(0xFF00695C)
+                                                        "480p" -> Color(0xFFEF6C00)
+                                                        "360p" -> Color(0xFFAD1457)
+                                                        "4K" -> Color(0xFFC62828)
+                                                        else -> Color(0xFF616161)
+                                                    }
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .background(qualityColor, RoundedCornerShape(2.dp))
+                                                            .padding(horizontal = 3.dp, vertical = 1.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = quality,
+                                                            color = Color.White,
+                                                            fontSize = 7.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            style = androidx.compose.ui.text.TextStyle(
+                                                                platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                                    includeFontPadding = false
+                                                                )
+                                                            )
+                                                        )
+                                                    }
+                                                }
+
+                                                if (showFramerate) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .background(Color(0xFFE65100), RoundedCornerShape(2.dp))
+                                                            .padding(horizontal = 3.dp, vertical = 1.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "30 FPS",
+                                                            color = Color.White,
+                                                            fontSize = 7.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            style = androidx.compose.ui.text.TextStyle(
+                                                                platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                                    includeFontPadding = false
+                                                                )
+                                                            )
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Metadata Line
+                                        val metaParts = remember(video.size, video.dateModified, video.path, showSize, showDate, showPath, historyList) {
+                                            val parts = mutableListOf<String>()
+                                            if (showSize) {
+                                                parts.add(com.example.util.FileSizeFormatter.formatSize(video.size))
+                                            }
+                                            if (showDate) {
+                                                val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
+                                                val dateStr = if (historyEntry != null) {
+                                                    getRelativeTimeArabic(historyEntry.viewedAt)
+                                                } else {
+                                                    com.example.util.DateFormatter.formatDate(video.dateModified / 1000L, context)
+                                                }
+                                                parts.add(dateStr)
+                                            }
+                                            if (showPath) {
+                                                parts.add(video.path)
+                                            }
+                                            parts.joinToString(" • ")
+                                        }
+                                        if (metaParts.isNotEmpty()) {
+                                            Text(
+                                                text = metaParts,
+                                                fontSize = 11.sp,
+                                                color = Color.Gray,
+                                                fontWeight = FontWeight.Normal,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+
+                                    // Offset 3-dots actions menu
+                                    var isMenuExpanded by remember { mutableStateOf(false) }
+                                    Box {
+                                        IconButton(
+                                            onClick = { isMenuExpanded = true },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.MoreVert,
+                                                contentDescription = "Options menu",
+                                                tint = Color.Gray
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = isMenuExpanded,
+                                            onDismissRequest = { isMenuExpanded = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("تسمية الملف", fontSize = 13.sp) },
+                                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                                onClick = {
+                                                    isMenuExpanded = false
+                                                    videoToRename = video
+                                                    newNameText = video.title
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("حذف الملف", fontSize = 13.sp) },
+                                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
+                                                onClick = {
+                                                    isMenuExpanded = false
+                                                    videoToDelete = video
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
+                                                leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                                onClick = {
+                                                    isMenuExpanded = false
+                                                    viewModel.setPrivateStatus(video, true)
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Modern 2-Column Grid Layout Chunk implementation
+                        val columns = 2
+                        val videoChunks = displayVideos.chunked(columns)
+                        videoChunks.forEachIndexed { idx, chunk ->
+                            item(key = "all_chunk_${chunk.firstOrNull()?.path ?: "chunk_$idx"}") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    chunk.forEach { video ->
+                                        VideoGridItem(
+                                            video = video,
+                                            onClick = {
+                                                if (selectedPaths.isNotEmpty()) {
+                                                    if (selectedPaths.contains(video.path)) {
+                                                        selectedPaths.remove(video.path)
+                                                    } else {
+                                                        selectedPaths.add(video.path)
+                                                    }
+                                                } else {
+                                                    onPlayFile(video.path)
+                                                }
+                                            },
+                                            onFavoriteClick = { viewModel.toggleFavorite(video) },
+                                            onVaultClick = { viewModel.setPrivateStatus(video, true) },
+                                            onRenameClick = {
+                                                videoToRename = video
+                                                newNameText = video.title
+                                            },
+                                            onDeleteClick = {
+                                                videoToDelete = video
+                                            },
+                                            isSelected = selectedPaths.contains(video.path),
+                                            historyList = historyList,
+                                            onLongClick = {
+                                                if (selectedPaths.contains(video.path)) {
+                                                    selectedPaths.remove(video.path)
+                                                } else {
+                                                    selectedPaths.add(video.path)
+                                                }
+                                            },
+                                            showExtension = showExtension,
+                                            showDuration = showDuration,
+                                            showThumbnail = showThumbnail,
+                                            showFramerate = showFramerate,
+                                            showResolution = showResolution,
+                                            showWatchTime = showWatchTime,
+                                            showDate = showDate,
+                                            showSize = showSize,
+                                            showPath = showPath,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    if (chunk.size < columns) {
+                                        Spacer(modifier = Modifier.weight((columns - chunk.size).toFloat()))
                                     }
                                 }
                             }
@@ -1634,122 +2182,165 @@ fun VideosAndFoldersTab(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 // Left: Thumbnail Area
-                                Box(
-                                    modifier = Modifier
-                                        .size(width = 120.dp, height = 70.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
-                                        .background(Color(0xFF212121)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (thumbnail != null) {
-                                        Image(
-                                            bitmap = thumbnail,
-                                            contentDescription = "Video thumbnail",
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(
-                                                    brush = Brush.verticalGradient(
-                                                        colors = listOf(
-                                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
-                                                        )
-                                                    )
-                                                )
-                                        )
-                                    }
-
-                                    if (isNewVideo) {
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.TopStart)
-                                                .padding(4.dp)
-                                                .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
-                                                .padding(horizontal = 3.dp, vertical = 0.5.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = "NEW",
-                                                color = Color.White,
-                                                fontSize = 7.5.sp,
-                                                style = androidx.compose.ui.text.TextStyle(
-                                                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
-                                                    lineHeight = 7.5.sp
-                                                ),
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-
-                                    // Play icon overlay
+                                if (showThumbnail) {
                                     Box(
                                         modifier = Modifier
-                                            .size(28.dp)
-                                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
-                                            .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape),
+                                            .size(width = 120.dp, height = 70.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                                            .background(Color(0xFF212121)),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            Icons.Default.PlayArrow,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
+                                        if (thumbnail != null) {
+                                            Image(
+                                                bitmap = thumbnail,
+                                                contentDescription = "Video thumbnail",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(
+                                                        brush = Brush.verticalGradient(
+                                                            colors = listOf(
+                                                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                                                            )
+                                                        )
+                                                    )
+                                            )
+                                        }
 
-                                    // Duration Badge
-                                    val totalSeconds = video.duration / 1000
-                                    val hours = totalSeconds / 3600
-                                    val minutes = (totalSeconds % 3600) / 60
-                                    val seconds = totalSeconds % 60
-                                    val durationText = if (hours > 0) {
-                                        "%d:%02d:%02d".format(hours, minutes, seconds)
-                                    } else {
-                                        "%d:%02d".format(minutes, seconds)
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .padding(4.dp)
-                                            .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(2.dp))
-                                            .padding(horizontal = 4.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = durationText,
-                                            color = Color.White,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
+                                        if (isNewVideo) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.TopStart)
+                                                    .padding(4.dp)
+                                                    .background(Color(0xFFFF3366), shape = RoundedCornerShape(3.dp))
+                                                    .padding(horizontal = 3.dp, vertical = 0.5.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "NEW",
+                                                    color = Color.White,
+                                                    fontSize = 7.5.sp,
+                                                    style = androidx.compose.ui.text.TextStyle(
+                                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                                                        lineHeight = 7.5.sp
+                                                    ),
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
 
-                                    if (selectedPaths.contains(video.path)) {
+                                        // Play icon overlay
                                         Box(
                                             modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(Color.Black.copy(alpha = 0.5f)),
+                                                .size(28.dp)
+                                                .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                                                .border(0.5.dp, Color.White.copy(alpha = 0.15f), CircleShape),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.CheckCircle,
-                                                contentDescription = "Selected",
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(32.dp)
+                                                Icons.Default.PlayArrow,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp)
                                             )
                                         }
-                                    }
-                                }
 
-                                Spacer(modifier = Modifier.width(12.dp))
+                                        // Duration Badge
+                                        if (showDuration) {
+                                            val totalSeconds = video.duration / 1000
+                                            val hours = totalSeconds / 3600
+                                            val minutes = (totalSeconds % 3600) / 60
+                                            val seconds = totalSeconds % 60
+                                            val durationText = if (hours > 0) {
+                                                "%d:%02d:%02d".format(hours, minutes, seconds)
+                                            } else {
+                                                "%d:%02d".format(minutes, seconds)
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .padding(4.dp)
+                                                    .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(2.dp))
+                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = durationText,
+                                                    color = Color.White,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+
+                                        // Playback progress bar
+                                        if (showWatchTime && video.lastPlayPosition > 0 && video.duration > 0) {
+                                            val progress = video.lastPlayPosition.toFloat() / video.duration
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomStart)
+                                                    .fillMaxWidth()
+                                                    .height(3.dp)
+                                                    .background(Color.Gray.copy(alpha = 0.5f))
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxHeight()
+                                                        .fillMaxWidth(progress.coerceIn(0f, 1f))
+                                                        .background(MaterialTheme.colorScheme.primary)
+                                                )
+                                            }
+                                        }
+
+                                        if (selectedPaths.contains(video.path)) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(Color.Black.copy(alpha = 0.5f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = "Selected",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                } else {
+                                    // Show clean placeholder file icon instead of full thumbnail
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 60.dp, height = 50.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0xFF212121)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.InsertDriveFile,
+                                            contentDescription = null,
+                                            tint = Color.White.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                }
 
                                 // Right: Details
                                 Column(modifier = Modifier.weight(1f)) {
+                                    val displayTitle = remember(video.title, showExtension) {
+                                        if (showExtension) video.title else video.title.substringBeforeLast(".")
+                                    }
                                     Text(
-                                        text = video.title,
+                                        text = displayTitle,
                                         color = Color.White,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Medium,
@@ -1758,144 +2349,180 @@ fun VideosAndFoldersTab(
                                         lineHeight = 16.sp
                                     )
 
-                                    // Chips Row (Subtitles and Quality)
+                                    // Chips Row
                                     val subtitleBadges = remember(video.path) {
                                         scanSubtitlesForFolder(video.path)
                                     }
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        modifier = Modifier.padding(vertical = 4.dp)
-                                    ) {
-                                        subtitleBadges.forEach { sub ->
-                                            val subtitleColor = when (sub.label) {
-                                                "AR" -> Color(0xFF1565C0)
-                                                "EN" -> Color(0xFF2E7D32)
-                                                "ORIG" -> Color(0xFF616161)
-                                                "AR-ORIG" -> Color(0xFF1565C0)
-                                                else -> Color(0xFF616161)
+                                    if (showResolution || showFramerate || subtitleBadges.isNotEmpty()) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        ) {
+                                            subtitleBadges.forEach { sub ->
+                                                val subtitleColor = when (sub.label) {
+                                                    "AR" -> Color(0xFF1565C0)
+                                                    "EN" -> Color(0xFF2E7D32)
+                                                    "ORIG" -> Color(0xFF616161)
+                                                    "AR-ORIG" -> Color(0xFF1565C0)
+                                                    else -> Color(0xFF616161)
+                                                }
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(subtitleColor, RoundedCornerShape(2.dp))
+                                                        .padding(horizontal = 3.dp, vertical = 1.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = sub.label,
+                                                        color = Color.White,
+                                                        fontSize = 7.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        style = androidx.compose.ui.text.TextStyle(
+                                                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                                includeFontPadding = false
+                                                            )
+                                                        )
+                                                    )
+                                                }
                                             }
-                                            Box(
-                                                modifier = Modifier
-                                                    .background(subtitleColor, RoundedCornerShape(2.dp))
-                                                    .padding(horizontal = 3.dp, vertical = 1.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = sub.label,
-                                                     color = Color.White,
-                                                     fontSize = 7.5.sp,
-                                                     fontWeight = FontWeight.Bold,
-                                                     style = androidx.compose.ui.text.TextStyle(
-                                                         platformStyle = androidx.compose.ui.text.PlatformTextStyle(
-                                                             includeFontPadding = false
-                                                         )
-                                                     )
-                                                 )
+
+                                            if (showResolution) {
+                                                val quality = remember(video.width, video.height, video.path, video.title) {
+                                                    detectQuality(video.width, video.height, video.path, video.title)
+                                                }
+                                                val qualityColor = when (quality) {
+                                                    "1080p" -> Color(0xFF6A1B9A)
+                                                    "720p" -> Color(0xFF00695C)
+                                                    "480p" -> Color(0xFFEF6C00)
+                                                    "360p" -> Color(0xFFAD1457)
+                                                    "4K" -> Color(0xFFC62828)
+                                                    else -> Color(0xFF616161)
+                                                }
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(qualityColor, RoundedCornerShape(2.dp))
+                                                        .padding(horizontal = 3.dp, vertical = 1.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = quality,
+                                                        color = Color.White,
+                                                        fontSize = 7.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        style = androidx.compose.ui.text.TextStyle(
+                                                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                                includeFontPadding = false
+                                                                )
+                                                            )
+                                                        )
+                                                    }
+                                                }
+
+                                                if (showFramerate) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .background(Color(0xFFE65100), RoundedCornerShape(2.dp))
+                                                            .padding(horizontal = 3.dp, vertical = 1.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "30 FPS",
+                                                            color = Color.White,
+                                                            fontSize = 7.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            style = androidx.compose.ui.text.TextStyle(
+                                                                platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                                    includeFontPadding = false
+                                                                )
+                                                            )
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
 
-                                        // Quality Badge
-                                        val quality = remember(video.width, video.height, video.path, video.title) {
-                                            detectQuality(video.width, video.height, video.path, video.title)
+                                        // Metadata Line
+                                        val metaParts = remember(video.size, video.dateModified, video.path, showSize, showDate, showPath, historyList) {
+                                            val parts = mutableListOf<String>()
+                                            if (showSize) {
+                                                parts.add(com.example.util.FileSizeFormatter.formatSize(video.size))
+                                            }
+                                            if (showDate) {
+                                                val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
+                                                val dateStr = if (historyEntry != null) {
+                                                    getRelativeTimeArabic(historyEntry.viewedAt)
+                                                } else {
+                                                    com.example.util.DateFormatter.formatDate(video.dateModified / 1000L, context)
+                                                }
+                                                parts.add(dateStr)
+                                            }
+                                            if (showPath) {
+                                                parts.add(video.path)
+                                            }
+                                            parts.joinToString(" • ")
                                         }
-                                        val qualityColor = when (quality) {
-                                            "1080p" -> Color(0xFF6A1B9A)
-                                            "720p" -> Color(0xFF00695C)
-                                            "480p" -> Color(0xFFEF6C00)
-                                            "360p" -> Color(0xFFAD1457)
-                                            "4K" -> Color(0xFFC62828)
-                                            else -> Color(0xFF616161)
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .background(qualityColor, RoundedCornerShape(2.dp))
-                                                .padding(horizontal = 3.dp, vertical = 1.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
+                                        if (metaParts.isNotEmpty()) {
                                             Text(
-                                                text = quality,
-                                                color = Color.White,
-                                                fontSize = 7.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                style = androidx.compose.ui.text.TextStyle(
-                                                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(
-                                                        includeFontPadding = false
-                                                    )
-                                                )
+                                                text = metaParts,
+                                                fontSize = 11.sp,
+                                                color = Color.Gray,
+                                                fontWeight = FontWeight.Normal,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }
 
-                                    // Metadata Line
-                                    val sizeStr = com.example.util.FileSizeFormatter.formatSize(video.size)
-                                    val dateStr = remember(historyList, video.dateModified, video.path) {
-                                        val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
-                                        if (historyEntry != null) {
-                                            getRelativeTimeArabic(historyEntry.viewedAt)
-                                        } else {
-                                            com.example.util.DateFormatter.formatDate(video.dateModified / 1000L, context)
+                                    // Offset 3-dots actions menu
+                                    var isMenuExpanded by remember { mutableStateOf(false) }
+                                    Box {
+                                        IconButton(
+                                            onClick = { isMenuExpanded = true },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.MoreVert,
+                                                contentDescription = "Options menu",
+                                                tint = Color.Gray
+                                            )
                                         }
-                                    }
-                                    Text(
-                                        text = "$sizeStr • $dateStr",
-                                        fontSize = 11.sp,
-                                        color = Color.Gray,
-                                        fontWeight = FontWeight.Normal,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-
-                                // Offset 3-dots actions menu
-                                var isMenuExpanded by remember { mutableStateOf(false) }
-                                Box {
-                                    IconButton(
-                                        onClick = { isMenuExpanded = true },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.MoreVert,
-                                            contentDescription = "Options menu",
-                                            tint = Color.Gray
-                                        )
-                                    }
-                                    DropdownMenu(
-                                        expanded = isMenuExpanded,
-                                        onDismissRequest = { isMenuExpanded = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("تسمية الملف", fontSize = 13.sp) },
-                                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                            onClick = {
-                                                isMenuExpanded = false
-                                                videoToRename = video
-                                                newNameText = video.title
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("حذف الملف", fontSize = 13.sp) },
-                                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
-                                            onClick = {
-                                                isMenuExpanded = false
-                                                videoToDelete = video
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
-                                            leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                            onClick = {
-                                                isMenuExpanded = false
-                                                viewModel.setPrivateStatus(video, true)
-                                            }
-                                        )
+                                        DropdownMenu(
+                                            expanded = isMenuExpanded,
+                                            onDismissRequest = { isMenuExpanded = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("تسمية الملف", fontSize = 13.sp) },
+                                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                                onClick = {
+                                                    isMenuExpanded = false
+                                                    videoToRename = video
+                                                    newNameText = video.title
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("حذف الملف", fontSize = 13.sp) },
+                                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
+                                                onClick = {
+                                                    isMenuExpanded = false
+                                                    videoToDelete = video
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
+                                                leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                                onClick = {
+                                                    isMenuExpanded = false
+                                                    viewModel.setPrivateStatus(video, true)
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                } else {
-                    // Modern 2-Column Grid Layout Chunk implementation avoiding nested lists error
+                    } else {
+                        // Modern 2-Column Grid Layout Chunk implementation avoiding nested lists error
                     val columns = 2
                     val videoChunks = displayVideos.chunked(columns)
                     videoChunks.forEachIndexed { idx, chunk ->
@@ -1936,6 +2563,15 @@ fun VideosAndFoldersTab(
                                                 selectedPaths.add(video.path)
                                             }
                                         },
+                                        showExtension = showExtension,
+                                        showDuration = showDuration,
+                                        showThumbnail = showThumbnail,
+                                        showFramerate = showFramerate,
+                                        showResolution = showResolution,
+                                        showWatchTime = showWatchTime,
+                                        showDate = showDate,
+                                        showSize = showSize,
+                                        showPath = showPath,
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -2122,9 +2758,22 @@ fun VideoGridItem(
     isSelected: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     historyList: List<com.example.data.local.entities.HistoryEntity> = emptyList(),
+    showExtension: Boolean = true,
+    showDuration: Boolean = true,
+    showThumbnail: Boolean = true,
+    showFramerate: Boolean = true,
+    showResolution: Boolean = true,
+    showWatchTime: Boolean = true,
+    showDate: Boolean = true,
+    showSize: Boolean = true,
+    showPath: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val thumbnail = rememberVideoThumbnail(video.path)
+    val titleText = remember(video.title, showExtension) {
+        if (showExtension) video.title else video.title.substringBeforeLast(".")
+    }
+
     Card(
         modifier = modifier
             .padding(vertical = 6.dp)
@@ -2144,7 +2793,7 @@ fun VideoGridItem(
                     .background(Color.Black.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
             ) {
-                if (thumbnail != null) {
+                if (showThumbnail && thumbnail != null) {
                     Image(
                         bitmap = thumbnail,
                         contentDescription = "Video thumbnail",
@@ -2202,28 +2851,49 @@ fun VideoGridItem(
                 }
 
                  // Duration badge overlay
-                 val totalSeconds = video.duration / 1000
-                 val hours = totalSeconds / 3600
-                 val minutes = (totalSeconds % 3600) / 60
-                 val seconds = totalSeconds % 60
-                 val durationText = if (hours > 0) {
-                     "%d:%02d:%02d".format(hours, minutes, seconds)
-                 } else {
-                     "%d:%02d".format(minutes, seconds)
+                 if (showDuration) {
+                     val totalSeconds = video.duration / 1000
+                     val hours = totalSeconds / 3600
+                     val minutes = (totalSeconds % 3600) / 60
+                     val seconds = totalSeconds % 60
+                     val durationText = if (hours > 0) {
+                         "%d:%02d:%02d".format(hours, minutes, seconds)
+                     } else {
+                         "%d:%02d".format(minutes, seconds)
+                     }
+                     Box(
+                         modifier = Modifier
+                             .align(Alignment.BottomEnd)
+                             .padding(6.dp)
+                             .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(4.dp))
+                             .padding(horizontal = 4.dp, vertical = 2.dp)
+                     ) {
+                         Text(
+                             text = durationText,
+                             color = Color.White,
+                             fontSize = 10.sp,
+                             fontWeight = FontWeight.Bold
+                         )
+                     }
                  }
-                 Box(
-                     modifier = Modifier
-                         .align(Alignment.BottomEnd)
-                         .padding(6.dp)
-                         .background(Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(4.dp))
-                         .padding(horizontal = 4.dp, vertical = 2.dp)
-                 ) {
-                     Text(
-                         text = durationText,
-                         color = Color.White,
-                         fontSize = 10.sp,
-                         fontWeight = FontWeight.Bold
-                     )
+
+                 // Playback progress bar
+                 if (showWatchTime && video.lastPlayPosition > 0 && video.duration > 0) {
+                     val progress = video.lastPlayPosition.toFloat() / video.duration
+                     Box(
+                         modifier = Modifier
+                             .align(Alignment.BottomStart)
+                             .fillMaxWidth()
+                             .height(3.dp)
+                             .background(Color.Gray.copy(alpha = 0.5f))
+                     ) {
+                         Box(
+                             modifier = Modifier
+                                 .fillMaxHeight()
+                                 .fillMaxWidth(progress.coerceIn(0f, 1f))
+                                 .background(MaterialTheme.colorScheme.primary)
+                         )
+                     }
                  }
 
                  if (isSelected) {
@@ -2249,25 +2919,15 @@ fun VideoGridItem(
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    val detectedSubFiles = remember(video.path) {
-                        try {
-                            val vf = java.io.File(video.path)
-                            val parent = vf.parentFile
-                            if (parent != null && parent.exists()) {
-                                val baseName = vf.nameWithoutExtension
-                                parent.listFiles()?.filter { sib ->
-                                    val sName = sib.name
-                                                    sName.startsWith(baseName) && (sName.endsWith(".srt", ignoreCase = true) || sName.endsWith(".vtt", ignoreCase = true))
-                                                }?.sortedBy { it.name } ?: emptyList()
-                                            } else emptyList()
-                                        } catch (e: Exception) { emptyList() }
-                                    }
+                    val subtitleBadges = remember(video.path) {
+                        scanSubtitlesForFolder(video.path)
+                    }
                     Row(
                         modifier = Modifier.weight(1f),
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                     ) {
                         Text(
-                            text = video.title,
+                            text = titleText,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Normal,
@@ -2275,25 +2935,22 @@ fun VideoGridItem(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
                         )
-                        detectedSubFiles.forEach { subFile ->
+                        subtitleBadges.forEach { sub ->
                             Spacer(modifier = Modifier.width(4.dp))
-                            val vf = remember(video.path) { java.io.File(video.path) }
-                            val vBaseName = vf.nameWithoutExtension
-                            val sName = subFile.name
-                            val suffix = if (sName.length > vBaseName.length) {
-                                sName.substring(vBaseName.length).removeSuffix(".srt").removeSuffix(".vtt").removeSuffix(".SRT").removeSuffix(".VTT")
-                            } else {
-                                ""
+                            val subtitleColor = when (sub.label) {
+                                "AR" -> Color(0xFF1565C0)
+                                "EN" -> Color(0xFF2E7D32)
+                                "ORIG" -> Color(0xFF616161)
+                                "AR-ORIG" -> Color(0xFF1565C0)
+                                else -> Color(0xFF616161)
                             }
-                            val cleanSuffix = if (suffix.startsWith(".")) suffix.substring(1) else suffix
-                            val badgeLabel = if (cleanSuffix.isNotEmpty()) cleanSuffix.uppercase() else "SRT"
                             Box(
                                 modifier = Modifier
-                                    .background(Color(0xFF007AFF), RoundedCornerShape(2.dp))
+                                    .background(subtitleColor, RoundedCornerShape(2.dp))
                                     .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = badgeLabel,
+                                    text = sub.label,
                                     color = Color.White,
                                     fontSize = 7.5.sp,
                                     style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
@@ -2301,26 +2958,42 @@ fun VideoGridItem(
                                 )
                             }
                         }
-                        if (video.width > 0 && video.height > 0) {
+                        if (showResolution && video.width > 0 && video.height > 0) {
                             Spacer(modifier = Modifier.width(4.dp))
-                            val resolutionText = remember(video.width, video.height) {
-                                val minDim = minOf(video.width, video.height)
-                                when {
-                                    minDim >= 2160 -> "4K"
-                                    minDim >= 1440 -> "2K"
-                                    minDim >= 1080 -> "1080p"
-                                    minDim >= 720 -> "720p"
-                                    minDim >= 480 -> "480p"
-                                    else -> "${video.width}x${video.height}"
-                                }
+                            val quality = remember(video.width, video.height, video.path, video.title) {
+                                detectQuality(video.width, video.height, video.path, video.title)
+                            }
+                            val qualityColor = when (quality) {
+                                "1080p" -> Color(0xFF6A1B9A)
+                                "720p" -> Color(0xFF00695C)
+                                "480p" -> Color(0xFFEF6C00)
+                                "360p" -> Color(0xFFAD1457)
+                                "4K" -> Color(0xFFC62828)
+                                else -> Color(0xFF616161)
                             }
                             Box(
                                 modifier = Modifier
-                                    .background(Color(0xFF34C759), RoundedCornerShape(2.dp))
+                                    .background(qualityColor, RoundedCornerShape(2.dp))
                                     .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = resolutionText,
+                                    text = quality,
+                                    color = Color.White,
+                                    fontSize = 7.5.sp,
+                                    style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        if (showFramerate) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFFE65100), RoundedCornerShape(2.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp), contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "30 FPS",
                                     color = Color.White,
                                     fontSize = 7.5.sp,
                                     style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)),
@@ -2375,43 +3048,35 @@ fun VideoGridItem(
                         }
                     }
                 }
-                val arabicDateText = remember(historyList, video.dateModified, video.path) {
-                    val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
-                    if (historyEntry != null) {
-                        getRelativeTimeArabic(historyEntry.viewedAt)
-                    } else {
-                        formatVideoDateArabic(video.dateModified)
+                val metaParts = remember(video.size, video.dateModified, video.path, showSize, showDate, showPath, historyList) {
+                    val parts = mutableListOf<String>()
+                    if (showSize) {
+                        parts.add(com.example.util.FileSizeFormatter.formatSize(video.size))
                     }
+                    if (showDate) {
+                        val historyEntry = historyList.firstOrNull { it.mediaFilePath == video.path }
+                        val dateStr = if (historyEntry != null) {
+                            getRelativeTimeArabic(historyEntry.viewedAt)
+                        } else {
+                            formatVideoDateArabic(video.dateModified)
+                        }
+                        parts.add(dateStr)
+                    }
+                    if (showPath) {
+                        parts.add(video.path)
+                    }
+                    parts.joinToString(" • ")
                 }
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Start,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                if (metaParts.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = formatVideoSizeArabic(video.size),
+                        text = metaParts,
                         fontSize = 11.sp,
                         color = Color.Gray,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Normal,
                         maxLines = 1,
                         softWrap = false
                     )
-                    if (arabicDateText.isNotEmpty()) {
-                        Text(
-                            text = " • ",
-                            fontSize = 11.sp,
-                            color = Color.Gray.copy(alpha = 0.5f)
-                        )
-                        Text(
-                            text = arabicDateText,
-                            fontSize = 11.sp,
-                            color = Color.Gray,
-                            fontWeight = FontWeight.Normal,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
                 }
             }
         }
