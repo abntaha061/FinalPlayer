@@ -51,6 +51,7 @@ import com.example.data.local.entities.PlaylistEntity
 import com.example.data.local.entities.ScannedFolder
 import com.example.ui.MediaViewModel
 import com.example.ui.components.TrackArtwork
+import com.example.ui.components.frostedGlass
 import java.io.File
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -94,6 +95,12 @@ fun HomeScreen(
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
     val resumeButtonPosition by viewModel.resumeButtonPositionState.collectAsState()
     val currentAccentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
+    val appThemeMode by viewModel.appThemeModeState.collectAsState()
+    val isDark = when (appThemeMode) {
+        "LIGHT" -> false
+        "DARK" -> true
+        else -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
 
     val resumeVideoFilePath = remember(historyList, selectedFolderPath, videoList) {
         if (selectedFolderPath != null) {
@@ -180,7 +187,12 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             if (selectedBottomTab != 2) {
-                Column(modifier = Modifier.background(currentAccentColor)) {
+                Column(
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
+                        .frostedGlass(isDark = isDark, shape = RoundedCornerShape(20.dp), opacity = if (isDark) 0.10f else 0.40f)
+                ) {
                      CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
                         if (selectedPaths.isNotEmpty()) {
                             TopAppBar(
@@ -397,9 +409,12 @@ fun HomeScreen(
                     }
                 } else {
                     NavigationBar(
-                        containerColor = currentAccentColor.copy(alpha = 0.15f),
+                        containerColor = Color.Transparent,
                         windowInsets = WindowInsets.navigationBars,
-                        modifier = Modifier.height(64.dp)
+                        modifier = Modifier
+                            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                            .frostedGlass(isDark = isDark, shape = RoundedCornerShape(24.dp), opacity = if (isDark) 0.10f else 0.40f)
+                            .height(64.dp)
                     ) {
                         NavigationBarItem(
                             selected = selectedBottomTab == 0,
@@ -1762,6 +1777,7 @@ fun VideosAndFoldersTab(
                     }
                 }
                 items(derivedFoldersList, key = { "folder_${it.folderPath}" }) { folder ->
+                    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
                     val folderName = File(folder.folderPath).name
                     val stats = folderStatsMap[folder.folderPath] ?: FolderStats(0, 0, 0)
                     val filesCount = stats.filesCount
@@ -1771,6 +1787,8 @@ fun VideosAndFoldersTab(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .frostedGlass(isDark = isDark, shape = RoundedCornerShape(14.dp))
                                 .combinedClickable(
                                     onClick = {
                                         if (selectedPaths.isNotEmpty()) {
@@ -1791,7 +1809,7 @@ fun VideosAndFoldersTab(
                                         }
                                     }
                                 )
-                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val folderNewVideosCount = stats.newVideosCount
@@ -2955,15 +2973,18 @@ fun VideoGridItem(
         if (showExtension) video.title else video.title.substringBeforeLast(".")
     }
 
+    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+
     Card(
         modifier = modifier
             .padding(vertical = 6.dp)
+            .frostedGlass(isDark = isDark, shape = RoundedCornerShape(12.dp))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = { onLongClick?.invoke() }
             ),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Column {
             // Visual Header Box representing clean Movie artwork thumbnail layout
@@ -3740,11 +3761,11 @@ fun MusicPlayerTab(
                 ) {
                     itemsIndexed(sortedList, key = { _, track -> track.path }) { index, track ->
                         TrackEntranceTransition(key = track.path, index = index) {
+                            val isDark = androidx.compose.foundation.isSystemInDarkTheme()
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                                    .frostedGlass(isDark = isDark, shape = RoundedCornerShape(14.dp))
                                     .clickable { onPlayFile(track.path) }
                                     .padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically

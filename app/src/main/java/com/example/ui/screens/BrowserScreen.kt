@@ -29,6 +29,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.layout.ContentScale
 import com.example.ui.components.TrackArtwork
+import com.example.ui.components.frostedGlass
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -141,12 +142,12 @@ fun BrowserScreen(
                         .padding(horizontal = 12.dp)
                 ) {
                     items(filteredList) { file ->
+                        val isDark = androidx.compose.foundation.isSystemInDarkTheme()
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .padding(vertical = 4.dp)
+                                .frostedGlass(isDark = isDark, shape = RoundedCornerShape(12.dp))
                                 .clickable {
                                     if (file.isDirectory) {
                                         currentDirectory = file

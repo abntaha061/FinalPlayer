@@ -281,8 +281,8 @@ fun MainNavigationRoot(viewModel: MediaViewModel = viewModel()) {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        if (isDark) Color.Black.copy(alpha = 0.45f)
-                        else Color.White.copy(alpha = 0.88f)
+                        if (isDark) Color.Black.copy(alpha = 0.28f)
+                        else Color.White.copy(alpha = 0.65f)
                     )
             )
 

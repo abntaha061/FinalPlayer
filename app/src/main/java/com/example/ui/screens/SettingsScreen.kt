@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.layout.ContentScale
 import com.example.data.local.entities.MediaFile
+import com.example.ui.components.frostedGlass
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1403,12 +1404,14 @@ fun SettingsOptionRow(
     accentColor: Color,
     onClick: () -> Unit
 ) {
+    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 5.dp)
+            .frostedGlass(isDark = isDark, shape = RoundedCornerShape(12.dp))
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
