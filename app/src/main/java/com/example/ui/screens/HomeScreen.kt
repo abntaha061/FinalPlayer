@@ -1783,11 +1783,15 @@ fun VideosAndFoldersTab(
                                             ) {
                                                 Text(
                                                     text = sub.label,
-                                                    color = Color.White,
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    lineHeight = 8.sp
-                                                )
+                                                     color = Color.White,
+                                                     fontSize = 7.5.sp,
+                                                     fontWeight = FontWeight.Bold,
+                                                     style = androidx.compose.ui.text.TextStyle(
+                                                         platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                             includeFontPadding = false
+                                                         )
+                                                     )
+                                                 )
                                             }
                                         }
 
@@ -1812,9 +1816,13 @@ fun VideosAndFoldersTab(
                                             Text(
                                                 text = quality,
                                                 color = Color.White,
-                                                fontSize = 8.sp,
+                                                fontSize = 7.5.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                lineHeight = 8.sp
+                                                style = androidx.compose.ui.text.TextStyle(
+                                                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                        includeFontPadding = false
+                                                    )
+                                                )
                                             )
                                         }
                                     }

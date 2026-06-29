@@ -1262,20 +1262,24 @@ fun PlayerScreen(
         if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
             val containsArabic = activeSubtitleText.any { it in '\u0600'..'\u06FF' }
             val layoutDirection = if (containsArabic) LayoutDirection.Rtl else LayoutDirection.Ltr
-            val densityVal = LocalDensity.current.density
 
             CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .onSizeChanged { parentHeightPx = it.height.toFloat().coerceAtLeast(100f) }
                 ) {
+                    val biasOffset = if (areControlsVisible && !isLockedMode) -0.12f else 0f
+                    val verticalBias = ((subtitlePrefsState.verticalOffset * 2f) - 1f + biasOffset).coerceIn(-1f, 1f)
+                    
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
+                            .align(BiasAlignment(horizontalBias = 0f, verticalBias = verticalBias))
                             .padding(
-                                bottom = subtitleOffsetY.dp,
                                 start = 16.dp,
-                                end = 16.dp
+                                end = 16.dp,
+                                bottom = 4.dp,
+                                top = 4.dp
                             )
                             .wrapContentSize()
                             .pointerInput(Unit) {
@@ -1293,8 +1297,12 @@ fun PlayerScreen(
                                             if (change != null && change.pressed) {
                                                 change.consume()
                                                 val deltaY = change.position.y - change.previousPosition.y
-                                                val deltaDp = deltaY / densityVal
-                                                viewModel.moveSubtitle(deltaDp)
+                                                val deltaRatio = deltaY / parentHeightPx
+                                                val currentOffset = subtitlePrefsState.verticalOffset
+                                                val newOffset = (currentOffset + deltaRatio).coerceIn(0.01f, 1.0f)
+                                                scope.launch {
+                                                    subPrefsManager.savePreferences(subtitlePrefsState.copy(verticalOffset = newOffset))
+                                                }
                                                 dragChange = change
                                             } else {
                                                 dragChange = null
@@ -1311,17 +1319,17 @@ fun PlayerScreen(
                                 } else {
                                     subtitlePrefsState.backgroundColor
                                 },
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(4.dp)
                             )
                             .border(
-                                width = if (isDraggingSubtitle) 2.dp else 1.dp,
+                                width = if (isDraggingSubtitle) 1.5.dp else 1.dp,
                                 color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(4.dp)
                             )
                             .clickable {
                                 isSubtitleCustomizationOpen = true
                             }
-                            .padding(horizontal = 18.dp, vertical = 10.dp)
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
                             .testTag("custom_subtitle_text")
                     ) {
                         Text(
@@ -1330,12 +1338,15 @@ fun PlayerScreen(
                             fontSize = subtitlePrefsState.textSize.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
-                            lineHeight = (subtitlePrefsState.textSize * 1.35f).sp,
+                            lineHeight = (subtitlePrefsState.textSize * 1.15f).sp,
                             style = TextStyle(
                                 shadow = Shadow(
                                     color = Color.Black.copy(alpha = 0.95f),
                                     offset = Offset(1.5f, 1.5f),
                                     blurRadius = 3f
+                                ),
+                                platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                    includeFontPadding = false
                                 )
                             )
                         )
