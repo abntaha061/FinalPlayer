@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.first
 import java.io.File
 
 class MediaScanner(private val mediaDao: MediaDao) {
-    private val scanMutex = kotlinx.coroutines.sync.Mutex()
+    val scanMutex = kotlinx.coroutines.sync.Mutex()
 
     // Comprehensive real-time scan merging MediaStore with direct Filesystem crawling
     suspend fun scanMedia(context: Context, onProgress: (String) -> Unit = {}): Int = withContext(Dispatchers.IO) {
@@ -35,6 +35,51 @@ class MediaScanner(private val mediaDao: MediaDao) {
                 }
             } catch (e: Exception) {
                 Log.e("MediaScanner", "Failed to walk physical filesystem storage", e)
+            }
+
+            // Scan and self-heal SecureVault folder
+            try {
+                val secureDir = File(context.filesDir, "SecureVault")
+                if (secureDir.exists()) {
+                    val secureFiles = secureDir.listFiles()
+                    if (secureFiles != null) {
+                        for (file in secureFiles) {
+                            if (file.isFile && !file.name.equals(".nomedia", ignoreCase = true)) {
+                                val ext = file.extension.lowercase()
+                                val isVideo = ext == "mp4" || ext == "mkv" || ext == "webm" || ext == "avi" || ext == "3gp" || ext == "flv" || ext == "ts"
+                                val isAudio = ext == "mp3" || ext == "wav" || ext == "m4a" || ext == "ogg" || ext == "flac"
+                                if (isVideo || isAudio) {
+                                    val path = file.absolutePath
+                                    val size = file.length()
+                                    val dateModified = file.lastModified()
+                                    
+                                    var title = file.nameWithoutExtension
+                                    val underscoreIdx = title.indexOf('_')
+                                    if (underscoreIdx != -1) {
+                                        val prefix = title.substring(0, underscoreIdx)
+                                        if (prefix.all { it.isDigit() }) {
+                                            title = title.substring(underscoreIdx + 1)
+                                        }
+                                    }
+                                    
+                                    filesystemFiles.add(
+                                        MediaFile(
+                                            path = path,
+                                            title = title,
+                                            duration = 0L,
+                                            size = size,
+                                            dateModified = dateModified,
+                                            isVideo = isVideo,
+                                            isPrivate = true
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MediaScanner", "Failed to scan and self-heal secure vault files", e)
             }
             Log.d("MediaScanner", "Found ${filesystemFiles.size} items via direct filesystem crawl.")
 
@@ -75,7 +120,14 @@ class MediaScanner(private val mediaDao: MediaDao) {
             // Detect and clear cached records of files that have been physically deleted by the user
             val toDeletePaths = existingFiles.filter { dbFile ->
                 // Clean up local paths that do not exist physically on storage anymore
-                !dbFile.path.startsWith("http") && !scannedPathsSet.contains(dbFile.path)
+                if (dbFile.path.startsWith("http")) {
+                    false
+                } else if (dbFile.isPrivate || dbFile.path.contains("SecureVault")) {
+                    // Only delete from DB if the physical private file doesn't exist anymore
+                    !File(dbFile.path).exists()
+                } else {
+                    !scannedPathsSet.contains(dbFile.path)
+                }
             }.map { it.path }
 
             // Apply DB sync transactions
@@ -247,6 +299,7 @@ class MediaScanner(private val mediaDao: MediaDao) {
             mediaDao.clearFolders()
             
             for ((dirPath, files) in foldersGrouped) {
+                if (dirPath.contains("SecureVault")) continue
                 val maxModified = files.maxOfOrNull { it.dateModified } ?: System.currentTimeMillis()
                 mediaDao.insertFolder(
                     ScannedFolder(

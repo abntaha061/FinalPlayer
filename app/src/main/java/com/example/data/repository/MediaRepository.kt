@@ -5,6 +5,7 @@ import com.example.data.local.MediaDatabase
 import com.example.data.local.MediaScanner
 import com.example.data.local.entities.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 class MediaRepository(private val context: Context) {
@@ -40,71 +41,236 @@ class MediaRepository(private val context: Context) {
         mediaDao.updateFavorite(id, isFavorite)
     }
 
-    suspend fun setPrivateStatus(id: Long, isPrivate: Boolean) {
+    private fun getContentUriForPath(context: Context, path: String): android.net.Uri? {
+        val file = File(path)
+        val volumeName = "external"
+        val isAudio = path.lowercase().endsWith(".mp3") || path.lowercase().endsWith(".wav") || path.lowercase().endsWith(".m4a") || path.lowercase().endsWith(".ogg") || path.lowercase().endsWith(".flac")
+        val collection = if (isAudio) {
+            android.provider.MediaStore.Audio.Media.getContentUri(volumeName)
+        } else {
+            android.provider.MediaStore.Video.Media.getContentUri(volumeName)
+        }
+        
+        val projection = arrayOf(android.provider.MediaStore.MediaColumns._ID)
+        
+        // Strategy 1: Multi-path variant exact matching
+        val pathsToTry = mutableListOf(path)
         try {
-            val mediaFile = mediaDao.getMediaFileById(id) ?: return
-            val secureDir = File(context.filesDir, "SecureVault")
-            if (!secureDir.exists()) {
-                secureDir.mkdirs()
-                try {
-                    File(secureDir, ".nomedia").createNewFile()
-                } catch (e: Exception) {
-                    e.printStackTrace()
+            val cp = file.canonicalPath
+            if (cp != path) pathsToTry.add(cp)
+        } catch (e: Exception) {}
+        try {
+            val ap = file.absolutePath
+            if (ap != path && !pathsToTry.contains(ap)) pathsToTry.add(ap)
+        } catch (e: Exception) {}
+
+        for (p in pathsToTry) {
+            val selection = "${android.provider.MediaStore.MediaColumns.DATA} = ?"
+            val selectionArgs = arrayOf(p)
+            try {
+                context.contentResolver.query(collection, projection, selection, selectionArgs, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val id = cursor.getLong(cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns._ID))
+                        return android.content.ContentUris.withAppendedId(collection, id)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // Strategy 2: Fallback query by display name and file size (highly robust backup)
+        if (file.exists()) {
+            val selection = "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${android.provider.MediaStore.MediaColumns.SIZE} = ?"
+            val selectionArgs = arrayOf(file.name, file.length().toString())
+            try {
+                context.contentResolver.query(collection, projection, selection, selectionArgs, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val id = cursor.getLong(cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns._ID))
+                        return android.content.ContentUris.withAppendedId(collection, id)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
+        return null
+    }
+
+    private fun copyFileViaContentResolver(context: Context, srcUri: android.net.Uri, destFile: File): Boolean {
+        try {
+            context.contentResolver.openInputStream(srcUri)?.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
                 }
             }
+            return destFile.exists() && destFile.length() > 0
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return false
+    }
 
-            if (isPrivate) {
-                val originalFile = File(mediaFile.path)
-                if (originalFile.exists() && !originalFile.absolutePath.contains("SecureVault")) {
-                    val destFile = File(secureDir, "${mediaFile.id}_${originalFile.name}")
+    private fun deleteFileViaContentResolver(context: Context, path: String): Boolean {
+        val uri = getContentUriForPath(context, path) ?: return false
+        try {
+            val deletedRows = context.contentResolver.delete(uri, null, null)
+            return deletedRows > 0
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return false
+    }
+
+    private fun copyFileToExternalStorage(context: Context, srcFile: File, originalPath: String): String? {
+        val file = File(originalPath)
+        val resolver = context.contentResolver
+        val isVideo = originalPath.lowercase().endsWith(".mp4") || originalPath.lowercase().endsWith(".mkv") || originalPath.lowercase().endsWith(".webm") || originalPath.lowercase().endsWith(".avi") || originalPath.lowercase().endsWith(".3gp") || originalPath.lowercase().endsWith(".flv") || originalPath.lowercase().endsWith(".ts")
+        
+        val contentValues = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, if (isVideo) "video/*" else "audio/*")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val relPath = if (isVideo) "Movies/FinalPlayerVault" else "Music/FinalPlayerVault"
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, relPath)
+            }
+        }
+        
+        val collection = if (isVideo) {
+            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        } else {
+            android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        }
+        
+        try {
+            val uri = resolver.insert(collection, contentValues) ?: return null
+            resolver.openOutputStream(uri)?.use { output ->
+                srcFile.inputStream().use { input ->
+                    input.copyTo(output)
+                }
+            }
+            val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
+            resolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    return cursor.getString(cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA))
+                }
+            }
+            return null
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
+    }
+
+    suspend fun setPrivateStatus(id: Long, isPrivate: Boolean) {
+        scanner.scanMutex.withLock {
+            try {
+                val mediaFile = mediaDao.getMediaFileById(id) ?: return
+                val secureDir = File(context.filesDir, "SecureVault")
+                if (!secureDir.exists()) {
+                    secureDir.mkdirs()
                     try {
-                        originalFile.copyTo(destFile, overwrite = true)
-                        originalFile.delete()
-                        
+                        File(secureDir, ".nomedia").createNewFile()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
+                if (isPrivate) {
+                    val originalFile = File(mediaFile.path)
+                    val destFile = File(secureDir, "${mediaFile.id}_${originalFile.name}")
+                    var copiedSuccessfully = false
+                    var deletedSuccessfully = false
+                    
+                    // Method 1: Try direct File API
+                    if (originalFile.exists() && !originalFile.absolutePath.contains("SecureVault")) {
+                        try {
+                            originalFile.copyTo(destFile, overwrite = true)
+                            copiedSuccessfully = destFile.exists() && destFile.length() > 0
+                            if (copiedSuccessfully) {
+                                deletedSuccessfully = originalFile.delete()
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    
+                    // Method 2: Fallback to ContentResolver (essential for Scoped Storage / missing raw path write permission)
+                    if (!copiedSuccessfully && !originalFile.absolutePath.contains("SecureVault")) {
+                        try {
+                            val srcUri = getContentUriForPath(context, mediaFile.path)
+                            if (srcUri != null) {
+                                copiedSuccessfully = copyFileViaContentResolver(context, srcUri, destFile)
+                                if (copiedSuccessfully) {
+                                    deletedSuccessfully = deleteFileViaContentResolver(context, mediaFile.path)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    
+                    if (copiedSuccessfully) {
                         // Save original path in preferences
                         val prefs = context.getSharedPreferences("secure_original_paths", Context.MODE_PRIVATE)
                         prefs.edit().putString("path_${mediaFile.id}", mediaFile.path).apply()
                         
-                        // Update in DB
+                        // Update in DB with the exact local private vault path
                         mediaDao.updatePathAndPrivateStatus(id, destFile.absolutePath, true)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        // Fallback: at least update the private status in DB
+                    } else {
+                        // Fallback: at least flag it in the DB
                         mediaDao.updatePrivateStatus(id, true)
                     }
                 } else {
-                    mediaDao.updatePrivateStatus(id, true)
-                }
-            } else {
-                val currentFile = File(mediaFile.path)
-                val prefs = context.getSharedPreferences("secure_original_paths", Context.MODE_PRIVATE)
-                val originalPath = prefs.getString("path_${mediaFile.id}", null)
-                if (originalPath != null) {
-                    val destFile = File(originalPath)
-                    if (currentFile.exists() && currentFile.absolutePath.contains("SecureVault")) {
-                        try {
-                            destFile.parentFile?.mkdirs()
-                            currentFile.copyTo(destFile, overwrite = true)
-                            currentFile.delete()
-                            
+                    val currentFile = File(mediaFile.path)
+                    val prefs = context.getSharedPreferences("secure_original_paths", Context.MODE_PRIVATE)
+                    val originalPath = prefs.getString("path_${mediaFile.id}", null)
+                    if (originalPath != null) {
+                        val destFile = File(originalPath)
+                        var restoredSuccessfully = false
+                        var restoredPath = originalPath
+                        
+                        // Method 1: Try direct File API
+                        if (currentFile.exists() && currentFile.absolutePath.contains("SecureVault")) {
+                            try {
+                                destFile.parentFile?.mkdirs()
+                                currentFile.copyTo(destFile, overwrite = true)
+                                restoredSuccessfully = destFile.exists() && destFile.length() > 0
+                                if (restoredSuccessfully) {
+                                    currentFile.delete()
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                        
+                        // Method 2: Fallback to ContentResolver MediaStore Insertion
+                        if (!restoredSuccessfully && currentFile.exists() && currentFile.absolutePath.contains("SecureVault")) {
+                            val insertedPath = copyFileToExternalStorage(context, currentFile, originalPath)
+                            if (insertedPath != null) {
+                                restoredSuccessfully = true
+                                restoredPath = insertedPath
+                                currentFile.delete()
+                            }
+                        }
+                        
+                        if (restoredSuccessfully) {
+                            mediaDao.updatePathAndPrivateStatus(id, restoredPath, false)
+                            prefs.edit().remove("path_${mediaFile.id}").apply()
+                        } else {
                             mediaDao.updatePathAndPrivateStatus(id, originalPath, false)
                             prefs.edit().remove("path_${mediaFile.id}").apply()
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            mediaDao.updatePrivateStatus(id, false)
                         }
                     } else {
-                        mediaDao.updatePathAndPrivateStatus(id, originalPath, false)
-                        prefs.edit().remove("path_${mediaFile.id}").apply()
+                        // Fallback if original path is somehow unknown
+                        mediaDao.updatePrivateStatus(id, false)
                     }
-                } else {
-                    // Fallback if original path is somehow unknown
-                    mediaDao.updatePrivateStatus(id, false)
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                mediaDao.updatePrivateStatus(id, isPrivate)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            mediaDao.updatePrivateStatus(id, isPrivate)
         }
     }
 
