@@ -233,10 +233,10 @@ fun SettingsScreen(
                     // General Title Section
                     Text(
                         "خصائص التشغيل (Playback Configuration)",
-                        fontSize = 15.sp,
+                        fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 12.dp)
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
 
                     // 1. Playback Speed Clickable Row
@@ -259,15 +259,15 @@ fun SettingsScreen(
                         onClick = { showAspectRatioDialog = true }
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // --- THEME & CUSTOMIZATION SECTION ---
                     Text(
                         "مظهر التطبيق وتخصيص الألوان (App Theme & Settings)",
-                        fontSize = 15.sp,
+                        fontSize = 13.sp,
                         color = currentAccentColor,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 12.dp)
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
 
                     // 3. Theme Mode Selection Card/Row
@@ -1421,63 +1421,66 @@ fun SettingsOptionRow(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp)
-            .frostedGlass(isDark = isDark, shape = RoundedCornerShape(12.dp))
+            .padding(vertical = 4.dp)
+            .frostedGlass(isDark = isDark, shape = RoundedCornerShape(10.dp))
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(10.dp)
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .clip(CircleShape)
-                    .background(accentColor.copy(alpha = 0.12f)),
+                    .background(accentColor.copy(alpha = 0.10f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = accentColor,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.5.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(1.dp))
                 Text(
                     text = subtitle,
-                    fontSize = 10.5.sp,
+                    fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.height(3.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(accentColor.copy(alpha = 0.12f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = currentValue,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = accentColor
+                    )
+                }
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = currentValue,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = accentColor
-                )
-                Icon(
-                    imageVector = Icons.Default.PlayArrow, // beautiful small arrow direction
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.size(14.dp)
-                )
-            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                modifier = Modifier.size(12.dp)
+            )
         }
     }
 }

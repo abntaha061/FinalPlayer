@@ -513,6 +513,15 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     fun getAudioSortOption(): Int = sharedPrefs.getInt("audio_sort_option", 0)
     fun saveAudioSortOption(option: Int) = sharedPrefs.edit().putInt("audio_sort_option", option).apply()
 
+    fun getViewContentMode(): String = sharedPrefs.getString("video_view_content_mode", "FOLDERS") ?: "FOLDERS"
+    fun saveViewContentMode(mode: String) = sharedPrefs.edit().putString("video_view_content_mode", mode).apply()
+
+    fun getVideoSortOption(): String = sharedPrefs.getString("video_sort_option", "TITLE") ?: "TITLE"
+    fun saveVideoSortOption(option: String) = sharedPrefs.edit().putString("video_sort_option", option).apply()
+
+    fun getVideoSortDirection(): String = sharedPrefs.getString("video_sort_direction", "DESCENDING") ?: "DESCENDING"
+    fun saveVideoSortDirection(direction: String) = sharedPrefs.edit().putString("video_sort_direction", direction).apply()
+
     fun getThemeColorHex(): String = sharedPrefs.getString("app_theme_color_hex", "#FFD500F9") ?: "#FFD500F9"
     fun saveThemeColorHex(hex: String) {
         sharedPrefs.edit().putString("app_theme_color_hex", hex).apply()

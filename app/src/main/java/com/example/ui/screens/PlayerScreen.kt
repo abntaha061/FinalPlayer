@@ -119,6 +119,82 @@ fun PlayerScreen(
     val currentAccentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
     val currentMediaFile = remember(filePath) { File(filePath) }
 
+    val fileName = remember(filePath) {
+        if (filePath.startsWith("content://")) {
+            var name: String? = null
+            try {
+                context.contentResolver.query(Uri.parse(filePath), null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1 && cursor.moveToFirst()) {
+                        name = cursor.getString(nameIndex)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            name ?: "ملف خارجي"
+        } else if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+            try {
+                Uri.parse(filePath).lastPathSegment ?: "رابط خارجي"
+            } catch (e: Exception) {
+                "رابط خارجي"
+            }
+        } else {
+            File(filePath).name
+        }
+    }
+
+    val fileNameWithoutExtension = remember(fileName) {
+        if (fileName.contains('.')) {
+            fileName.substringBeforeLast('.')
+        } else {
+            fileName
+        }
+    }
+
+    val fileSizeFormatted = remember(filePath) {
+        if (filePath.startsWith("content://")) {
+            var size: Long = 0
+            try {
+                context.contentResolver.query(Uri.parse(filePath), null, null, null, null)?.use { cursor ->
+                    val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                    if (sizeIndex != -1 && cursor.moveToFirst()) {
+                        size = cursor.getLong(sizeIndex)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            if (size > 0) "%.2f MB".format(size / (1024f * 1024f)) else "غير معروف"
+        } else if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+            "بث مباشر / رابط"
+        } else {
+            "%.2f MB".format(File(filePath).length() / (1024f * 1024f))
+        }
+    }
+
+    val fileExtension = remember(filePath) {
+        if (filePath.startsWith("content://")) {
+            try {
+                context.contentResolver.getType(Uri.parse(filePath))?.substringAfterLast('/')?.uppercase() ?: "فيديو"
+            } catch (e: Exception) {
+                "فيديو"
+            }
+        } else if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+            "رابط / بث"
+        } else {
+            File(filePath).extension.uppercase()
+        }
+    }
+
+    val absolutePathDisplay = remember(filePath) {
+        if (filePath.startsWith("content://") || filePath.startsWith("http://") || filePath.startsWith("https://")) {
+            filePath
+        } else {
+            File(filePath).absolutePath
+        }
+    }
+
     LaunchedEffect(filePath) {
         viewModel.markAsPlayed(filePath)
     }
@@ -458,6 +534,27 @@ fun PlayerScreen(
 
     // Read settings or setup scale mode
     var scaleMode by remember { mutableStateOf(viewModel.getDefaultScaleMode()) }
+    var showScaleIndicator by remember { mutableStateOf(false) }
+    var scaleIndicatorText by remember { mutableStateOf("") }
+    var isFirstScaleLoad by remember { mutableStateOf(true) }
+
+    LaunchedEffect(scaleMode) {
+        if (isFirstScaleLoad) {
+            isFirstScaleLoad = false
+            return@LaunchedEffect
+        }
+        val arabicMode = when (scaleMode) {
+            "FIT" -> "ملائمة"
+            "FILL" -> "100%"
+            "STRETCH" -> "تمدد"
+            "CROP" -> "القص"
+            else -> "ملائمة"
+        }
+        scaleIndicatorText = arabicMode
+        showScaleIndicator = true
+        kotlinx.coroutines.delay(1200)
+        showScaleIndicator = false
+    }
 
     val mainActivity = context as? com.example.MainActivity
     var videoSourceRect by remember { mutableStateOf<android.graphics.Rect?>(null) }
@@ -493,7 +590,9 @@ fun PlayerScreen(
     var sleepTimerActive by remember { mutableStateOf(false) }
     var sleepTimerRemainingSecs by remember { mutableStateOf(0) }
     var sleepTimerInitialMinutes by remember { mutableStateOf(0) }
+    var isSleepTimerEndOfVideo by remember { mutableStateOf(false) }
     var isSleepTimerDialogOpen by remember { mutableStateOf(false) }
+    var isVideoDetailsDialogOpen by remember { mutableStateOf(false) }
 
     var pointA by remember { mutableStateOf<Long?>(null) }
     var pointB by remember { mutableStateOf<Long?>(null) }
@@ -673,16 +772,32 @@ fun PlayerScreen(
     }
 
     // Sleep timer countdown thread
-    LaunchedEffect(sleepTimerActive) {
+    LaunchedEffect(sleepTimerActive, isSleepTimerEndOfVideo) {
         if (sleepTimerActive) {
-            while (sleepTimerRemainingSecs > 0 && sleepTimerActive) {
+            while (sleepTimerActive) {
                 delay(1000)
-                if (sleepTimerRemainingSecs > 0) {
-                    sleepTimerRemainingSecs--
+                if (isSleepTimerEndOfVideo) {
+                    val duration = player.duration
+                    if (duration > 0) {
+                        val remaining = ((duration - player.currentPosition) / 1000).toInt().coerceAtLeast(0)
+                        sleepTimerRemainingSecs = remaining
+                        if (remaining <= 0 || player.playbackState == Player.STATE_ENDED) {
+                            player.pause()
+                            sleepTimerActive = false
+                            isSleepTimerEndOfVideo = false
+                            break
+                        }
+                    } else {
+                        sleepTimerRemainingSecs = 0
+                    }
                 } else {
-                    player.pause()
-                    sleepTimerActive = false
-                    break
+                    if (sleepTimerRemainingSecs > 0) {
+                        sleepTimerRemainingSecs--
+                    } else {
+                        player.pause()
+                        sleepTimerActive = false
+                        break
+                    }
                 }
             }
         }
@@ -839,6 +954,8 @@ fun PlayerScreen(
             isFilesListVisible = false
         } else if (isQuickSettingsOpen) {
             isQuickSettingsOpen = false
+        } else if (isVideoDetailsDialogOpen) {
+            isVideoDetailsDialogOpen = false
         } else {
             onBack()
         }
@@ -876,6 +993,7 @@ fun PlayerScreen(
     val isAnyPopupOpen = isQuickSettingsOpen ||
             isDecoderDialogOpen ||
             isSleepTimerDialogOpen ||
+            isVideoDetailsDialogOpen ||
             isEqualizerOpen ||
             isMoreOptionsSheetOpen ||
             isAudioTracksDialogOpen ||
@@ -1325,52 +1443,80 @@ fun PlayerScreen(
             }
         }
 
-        // AudioManager / Volume Gesture visual slider cards (center-right card)
-        if (showVolumeIndicator) {
-            val volumePercentage = (draggedVolRatio * 100).toInt()
+        // 🔊 Elegant Volume Gesture visual indicator (top center, 0 to 15, boost 15 to 30)
+        AnimatedVisibility(
+            visible = showVolumeIndicator,
+            enter = fadeIn() + scaleIn(initialScale = 0.85f),
+            exit = fadeOut() + scaleOut(targetScale = 0.85f),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 28.dp)
+        ) {
+            val volumeValue = if (draggedVolRatio <= 1.0f) {
+                (draggedVolRatio * 15f).toInt().coerceIn(0, 15)
+            } else {
+                (15 + (draggedVolRatio - 1.0f) * 15f).toInt().coerceIn(15, 30)
+            }
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 48.dp)
-                    .background(Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(12.dp))
-                    .padding(vertical = 16.dp, horizontal = 24.dp),
+                    .background(Color.Black.copy(alpha = 0.65f), shape = RoundedCornerShape(50))
+                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.25f), shape = RoundedCornerShape(50))
+                    .padding(vertical = 6.dp, horizontal = 18.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.VolumeUp,
                         contentDescription = "Volume",
                         tint = Color(0xFF00C8FF),
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("الصوت", color = Color.LightGray, fontSize = 12.sp)
-                    Text("$volumePercentage%", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(
+                        text = "$volumeValue",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
                 }
             }
         }
 
-        // Brightness Gesture visual slider cards (center-left card)
-        if (showBrightnessIndicator) {
-            val brightnessPercentage = (draggedBrightness * 100).toInt()
+        // ☀️ Elegant Brightness Gesture visual indicator (top center, 0 to 15)
+        AnimatedVisibility(
+            visible = showBrightnessIndicator,
+            enter = fadeIn() + scaleIn(initialScale = 0.85f),
+            exit = fadeOut() + scaleOut(targetScale = 0.85f),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 28.dp)
+        ) {
+            val brightnessValue = (draggedBrightness * 15f).toInt().coerceIn(0, 15)
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 48.dp)
-                    .background(Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(12.dp))
-                    .padding(vertical = 16.dp, horizontal = 24.dp),
+                    .background(Color.Black.copy(alpha = 0.65f), shape = RoundedCornerShape(50))
+                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.25f), shape = RoundedCornerShape(50))
+                    .padding(vertical = 6.dp, horizontal = 18.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Brightness5,
                         contentDescription = "Brightness",
                         tint = Color(0xFFFFD54F),
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("السطوع", color = Color.LightGray, fontSize = 12.sp)
-                    Text("$brightnessPercentage%", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(
+                        text = "$brightnessValue",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
                 }
             }
         }
@@ -1401,6 +1547,38 @@ fun PlayerScreen(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp
                 )
+            }
+        }
+
+        // ⬛ Sizing/Scaling Mode Center Indicator (MX Player style)
+        AnimatedVisibility(
+            visible = showScaleIndicator,
+            enter = fadeIn() + scaleIn(initialScale = 0.8f),
+            exit = fadeOut() + scaleOut(targetScale = 0.8f),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Box(
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.8f), shape = RoundedCornerShape(12.dp))
+                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.15f), shape = RoundedCornerShape(12.dp))
+                    .padding(vertical = 12.dp, horizontal = 24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.AspectRatio,
+                        contentDescription = null,
+                        tint = Color(0xFF00C8FF),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = scaleIndicatorText,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
             }
         }
 
@@ -1576,13 +1754,48 @@ fun PlayerScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = currentMediaFile.nameWithoutExtension,
+                                text = fileNameWithoutExtension,
                                 color = Color.White,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                        }
+
+                        // SLEEP TIMER BADGE / PILL
+                        if (sleepTimerActive) {
+                            val sleepTimerText = if (isSleepTimerEndOfVideo) {
+                                "نهاية الفيديو"
+                            } else {
+                                val mins = sleepTimerRemainingSecs / 60
+                                val secs = sleepTimerRemainingSecs % 60
+                                "%02d:%02d".format(mins, secs)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .border(1.dp, Color(0xFFFF5252).copy(alpha = 0.8f), RoundedCornerShape(4.dp))
+                                    .background(Color(0xFFFF5252).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                    .clickable { isSleepTimerDialogOpen = true }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.AccessTime,
+                                        contentDescription = "Sleep Timer",
+                                        tint = Color(0xFFFF5252),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "⏰ $sleepTimerText",
+                                        color = Color(0xFFFF5252),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
                         }
 
                         // DECODER CHIP (HW / HW+ / SW)
@@ -1647,25 +1860,20 @@ fun PlayerScreen(
                             )
                         }
 
-                        // PIP WINDOW BUTTON
+                        // ASPECT RATIO CYCLING BUTTON (MX PLAYER STYLE)
                         IconButton(
                             onClick = {
-                                try {
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                        activity?.enterPictureInPictureMode(
-                                            android.app.PictureInPictureParams.Builder().build()
-                                        )
-                                    } else {
-                                        activity?.enterPictureInPictureMode()
-                                    }
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "النافذة العائمة غير مدعومة حالياً", Toast.LENGTH_SHORT).show()
+                                scaleMode = when (scaleMode) {
+                                    "FIT" -> "FILL"
+                                    "FILL" -> "STRETCH"
+                                    "STRETCH" -> "CROP"
+                                    else -> "FIT"
                                 }
                             }
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Tv,
-                                contentDescription = "نافذة عائمة",
+                                imageVector = Icons.Default.AspectRatio,
+                                contentDescription = "أبعاد الشاشة",
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -2414,11 +2622,9 @@ fun PlayerScreen(
                     isQuickSettingsOpen = true
                     isMoreOptionsSheetOpen = false
                 },
-                Pair("🔖", "إشارة مرجعية") to {
-                    val bookPos = player.currentPosition
-                    val totalSec = bookPos / 1000
-                    val curStr = "%02d:%02d:%02d".format(totalSec / 3600, (totalSec % 3600) / 60, totalSec % 60)
-                    Toast.makeText(context, "تم حفظ الإشارة المرجعية عند $curStr", Toast.LENGTH_SHORT).show()
+                Pair("⏰", "مؤقت النوم") to {
+                    isSleepTimerDialogOpen = true
+                    isMoreOptionsSheetOpen = false
                 },
                 Pair("✂️", "قص الفيديو") to {
                     Toast.makeText(context, "ميزة قص الفيديو مخصصة للأجهزة الكبيرة", Toast.LENGTH_SHORT).show()
@@ -2430,35 +2636,8 @@ fun PlayerScreen(
                     Toast.makeText(context, "محدد قوائم التشغيل متاح", Toast.LENGTH_SHORT).show()
                 },
                 Pair("ℹ️", "معلومات") to {
-                    val durationSec = player.duration / 1000
-                    val infoStr = "الملف: ${currentMediaFile.name}\nالدقة: $videoWidth x $videoHeight\nالحجم: %.2f MB\nالمدة: %02d:%02d:%02d".format(
-                        currentMediaFile.length() / (1024f * 1024f),
-                        durationSec / 3600,
-                        (durationSec % 3600) / 60,
-                        durationSec % 60
-                    )
-                    Toast.makeText(context, infoStr, Toast.LENGTH_LONG).show()
-                },
-                Pair("🔗", "مشاركة") to {
-                    try {
-                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "video/*"
-                            putExtra(android.content.Intent.EXTRA_STREAM, Uri.fromFile(currentMediaFile))
-                        }
-                        context.startActivity(android.content.Intent.createChooser(shareIntent, "مشاركة الفيديو"))
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "جاري مشاركة الفيديو", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                Pair("🌐", "Cast") to {
-                    Toast.makeText(context, "البحث عن شاشات ذكية نشطة (Cast)...", Toast.LENGTH_SHORT).show()
-                },
-                Pair("💡", "المساعد") to {
-                    isTutorialOverlayVisible = true
+                    isVideoDetailsDialogOpen = true
                     isMoreOptionsSheetOpen = false
-                },
-                Pair(">", "المزيد") to {
-                    Toast.makeText(context, "المزيد من الخيارات متاحة في الإعدادات العامة", Toast.LENGTH_SHORT).show()
                 }
             )
 
@@ -2507,6 +2686,116 @@ fun PlayerScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("إغلاق", color = Color.White, fontSize = 13.sp)
+            }
+        }
+
+        // -----------------------------------------------------
+        // VIDEO DETAILS DIALOG
+        // -----------------------------------------------------
+        if (isVideoDetailsDialogOpen) {
+            val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+            val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { isVideoDetailsDialogOpen = false }
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF1E1E22),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                    modifier = Modifier
+                        .width(if (isLandscape) 420.dp else 300.dp)
+                        .padding(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        // Header
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { isVideoDetailsDialogOpen = false }) {
+                                Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.LightGray)
+                            }
+                            Text(
+                                text = "تفاصيل الفيديو ℹ️",
+                                color = Color(0xFF00C8FF),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.End
+                            )
+                        }
+                        
+                        HorizontalDivider(
+                            color = Color(0xFF00C8FF).copy(alpha = 0.3f),
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                        
+                        // Detailed Information Items
+                        val durationSec = player.duration / 1000
+                        val formattedDuration = if (durationSec > 0) {
+                            "%02d:%02d:%02d".format(durationSec / 3600, (durationSec % 3600) / 60, durationSec % 60)
+                        } else {
+                            "غير معروف"
+                        }
+                        
+                        val detailsList = listOf(
+                            "اسم الملف" to fileName,
+                            "المسار الكامل" to absolutePathDisplay,
+                            "حجم الملف" to fileSizeFormatted,
+                            "المدة الزمنية" to formattedDuration,
+                            "أبعاد الفيديو" to "$videoWidth × $videoHeight",
+                            "صيغة الملف" to fileExtension
+                        )
+                        
+                        detailsList.forEach { (label, value) ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                horizontalAlignment = Alignment.End
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = Color.Gray,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.End
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = value,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.End,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                HorizontalDivider(
+                                    color = Color.White.copy(alpha = 0.08f),
+                                    thickness = 1.dp,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        Button(
+                            onClick = { isVideoDetailsDialogOpen = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8FF)),
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("تم", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+                }
             }
         }
 
@@ -2800,29 +3089,55 @@ fun PlayerScreen(
             Text("تحديد وقت إيقاف التشغيل التلقائي للفيديو الحالي:", color = Color.LightGray, fontSize = 12.sp)
             Spacer(modifier = Modifier.height(10.dp))
             
-            val timesList = listOf(5, 10, 15, 30, 60)
+            val timesList = listOf(
+                Pair(5, "5 دقائق"),
+                Pair(10, "10 دقائق"),
+                Pair(15, "15 دقيقة"),
+                Pair(20, "20 دقيقة"),
+                Pair(30, "30 دقيقة")
+            )
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                timesList.forEach { mins ->
+                timesList.forEach { (mins, label) ->
                     Button(
                         onClick = {
+                            isSleepTimerEndOfVideo = false
                             sleepTimerInitialMinutes = mins
                             sleepTimerRemainingSecs = mins * 60
                             sleepTimerActive = true
                             isSleepTimerDialogOpen = false
-                            gestureIndicatorText = "تم تفعيل مؤقت النوم: $mins دقيقة"
+                            gestureIndicatorText = "تم تفعيل مؤقت النوم: $label"
                             scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("$mins دقائق (Minutes)", color = Color.White, fontSize = 13.sp)
+                        Text(label, color = Color.White, fontSize = 13.sp)
                     }
+                }
+                
+                // نهاية الفيديو (End of video)
+                Button(
+                    onClick = {
+                        isSleepTimerEndOfVideo = true
+                        sleepTimerInitialMinutes = 0
+                        val remaining = ((player.duration - player.currentPosition) / 1000).toInt().coerceAtLeast(0)
+                        sleepTimerRemainingSecs = remaining
+                        sleepTimerActive = true
+                        isSleepTimerDialogOpen = false
+                        gestureIndicatorText = "تم تفعيل مؤقت النوم: نهاية الفيديو"
+                        scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8FF).copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("نهاية الفيديو (End of Video) 🎬", color = Color(0xFF00C8FF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
                 
                 if (sleepTimerActive) {
                     Button(
                         onClick = {
                             sleepTimerActive = false
+                            isSleepTimerEndOfVideo = false
                             sleepTimerRemainingSecs = 0
                             isSleepTimerDialogOpen = false
                             gestureIndicatorText = "مؤقت النوم: معطل"

@@ -121,9 +121,19 @@ fun HomeScreen(
     var selectedSubTabIndex by remember { mutableStateOf(0) } // 0 = Videos, 1 = Favorites/Playlists, 2 = Vault
 
     // Display & sorting configurations
-    var viewContentMode by rememberSaveable { mutableStateOf("FOLDERS") } // "GRID", "LIST", "FOLDERS", "FILES", "ALL_FOLDERS"
-    var sortOption by rememberSaveable { mutableStateOf("TITLE") } // "TITLE", "DATE", "SIZE", "DURATION", "PATH", "RESOLUTION"
-    var sortDirection by rememberSaveable { mutableStateOf("DESCENDING") } // "ASCENDING", "DESCENDING"
+    var viewContentMode by rememberSaveable { mutableStateOf(viewModel.getViewContentMode()) } // "GRID", "LIST", "FOLDERS", "FILES", "ALL_FOLDERS"
+    var sortOption by rememberSaveable { mutableStateOf(viewModel.getVideoSortOption()) } // "TITLE", "DATE", "SIZE", "DURATION", "PATH", "RESOLUTION"
+    var sortDirection by rememberSaveable { mutableStateOf(viewModel.getVideoSortDirection()) } // "ASCENDING", "DESCENDING"
+
+    LaunchedEffect(viewContentMode) {
+        viewModel.saveViewContentMode(viewContentMode)
+    }
+    LaunchedEffect(sortOption) {
+        viewModel.saveVideoSortOption(sortOption)
+    }
+    LaunchedEffect(sortDirection) {
+        viewModel.saveVideoSortDirection(sortDirection)
+    }
     var isOptionsSheetVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
@@ -365,7 +375,7 @@ fun HomeScreen(
                     NavigationBar(
                         containerColor = currentAccentColor.copy(alpha = 0.15f),
                         windowInsets = WindowInsets.navigationBars,
-                        modifier = Modifier.height(64.dp)
+                        modifier = Modifier.height(54.dp)
                     ) {
                         NavigationBarItem(
                             selected = false,
@@ -414,7 +424,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
                             .frostedGlass(isDark = isDark, shape = RoundedCornerShape(24.dp), opacity = if (isDark) 0.10f else 0.40f)
-                            .height(64.dp)
+                            .height(54.dp)
                     ) {
                         NavigationBarItem(
                             selected = selectedBottomTab == 0,
@@ -993,6 +1003,14 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         val isDesc = sortDirection == "DESCENDING"
+                        val descLabel = when (sortOption) {
+                            "TITLE" -> "من ي إلى أ ↓"
+                            "DATE", "LAST_PLAYED" -> "من الأحدث إلى الأقدم ↓"
+                            "DURATION" -> "من الأطول إلى الأقصر ↓"
+                            "SIZE" -> "من الأكبر إلى الأصغر ↓"
+                            "RESOLUTION" -> "من الأعلى إلى الأدنى ↓"
+                            else -> "تنازلي ↓"
+                        }
                         Button(
                             onClick = { sortDirection = "DESCENDING" },
                             colors = ButtonDefaults.buttonColors(
@@ -1002,10 +1020,18 @@ fun HomeScreen(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("الأجدد ↓", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(descLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
                         val isAsc = sortDirection == "ASCENDING"
+                        val ascLabel = when (sortOption) {
+                            "TITLE" -> "من أ إلى ي ↑"
+                            "DATE", "LAST_PLAYED" -> "من الأقدم إلى الأحدث ↑"
+                            "DURATION" -> "من الأقصر إلى الأطول ↑"
+                            "SIZE" -> "من الأصغر إلى الأكبر ↑"
+                            "RESOLUTION" -> "من الأدنى إلى الأعلى ↑"
+                            else -> "تصاعدي ↑"
+                        }
                         Button(
                             onClick = { sortDirection = "ASCENDING" },
                             colors = ButtonDefaults.buttonColors(
@@ -1015,7 +1041,7 @@ fun HomeScreen(
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("الأقدم ↑", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(ascLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -4514,7 +4540,7 @@ fun RedCircleIcon(
 ) {
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .size(32.dp)
             .background(
                 color = if (isSelected) themeColor else Color.Transparent,
                 shape = CircleShape
@@ -4530,7 +4556,7 @@ fun RedCircleIcon(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (isSelected) Color.White else Color.Gray,
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(16.dp)
         )
     }
 }

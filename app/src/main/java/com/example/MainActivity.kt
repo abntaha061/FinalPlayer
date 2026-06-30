@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleIncomingIntent(intent)
         setContent {
             val appThemeMode by viewModel.appThemeModeState.collectAsState()
             val isDark = when (appThemeMode) {
@@ -76,6 +77,22 @@ class MainActivity : ComponentActivity() {
             MyApplicationTheme(darkTheme = isDark) {
                 MainNavigationRoot(viewModel)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: android.content.Intent?) {
+        if (intent == null) return
+        val action = intent.action
+        val data: android.net.Uri? = intent.data
+        if (android.content.Intent.ACTION_VIEW == action && data != null) {
+            val uriString = data.toString()
+            viewModel.setActivePlayingVideoPath(uriString)
         }
     }
 
