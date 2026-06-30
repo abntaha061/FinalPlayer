@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
@@ -412,6 +413,18 @@ fun HomeScreen(
                             selected = false,
                             onClick = { isDeleteConfirmOpen = true },
                             icon = { Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color.Red) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent
+                            )
+                        )
+                        NavigationBarItem(
+                            selected = false,
+                            onClick = {
+                                viewModel.moveSelectedToVault(selectedPaths.toList()) {
+                                    selectedPaths.clear()
+                                }
+                            },
+                            icon = { Icon(Icons.Default.Lock, contentDescription = "قفل بالخزنة", tint = currentAccentColor) },
                             colors = NavigationBarItemDefaults.colors(
                                 indicatorColor = Color.Transparent
                             )
@@ -1661,6 +1674,7 @@ fun VideosAndFoldersTab(
         }
     }
     val context = LocalContext.current
+    val view = LocalView.current
     var videoToRename by remember { mutableStateOf<MediaFile?>(null) }
     var newNameText by remember { mutableStateOf("") }
     var videoToDelete by remember { mutableStateOf<MediaFile?>(null) }
@@ -1817,13 +1831,81 @@ fun VideosAndFoldersTab(
                 }
             } else {
                 item {
-                    Text(
-                        text = "المجلدات (${derivedFoldersList.size})",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "المجلدات (${derivedFoldersList.size})",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Music icon
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                        view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                    } catch (e: Exception) {}
+                                    onSelectedBottomTab(1)
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MusicNote,
+                                    contentDescription = "الموسيقى",
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            // Vault icon
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                        view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                    } catch (e: Exception) {}
+                                    onSelectedBottomTab(0)
+                                    onSelectedSubTabIndex(2)
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "الخزنة",
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            // Settings icon
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                        view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                    } catch (e: Exception) {}
+                                    onSelectedBottomTab(2)
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "الإعدادات",
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
                 }
                 items(derivedFoldersList, key = { "folder_${it.folderPath}" }) { folder ->
                     val isDark = androidx.compose.foundation.isSystemInDarkTheme()
@@ -1840,6 +1922,10 @@ fun VideosAndFoldersTab(
                                 .frostedGlass(isDark = isDark, shape = RoundedCornerShape(14.dp), drawBorder = false)
                                 .combinedClickable(
                                     onClick = {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                            view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                        } catch (e: Exception) {}
                                         if (selectedPaths.isNotEmpty()) {
                                             if (selectedPaths.contains(folder.folderPath)) {
                                                 selectedPaths.remove(folder.folderPath)
@@ -1851,6 +1937,10 @@ fun VideosAndFoldersTab(
                                         }
                                     },
                                     onLongClick = {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                                            view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                        } catch (e: Exception) {}
                                         if (selectedPaths.contains(folder.folderPath)) {
                                             selectedPaths.remove(folder.folderPath)
                                         } else {
@@ -3019,14 +3109,27 @@ fun VideoGridItem(
     }
 
     val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val view = LocalView.current
 
     Card(
         modifier = modifier
             .padding(vertical = 6.dp)
             .frostedGlass(isDark = isDark, shape = RoundedCornerShape(12.dp), drawBorder = false)
             .combinedClickable(
-                onClick = onClick,
-                onLongClick = { onLongClick?.invoke() }
+                onClick = {
+                    try {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                    } catch (e: Exception) {}
+                    onClick()
+                },
+                onLongClick = {
+                    try {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                        view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                    } catch (e: Exception) {}
+                    onLongClick?.invoke()
+                }
             ),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
@@ -3353,6 +3456,7 @@ fun VideoListItem(
     showPath: Boolean
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val isNewVideo = remember(video.dateModified, video.isNew) {
         val currentTimeMs = System.currentTimeMillis()
         val threeDaysInMs = 3 * 24 * 60 * 60 * 1000L
@@ -3364,8 +3468,20 @@ fun VideoListItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick
+                    onClick = {
+                        try {
+                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                            view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                        } catch (e: Exception) {}
+                        onClick()
+                    },
+                    onLongClick = {
+                        try {
+                            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                            view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                        } catch (e: Exception) {}
+                        onLongClick()
+                    }
                 )
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -3719,6 +3835,7 @@ fun MusicPlayerTab(
     onPlayFile: (String) -> Unit,
     viewModel: MediaViewModel
 ) {
+    val view = LocalView.current
     var isSortMenuVisible by remember { mutableStateOf(false) }
     var sortByOption by remember { mutableStateOf(viewModel.getAudioSortOption()) } // Persisted sort options: 0 = A-Z, 1 = Z-A, 2 = Newest, 3 = Oldest
 
@@ -3811,7 +3928,13 @@ fun MusicPlayerTab(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .frostedGlass(isDark = isDark, shape = RoundedCornerShape(14.dp), drawBorder = false)
-                                    .clickable { onPlayFile(track.path) }
+                                    .clickable {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                            view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                        } catch (e: Exception) {}
+                                        onPlayFile(track.path)
+                                    }
                                     .padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -4050,6 +4173,7 @@ fun PlaylistsAndFavoritesTab(
     onCreatePlaylist: () -> Unit,
     viewModel: MediaViewModel
 ) {
+    val view = LocalView.current
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -4127,7 +4251,13 @@ fun PlaylistsAndFavoritesTab(
                         .padding(vertical = 5.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                        .clickable { onPlayFile(favorite.path) }
+                        .clickable {
+                            try {
+                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                            } catch (e: Exception) {}
+                            onPlayFile(favorite.path)
+                        }
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -4216,6 +4346,7 @@ fun PrivateVaultTab(
     viewModel: MediaViewModel
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val hasPasscode = remember { viewModel.getPasscode() != null }
 
     Box(
@@ -4318,7 +4449,13 @@ fun PrivateVaultTab(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onPlayFile(target.path) },
+                                    .clickable {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                            view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                        } catch (e: Exception) {}
+                                        onPlayFile(target.path)
+                                    },
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
                             ) {
                                 Row(
@@ -4566,6 +4703,7 @@ fun FolderPickerDialog(
     onDismiss: () -> Unit,
     onFolderSelected: (String) -> Unit
 ) {
+    val view = LocalView.current
     var currentDir by remember { mutableStateOf(java.io.File("/storage/emulated/0")) }
     val directories = remember(currentDir) {
         try {
@@ -4646,7 +4784,13 @@ fun FolderPickerDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { currentDir = dir }
+                                    .clickable {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                            view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                        } catch (e: Exception) {}
+                                        currentDir = dir
+                                    }
                                     .padding(vertical = 12.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -4695,6 +4839,7 @@ fun MainVaultTabScreen(
     accentColor: Color,
     onBackToMainMenu: () -> Unit
 ) {
+    val view = LocalView.current
     val privateFiles by viewModel.privateFiles.collectAsState(initial = emptyList())
     val isPrivateLocked by viewModel.isPrivateFolderLocked.collectAsState()
     
@@ -5112,7 +5257,15 @@ fun MainVaultTabScreen(
                                 val sizeMb = file.size / (1024f * 1024f)
 
                                 Card(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            try {
+                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                                view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                            } catch (e: Exception) {}
+                                            onPlayFile(file.path)
+                                        },
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
                                 ) {
                                     Row(

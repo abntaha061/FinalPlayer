@@ -717,4 +717,22 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    fun moveSelectedToVault(paths: List<String>, onFinished: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = com.example.data.local.MediaDatabase.getDatabase(context).mediaDao()
+            val allMedia = dao.getAllMediaFilesFlow().first()
+            paths.forEach { path ->
+                allMedia.forEach { media ->
+                    if (media.path == path || media.path.startsWith(path + File.separator)) {
+                        repository.setPrivateStatus(media.id, true)
+                    }
+                }
+            }
+            withContext(Dispatchers.Main) {
+                onFinished()
+                launchIncrementalScan()
+            }
+        }
+    }
 }
