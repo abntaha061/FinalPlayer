@@ -64,6 +64,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.isActive
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1688,75 +1689,84 @@ fun VideosAndFoldersTab(
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
     val accentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
 
-    val folderStatsMap = remember(videoList) {
-        val statsMap = mutableMapOf<String, FolderStats>()
+    val videosByFolder = remember(videoList) {
         videoList.groupBy { video ->
             val path = video.path
             val lastSlash = path.lastIndexOf('/')
             if (lastSlash > 0) path.substring(0, lastSlash) else ""
-        }.forEach { (parentFolderPath, list) ->
-            if (parentFolderPath.isNotEmpty()) {
-                val filesCount = list.size
-                val totalBytes = list.sumOf { it.size }
-                val newVideosCount = list.count { it.isNew }
-                statsMap[parentFolderPath] = FolderStats(filesCount, totalBytes, newVideosCount)
-            }
+        }.filterKeys { it.isNotEmpty() }
+    }
+
+    val folderStatsMap = remember(videosByFolder) {
+        val statsMap = mutableMapOf<String, FolderStats>()
+        videosByFolder.forEach { (parentFolderPath, list) ->
+            val filesCount = list.size
+            val totalBytes = list.sumOf { it.size }
+            val newVideosCount = list.count { it.isNew }
+            statsMap[parentFolderPath] = FolderStats(filesCount, totalBytes, newVideosCount)
         }
         statsMap
     }
 
     // Derive folders list if database list is empty as a failover
-    val derivedFoldersList = remember(videoList, scannedFolders, sortOption, sortDirection, historyList) {
-        val foldersWithVideos = videoList.mapNotNull { video ->
-            File(video.path).parentFile?.absolutePath
-        }.distinct()
+    val derivedFoldersList = remember(videosByFolder, scannedFolders, sortOption, sortDirection, historyList) {
+        val foldersWithVideos = videosByFolder.keys.toList()
 
         val rawFolders = if (scannedFolders.isNotEmpty()) {
             scannedFolders.filter { foldersWithVideos.contains(it.folderPath) }
         } else {
             foldersWithVideos.map { p ->
-                val count = videoList.count { File(it.path).parentFile?.absolutePath == p }
+                val list = videosByFolder[p] ?: emptyList()
                 ScannedFolder(
                     folderPath = p,
                     lastModifiedTs = System.currentTimeMillis(),
-                    fileCount = count,
+                    fileCount = list.size,
                     lastScannedAt = System.currentTimeMillis()
                 )
             }
         }
 
         val sortedFolders = when (sortOption) {
-            "TITLE" -> rawFolders.sortedBy { File(it.folderPath).name.lowercase() }
+            "TITLE" -> rawFolders.sortedBy { 
+                val lastSlash = it.folderPath.lastIndexOf('/')
+                if (lastSlash >= 0) it.folderPath.substring(lastSlash + 1).lowercase() else it.folderPath.lowercase()
+            }
             "DATE" -> rawFolders.sortedBy { folder ->
-                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                val folderVideos = videosByFolder[folder.folderPath] ?: emptyList()
                 folderVideos.maxOfOrNull { it.dateModified } ?: 0L
             }
             "SIZE" -> rawFolders.sortedBy { folder ->
-                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                val folderVideos = videosByFolder[folder.folderPath] ?: emptyList()
                 folderVideos.sumOf { it.size }
             }
             "DURATION" -> rawFolders.sortedBy { folder ->
-                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                val folderVideos = videosByFolder[folder.folderPath] ?: emptyList()
                 folderVideos.sumOf { it.duration }
             }
             "PATH" -> rawFolders.sortedBy { it.folderPath.lowercase() }
             "LAST_PLAYED" -> rawFolders.sortedBy { folder ->
-                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                val folderVideos = videosByFolder[folder.folderPath] ?: emptyList()
                 folderVideos.mapNotNull { v -> historyList.firstOrNull { it.mediaFilePath == v.path }?.viewedAt }.maxOrNull() ?: 0L
             }
             "STATUS" -> rawFolders.sortedBy { folder ->
-                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                val folderVideos = videosByFolder[folder.folderPath] ?: emptyList()
                 folderVideos.count { it.isNew }
             }
             "RESOLUTION" -> rawFolders.sortedBy { folder ->
-                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
+                val folderVideos = videosByFolder[folder.folderPath] ?: emptyList()
                 folderVideos.maxOfOrNull { it.width * it.height } ?: 0
             }
             "TYPE" -> rawFolders.sortedBy { folder ->
-                val folderVideos = videoList.filter { File(it.path).parentFile?.absolutePath == folder.folderPath }
-                folderVideos.firstOrNull()?.let { File(it.path).extension.lowercase() } ?: ""
+                val folderVideos = videosByFolder[folder.folderPath] ?: emptyList()
+                folderVideos.firstOrNull()?.let { 
+                    val lastDot = it.path.lastIndexOf('.')
+                    if (lastDot >= 0) it.path.substring(lastDot + 1).lowercase() else ""
+                } ?: ""
             }
-            else -> rawFolders.sortedBy { File(it.folderPath).name.lowercase() }
+            else -> rawFolders.sortedBy { 
+                val lastSlash = it.folderPath.lastIndexOf('/')
+                if (lastSlash >= 0) it.folderPath.substring(lastSlash + 1).lowercase() else it.folderPath.lowercase()
+            }
         }
 
         if (sortDirection == "DESCENDING") sortedFolders.reversed() else sortedFolders
@@ -1790,7 +1800,10 @@ fun VideosAndFoldersTab(
             "FRAMERATE" -> compareBy<MediaFile> { video ->
                 video.width * video.height
             }
-            "TYPE" -> compareBy<MediaFile> { File(it.path).extension.lowercase() }
+            "TYPE" -> compareBy<MediaFile> { 
+                val lastDot = it.path.lastIndexOf('.')
+                if (lastDot >= 0) it.path.substring(lastDot + 1).lowercase() else ""
+            }
             else -> compareBy<MediaFile> { it.title.lowercase() }
         }
         val sorted = searchedVideos.sortedWith(comparator)
@@ -1806,7 +1819,9 @@ fun VideosAndFoldersTab(
                 sortedVideos
             } else {
                 sortedVideos.filter { video ->
-                    val parent = File(video.path).parentFile?.absolutePath
+                    val path = video.path
+                    val lastSlash = path.lastIndexOf('/')
+                    val parent = if (lastSlash > 0) path.substring(0, lastSlash) else ""
                     parent == selectedFolderPath
                 }
             }
@@ -2266,6 +2281,8 @@ fun VideosAndFoldersTab(
                                                             color = Color.White,
                                                             fontSize = 7.5.sp,
                                                             fontWeight = FontWeight.Bold,
+                                                            maxLines = 1,
+                                                            softWrap = false,
                                                             style = androidx.compose.ui.text.TextStyle(
                                                                 platformStyle = androidx.compose.ui.text.PlatformTextStyle(
                                                                     includeFontPadding = false
@@ -2298,6 +2315,8 @@ fun VideosAndFoldersTab(
                                                             color = Color.White,
                                                             fontSize = 7.5.sp,
                                                             fontWeight = FontWeight.Bold,
+                                                            maxLines = 1,
+                                                            softWrap = false,
                                                             style = androidx.compose.ui.text.TextStyle(
                                                                 platformStyle = androidx.compose.ui.text.PlatformTextStyle(
                                                                     includeFontPadding = false
@@ -2719,6 +2738,8 @@ fun VideosAndFoldersTab(
                                                         color = Color.White,
                                                         fontSize = 7.5.sp,
                                                         fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        softWrap = false,
                                                         style = androidx.compose.ui.text.TextStyle(
                                                             platformStyle = androidx.compose.ui.text.PlatformTextStyle(
                                                                 includeFontPadding = false
@@ -2751,6 +2772,8 @@ fun VideosAndFoldersTab(
                                                         color = Color.White,
                                                         fontSize = 7.5.sp,
                                                         fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        softWrap = false,
                                                         style = androidx.compose.ui.text.TextStyle(
                                                             platformStyle = androidx.compose.ui.text.PlatformTextStyle(
                                                                 includeFontPadding = false
@@ -2995,6 +3018,7 @@ fun VideosAndFoldersTab(
 }
 
 private val videoThumbnailCache = android.util.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(200)
+private val thumbnailSemaphore = kotlinx.coroutines.sync.Semaphore(3)
 
 private fun isBitmapMostlyBlack(bitmap: android.graphics.Bitmap): Boolean {
     val width = bitmap.width
@@ -3026,122 +3050,176 @@ private fun isBitmapMostlyBlack(bitmap: android.graphics.Bitmap): Boolean {
 @Composable
 fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.ImageBitmap? {
     if (videoPath == null) return null
+    val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
     var bitmap by remember(videoPath) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(videoThumbnailCache.get(videoPath)) }
     LaunchedEffect(videoPath) {
         if (bitmap != null) return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            val file = java.io.File(videoPath)
-            if (!file.exists()) return@withContext
+            val cacheDir = java.io.File(context.cacheDir, "video_thumbnails")
+            if (!cacheDir.exists()) {
+                cacheDir.mkdirs()
+            }
+            val hash = videoPath.hashCode().toString()
+            val cacheFile = java.io.File(cacheDir, "thumb_$hash.jpg")
 
-            var loadedBitmap: android.graphics.Bitmap? = null
-
-            fun retrieveBestFrame(retriever: android.media.MediaMetadataRetriever): android.graphics.Bitmap? {
-                val durationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-                val durationMs = durationStr?.toLongOrNull() ?: 0L
-                
-                val candidateTimes = mutableListOf<Long>()
-                if (durationMs > 15000L) {
-                    candidateTimes.add(5000000L)   // 5s
-                    candidateTimes.add(10000000L)  // 10s
-                    candidateTimes.add(15000000L)  // 15s
-                    candidateTimes.add(2000000L)   // 2s
-                    candidateTimes.add(1000000L)   // 1s
-                } else if (durationMs > 5000L) {
-                    candidateTimes.add(3000000L)   // 3s
-                    candidateTimes.add(1000000L)   // 1s
-                    candidateTimes.add(2000000L)   // 2s
-                } else {
-                    candidateTimes.add(1000000L)   // 1s
+            // 1. Try disk cache first
+            if (cacheFile.exists()) {
+                try {
+                    val diskBitmap = android.graphics.BitmapFactory.decodeFile(cacheFile.absolutePath)
+                    if (diskBitmap != null) {
+                        val imageBitmap = diskBitmap.asImageBitmap()
+                        videoThumbnailCache.put(videoPath, imageBitmap)
+                        bitmap = imageBitmap
+                        return@withContext
+                    }
+                } catch (e: Exception) {
+                    // Suppress and extract
                 }
-                candidateTimes.add(0L)             // 0s (fallback)
+            }
 
-                var bestFrame: android.graphics.Bitmap? = null
-                for (timeUs in candidateTimes) {
-                    try {
-                        val frame = retriever.getFrameAtTime(timeUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                        if (frame != null) {
-                            if (!isBitmapMostlyBlack(frame)) {
-                                return frame
+            if (!coroutineContext.isActive) return@withContext
+
+            // 2. Limit concurrency to 3 simultaneous decodes
+            thumbnailSemaphore.acquire()
+            try {
+                if (!coroutineContext.isActive) return@withContext
+
+                val file = java.io.File(videoPath)
+                if (!file.exists()) return@withContext
+
+                var loadedBitmap: android.graphics.Bitmap? = null
+
+                suspend fun retrieveBestFrame(retriever: android.media.MediaMetadataRetriever): android.graphics.Bitmap? {
+                    val durationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    val durationMs = durationStr?.toLongOrNull() ?: 0L
+                    
+                    val candidateTimes = mutableListOf<Long>()
+                    if (durationMs > 4000L) {
+                        candidateTimes.add((durationMs / 10) * 1000L) // 10% of duration
+                        candidateTimes.add(2000000L)                 // 2s
+                    } else {
+                        candidateTimes.add(1000000L)                 // 1s
+                    }
+                    candidateTimes.add(0L)                           // 0s (fallback)
+
+                    var bestFrame: android.graphics.Bitmap? = null
+                    for (timeUs in candidateTimes) {
+                        if (!coroutineContext.isActive) break
+                        try {
+                            val frame = retriever.getFrameAtTime(timeUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            if (frame != null) {
+                                if (!isBitmapMostlyBlack(frame)) {
+                                    return frame
+                                }
+                                if (bestFrame == null) {
+                                    bestFrame = frame
+                                }
                             }
-                            if (bestFrame == null) {
-                                bestFrame = frame
+                        } catch (e: Exception) {
+                            // Suppress
+                        }
+                    }
+                    return bestFrame ?: retriever.frameAtTime
+                }
+
+                // Method 1: Try MediaMetadataRetriever via FileInputStream's File Descriptor
+                try {
+                    java.io.FileInputStream(file).use { fis ->
+                        val retriever = android.media.MediaMetadataRetriever()
+                        try {
+                            retriever.setDataSource(fis.fd)
+                            loadedBitmap = retrieveBestFrame(retriever)
+                        } finally {
+                            try {
+                                retriever.release()
+                            } catch (e: Exception) {
+                                // Suppress
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Suppress and try next method
+                }
+
+                if (!coroutineContext.isActive) return@withContext
+
+                // Method 2: Try OS-native ThumbnailUtils
+                if (loadedBitmap == null) {
+                    try {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                            loadedBitmap = android.media.ThumbnailUtils.createVideoThumbnail(
+                                file,
+                                android.util.Size(320, 180), // standard 16:9 thumbnail size
+                                null
+                            )
+                        } else {
+                            @Suppress("DEPRECATION")
+                            loadedBitmap = android.media.ThumbnailUtils.createVideoThumbnail(
+                                videoPath,
+                                android.provider.MediaStore.Video.Thumbnails.MINI_KIND
+                            )
+                        }
+                    } catch (e: Exception) {
+                        // Suppress and try next method
+                    }
+                }
+
+                if (!coroutineContext.isActive) return@withContext
+
+                // Method 3: Direct setDataSource path fallback as a last resort
+                if (loadedBitmap == null) {
+                    try {
+                        val retriever = android.media.MediaMetadataRetriever()
+                        try {
+                            retriever.setDataSource(videoPath)
+                            loadedBitmap = retrieveBestFrame(retriever)
+                        } finally {
+                            try {
+                                retriever.release()
+                            } catch (e: Exception) {
+                                // Suppress
                             }
                         }
                     } catch (e: Exception) {
                         // Suppress
                     }
                 }
-                return bestFrame ?: retriever.frameAtTime
-            }
 
-            // Method 1: Try MediaMetadataRetriever via FileInputStream's File Descriptor (Highly robust and permission-safe under API 29+)
-            try {
-                java.io.FileInputStream(file).use { fis ->
-                    android.media.MediaMetadataRetriever().use { retriever ->
-                        retriever.setDataSource(fis.fd)
-                        loadedBitmap = retrieveBestFrame(retriever)
-                    }
-                }
-            } catch (e: Exception) {
-                // Suppress and try next method
-            }
-
-            // Method 2: Try OS-native ThumbnailUtils
-            if (loadedBitmap == null) {
-                try {
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                        loadedBitmap = android.media.ThumbnailUtils.createVideoThumbnail(
-                            file,
-                            android.util.Size(640, 360), // HD 16:9 aspect ratio standard thumbnail size
-                            null
-                        )
-                    } else {
-                        @Suppress("DEPRECATION")
-                        loadedBitmap = android.media.ThumbnailUtils.createVideoThumbnail(
-                            videoPath,
-                            android.provider.MediaStore.Video.Thumbnails.MINI_KIND
-                        )
-                    }
-                } catch (e: Exception) {
-                    // Suppress and try next method
-                }
-            }
-
-            // Method 3: Direct setDataSource path fallback as a last resort
-            if (loadedBitmap == null) {
-                try {
-                    android.media.MediaMetadataRetriever().use { retriever ->
-                        retriever.setDataSource(videoPath)
-                        loadedBitmap = retrieveBestFrame(retriever)
-                    }
-                } catch (e: Exception) {
-                    // Suppress
-                }
-            }
-
-            if (loadedBitmap != null) {
-                // Downscale large frames to keep memory consumption low while preserving crisp resolution & aspect ratio
-                val finalBitmap = try {
-                    val w = loadedBitmap!!.width
-                    val h = loadedBitmap!!.height
-                    val maxTargetSide = 640
-                    if (w > maxTargetSide || h > maxTargetSide) {
-                        val ratio = w.toFloat() / h
-                        val (targetW, targetH) = if (w > h) {
-                            maxTargetSide to (maxTargetSide / ratio).toInt().coerceAtLeast(1)
+                if (loadedBitmap != null) {
+                    val finalBitmap = try {
+                        val w = loadedBitmap!!.width
+                        val h = loadedBitmap!!.height
+                        val maxTargetSide = 320
+                        if (w > maxTargetSide || h > maxTargetSide) {
+                            val ratio = w.toFloat() / h
+                            val (targetW, targetH) = if (w > h) {
+                                maxTargetSide to (maxTargetSide / ratio).toInt().coerceAtLeast(1)
+                            } else {
+                                (maxTargetSide * ratio).toInt().coerceAtLeast(1) to maxTargetSide
+                            }
+                            android.graphics.Bitmap.createScaledBitmap(loadedBitmap!!, targetW, targetH, true)
                         } else {
-                            (maxTargetSide * ratio).toInt().coerceAtLeast(1) to maxTargetSide
+                            loadedBitmap!!
                         }
-                        android.graphics.Bitmap.createScaledBitmap(loadedBitmap!!, targetW, targetH, true)
-                    } else {
+                    } catch (e: Exception) {
                         loadedBitmap!!
                     }
-                } catch (e: Exception) {
-                    loadedBitmap!!
+
+                    // Save to disk cache
+                    try {
+                        java.io.FileOutputStream(cacheFile).use { out ->
+                            finalBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, out)
+                        }
+                    } catch (e: Exception) {
+                        // Suppress
+                    }
+
+                    val imageBitmap = finalBitmap.asImageBitmap()
+                    videoThumbnailCache.put(videoPath, imageBitmap)
+                    bitmap = imageBitmap
                 }
-                val imageBitmap = finalBitmap.asImageBitmap()
-                videoThumbnailCache.put(videoPath, imageBitmap)
-                bitmap = imageBitmap
+            } finally {
+                thumbnailSemaphore.release()
             }
         }
     }
@@ -3751,6 +3829,8 @@ fun VideoListItem(
                                     color = Color.White,
                                     fontSize = 7.5.sp,
                                     fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     style = androidx.compose.ui.text.TextStyle(
                                         platformStyle = androidx.compose.ui.text.PlatformTextStyle(
                                             includeFontPadding = false
@@ -3783,6 +3863,8 @@ fun VideoListItem(
                                     color = Color.White,
                                     fontSize = 7.5.sp,
                                     fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     style = androidx.compose.ui.text.TextStyle(
                                         platformStyle = androidx.compose.ui.text.PlatformTextStyle(
                                             includeFontPadding = false
@@ -3804,6 +3886,8 @@ fun VideoListItem(
                                     color = Color.White,
                                     fontSize = 7.5.sp,
                                     fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     style = androidx.compose.ui.text.TextStyle(
                                         platformStyle = androidx.compose.ui.text.PlatformTextStyle(
                                             includeFontPadding = false

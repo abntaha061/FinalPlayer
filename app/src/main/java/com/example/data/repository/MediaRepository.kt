@@ -244,8 +244,13 @@ class MediaRepository(private val context: Context) {
         scanner.scanMutex.withLock {
             try {
                 val mediaFile = mediaDao.getMediaFileById(id) ?: return
-                // Try external files directory first, then fallback to filesDir for secure folders
-                val secureDir = context.getExternalFilesDir("SecureVault") ?: File(context.filesDir, "SecureVault")
+                // Prioritize root-level hidden folder for instantaneous (renameTo) moves on same storage partition
+                val sdcard = android.os.Environment.getExternalStorageDirectory()
+                val secureDir = if (sdcard != null && sdcard.exists()) {
+                    File(sdcard, ".SecureVault")
+                } else {
+                    context.getExternalFilesDir("SecureVault") ?: File(context.filesDir, "SecureVault")
+                }
                 if (!secureDir.exists()) {
                     secureDir.mkdirs()
                     try {

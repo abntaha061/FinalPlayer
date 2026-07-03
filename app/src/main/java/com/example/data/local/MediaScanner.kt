@@ -25,13 +25,14 @@ class MediaScanner(private val mediaDao: MediaDao) {
             // 1. Fetch from standard Android MediaStore database
             val mediaStoreFiles = queryAllMediaStoreItems(context)
             Log.d("MediaScanner", "Found ${mediaStoreFiles.size} items in MediaStore.")
+            val mediaStorePaths = mediaStoreFiles.map { it.path }.toSet()
 
             // 2. Comprehensive direct crawler for all physical storage files to find fresh, unindexed files
             val filesystemFiles = mutableListOf<MediaFile>()
             try {
                 val rootStorage = android.os.Environment.getExternalStorageDirectory()
                 if (rootStorage != null && rootStorage.exists()) {
-                    scanDirectoryFiles(rootStorage, filesystemFiles)
+                    scanDirectoryFiles(rootStorage, filesystemFiles, mediaStorePaths)
                 }
             } catch (e: Exception) {
                 Log.e("MediaScanner", "Failed to walk physical filesystem storage", e)
@@ -39,7 +40,9 @@ class MediaScanner(private val mediaDao: MediaDao) {
 
             // Scan and self-heal SecureVault folder
             try {
+                val sdcard = android.os.Environment.getExternalStorageDirectory()
                 val secureDirs = listOfNotNull(
+                    if (sdcard != null && sdcard.exists()) File(sdcard, ".SecureVault") else null,
                     File(context.filesDir, "SecureVault"),
                     context.getExternalFilesDir("SecureVault")
                 )
@@ -66,15 +69,20 @@ class MediaScanner(private val mediaDao: MediaDao) {
                                             }
                                         }
                                         
+                                        val meta = extractMetadata(file, isVideo)
                                         filesystemFiles.add(
                                             MediaFile(
                                                 path = path,
                                                 title = title,
-                                                duration = 0L,
+                                                duration = meta.duration,
                                                 size = size,
                                                 dateModified = dateModified,
                                                 isVideo = isVideo,
-                                                isPrivate = true
+                                                isPrivate = true,
+                                                width = meta.width,
+                                                height = meta.height,
+                                                artist = meta.artist,
+                                                album = meta.album
                                             )
                                         )
                                     }
@@ -121,8 +129,11 @@ class MediaScanner(private val mediaDao: MediaDao) {
                 val existing = existingMapByPath[scannedFile.path]
                 if (existing == null) {
                     toInsertOrUpdate.add(scannedFile)
-                } else if (existing.dateModified != scannedFile.dateModified || existing.size != scannedFile.size) {
-                    // File modified, preserve user states: favorite, private, playback history progress, thumbnails, isNew
+                } else if (existing.dateModified != scannedFile.dateModified || 
+                           existing.size != scannedFile.size ||
+                           (existing.duration == 0L && scannedFile.duration > 0L) ||
+                           (existing.width == 0 && scannedFile.width > 0)) {
+                    // File modified or missing metadata, preserve user states: favorite, private, playback history progress, thumbnails, isNew
                     toInsertOrUpdate.add(scannedFile.copy(
                         id = existing.id,
                         isFavorite = existing.isFavorite,
@@ -174,7 +185,49 @@ class MediaScanner(private val mediaDao: MediaDao) {
         }
     }
 
-    private fun scanDirectoryFiles(dir: File, foundFiles: MutableList<MediaFile>, visitedDirs: MutableSet<String> = mutableSetOf()) {
+    private fun extractMetadata(file: File, isVideo: Boolean): ExtractedMetadata {
+        var duration = 0L
+        var width = 0
+        var height = 0
+        var artist: String? = null
+        var album: String? = null
+        
+        try {
+            android.media.MediaMetadataRetriever().use { retriever ->
+                retriever.setDataSource(file.absolutePath)
+                val durationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                duration = durationStr?.toLongOrNull() ?: 0L
+                
+                if (isVideo) {
+                    val widthStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                    val heightStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                    width = widthStr?.toIntOrNull() ?: 0
+                    height = heightStr?.toIntOrNull() ?: 0
+                } else {
+                    artist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                    album = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MediaScanner", "Failed to extract metadata for ${file.absolutePath}", e)
+        }
+        return ExtractedMetadata(duration, width, height, artist, album)
+    }
+
+    private data class ExtractedMetadata(
+        val duration: Long,
+        val width: Int,
+        val height: Int,
+        val artist: String?,
+        val album: String?
+    )
+
+    private fun scanDirectoryFiles(
+        dir: File, 
+        foundFiles: MutableList<MediaFile>, 
+        mediaStorePaths: Set<String>,
+        visitedDirs: MutableSet<String> = mutableSetOf()
+    ) {
         if (!dir.exists() || !dir.isDirectory) return
 
         // Prevent symlink cycles or repeating folder runs
@@ -200,16 +253,21 @@ class MediaScanner(private val mediaDao: MediaDao) {
                     name.startsWith(".") ||
                     name.equals("cache", ignoreCase = true) ||
                     name.equals("temp", ignoreCase = true) ||
-                    name.equals("databases", ignoreCase = true)
+                    name.equals("databases", ignoreCase = true) ||
+                    name.equals("obb", ignoreCase = true) ||
+                    name.equals("LOST.DIR", ignoreCase = true)
                 ) {
                     continue
                 }
-                scanDirectoryFiles(file, foundFiles, visitedDirs)
+                scanDirectoryFiles(file, foundFiles, mediaStorePaths, visitedDirs)
             } else if (file.isFile) {
                 val ext = file.extension.lowercase()
                 val path = try { file.canonicalPath } catch (e: Exception) { file.absolutePath }
+                
+                // If already indexed by MediaStore, do not process again physically
+                if (mediaStorePaths.contains(path)) continue
+                
                 val size = file.length()
-
                 if (size < 1024) continue // ignore small corrupt assets less than 1KB
 
                 if (ext == "mp4" || ext == "mkv" || ext == "webm" || ext == "avi" || ext == "3gp" || ext == "flv" || ext == "ts") {
@@ -217,16 +275,17 @@ class MediaScanner(private val mediaDao: MediaDao) {
                     val dateModified = file.lastModified()
                     val title = file.nameWithoutExtension
 
+                    val meta = extractMetadata(file, isVideo = true)
                     foundFiles.add(
                         MediaFile(
                             path = path,
                             title = title,
-                            duration = 0L,
+                            duration = meta.duration,
                             size = size,
                             dateModified = dateModified,
                             isVideo = true,
-                            width = 0,
-                            height = 0
+                            width = meta.width,
+                            height = meta.height
                         )
                     )
                 } else if (ext == "mp3" || ext == "wav" || ext == "m4a" || ext == "ogg" || ext == "flac") {
@@ -235,16 +294,17 @@ class MediaScanner(private val mediaDao: MediaDao) {
 
                     if (shouldExcludeAudioFile(path, title)) continue
 
+                    val meta = extractMetadata(file, isVideo = false)
                     foundFiles.add(
                         MediaFile(
                             path = path,
                             title = title,
-                            duration = 0L,
+                            duration = meta.duration,
                             size = size,
                             dateModified = dateModified,
                             isVideo = false,
-                            artist = null,
-                            album = null
+                            artist = meta.artist,
+                            album = meta.album
                         )
                     )
                 }
