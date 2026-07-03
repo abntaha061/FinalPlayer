@@ -26,7 +26,7 @@ class MediaScanner(private val mediaDao: MediaDao) {
             val mediaStoreFiles = queryAllMediaStoreItems(context)
             Log.d("MediaScanner", "Found ${mediaStoreFiles.size} items in MediaStore.")
 
-            // 2. Comprehensive directly crawler for files that haven't been indexed by the OS yet
+            // 2. Comprehensive direct crawler for all physical storage files to find fresh, unindexed files
             val filesystemFiles = mutableListOf<MediaFile>()
             try {
                 val rootStorage = android.os.Environment.getExternalStorageDirectory()
@@ -89,8 +89,20 @@ class MediaScanner(private val mediaDao: MediaDao) {
             Log.d("MediaScanner", "Found ${filesystemFiles.size} items via direct filesystem crawl.")
 
             // 3. Merge results to achieve absolute 100% detection rate. 
-            // Filesystem files take precedence as they are fresher, unique by path.
-            val allScannedFiles = (mediaStoreFiles + filesystemFiles).associateBy { it.path }.values.toList()
+            // If a file exists in MediaStore, prioritize its rich metadata (like duration/resolution) to avoid slow file retrieval.
+            val mediaStoreMap = mediaStoreFiles.associateBy { it.path }
+            val filesystemMap = filesystemFiles.associateBy { it.path }
+            val allPaths = (mediaStoreMap.keys + filesystemMap.keys)
+            
+            val allScannedFiles = allPaths.map { path ->
+                val msFile = mediaStoreMap[path]
+                val fsFile = filesystemMap[path]
+                if (msFile != null) {
+                    msFile
+                } else {
+                    fsFile!!
+                }
+            }
             Log.d("MediaScanner", "Merged absolute unique items for DB sync: ${allScannedFiles.size}")
 
             if (allScannedFiles.isEmpty()) {
@@ -205,30 +217,16 @@ class MediaScanner(private val mediaDao: MediaDao) {
                     val dateModified = file.lastModified()
                     val title = file.nameWithoutExtension
 
-                    var duration = 0L
-                    var width = 0
-                    var height = 0
-                    try {
-                        android.media.MediaMetadataRetriever().use { retriever ->
-                            retriever.setDataSource(path)
-                            duration = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                            width = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
-                            height = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
-                        }
-                    } catch (e: Exception) {
-                        Log.w("MediaScanner", "Error querying metadata for video file: $path", e)
-                    }
-
                     foundFiles.add(
                         MediaFile(
                             path = path,
                             title = title,
-                            duration = duration,
+                            duration = 0L,
                             size = size,
                             dateModified = dateModified,
                             isVideo = true,
-                            width = width,
-                            height = height
+                            width = 0,
+                            height = 0
                         )
                     )
                 } else if (ext == "mp3" || ext == "wav" || ext == "m4a" || ext == "ogg" || ext == "flac") {
@@ -237,30 +235,16 @@ class MediaScanner(private val mediaDao: MediaDao) {
 
                     if (shouldExcludeAudioFile(path, title)) continue
 
-                    var duration = 0L
-                    var artist: String? = null
-                    var album: String? = null
-                    try {
-                        android.media.MediaMetadataRetriever().use { retriever ->
-                            retriever.setDataSource(path)
-                            duration = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                            artist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
-                            album = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM)
-                        }
-                    } catch (e: Exception) {
-                        Log.w("MediaScanner", "Error querying metadata for audio file: $path", e)
-                    }
-
                     foundFiles.add(
                         MediaFile(
                             path = path,
                             title = title,
-                            duration = duration,
+                            duration = 0L,
                             size = size,
                             dateModified = dateModified,
                             isVideo = false,
-                            artist = artist,
-                            album = album
+                            artist = null,
+                            album = null
                         )
                     )
                 }

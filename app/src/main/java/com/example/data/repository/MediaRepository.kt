@@ -161,6 +161,45 @@ class MediaRepository(private val context: Context) {
         return false
     }
 
+    private fun getRelativePathForMediaStore(originalPath: String, isVideo: Boolean): String {
+        val extStorage = android.os.Environment.getExternalStorageDirectory().absolutePath
+        var relative = if (originalPath.startsWith(extStorage)) {
+            originalPath.substring(extStorage.length)
+        } else {
+            originalPath
+        }
+        if (relative.startsWith("/")) {
+            relative = relative.substring(1)
+        }
+        
+        // Remove file name to get directory path
+        val lastSlash = relative.lastIndexOf("/")
+        val dirRelative = if (lastSlash != -1) {
+            relative.substring(0, lastSlash + 1) // include trailing slash
+        } else {
+            ""
+        }
+        
+        val lowerDir = dirRelative.lowercase()
+        val allowedPrefixes = if (isVideo) {
+            listOf("movies/", "dcim/", "pictures/", "download/")
+        } else {
+            listOf("music/", "podcasts/", "alarms/", "notifications/", "ringtones/", "download/")
+        }
+        
+        val hasAllowedPrefix = allowedPrefixes.any { lowerDir.startsWith(it) }
+        return if (hasAllowedPrefix) {
+            dirRelative
+        } else {
+            val defaultRoot = if (isVideo) "Movies" else "Music"
+            if (dirRelative.isNotEmpty()) {
+                "$defaultRoot/$dirRelative"
+            } else {
+                "$defaultRoot/"
+            }
+        }
+    }
+
     private fun copyFileToExternalStorage(context: Context, srcFile: File, originalPath: String): String? {
         val file = File(originalPath)
         val resolver = context.contentResolver
@@ -170,7 +209,7 @@ class MediaRepository(private val context: Context) {
             put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, file.name)
             put(android.provider.MediaStore.MediaColumns.MIME_TYPE, if (isVideo) "video/*" else "audio/*")
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                val relPath = if (isVideo) "Movies/FinalPlayerVault" else "Music/FinalPlayerVault"
+                val relPath = getRelativePathForMediaStore(originalPath, isVideo)
                 put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, relPath)
             }
         }
@@ -237,9 +276,17 @@ class MediaRepository(private val context: Context) {
                     // Method 2: Try fast FileChannel copy
                     if (!copiedSuccessfully && originalFile.exists() && !originalFile.absolutePath.contains("SecureVault")) {
                         try {
-                            copiedSuccessfully = fastCopyFile(originalFile, destFile)
-                            if (copiedSuccessfully) {
+                            val tempCopied = fastCopyFile(originalFile, destFile)
+                            if (tempCopied) {
                                 deletedSuccessfully = originalFile.delete()
+                                if (!deletedSuccessfully) {
+                                    deletedSuccessfully = deleteFileViaContentResolver(context, mediaFile.path)
+                                }
+                                if (deletedSuccessfully) {
+                                    copiedSuccessfully = true
+                                } else {
+                                    destFile.delete() // Clean up since we can't complete the move operation
+                                }
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -254,6 +301,10 @@ class MediaRepository(private val context: Context) {
                                 copiedSuccessfully = copyFileViaContentResolver(context, srcUri, destFile)
                                 if (copiedSuccessfully) {
                                     deletedSuccessfully = deleteFileViaContentResolver(context, mediaFile.path)
+                                    if (!deletedSuccessfully) {
+                                        destFile.delete()
+                                        copiedSuccessfully = false
+                                    }
                                 }
                             }
                         } catch (e: Exception) {

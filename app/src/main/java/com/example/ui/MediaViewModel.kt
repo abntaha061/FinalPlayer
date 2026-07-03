@@ -548,6 +548,26 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 if (srcFile.exists()) {
                     val destFile = File(targetDir, srcFile.name)
                     copyFileOrDirectory(srcFile, destFile)
+                    
+                    // Automatically copy companion subtitles
+                    val parent = srcFile.parentFile
+                    if (parent != null && parent.exists() && parent.isDirectory) {
+                        val baseName = srcFile.nameWithoutExtension.lowercase()
+                        val subtitleExtensions = setOf("srt", "ass", "ssa", "sub", "vtt")
+                        val siblingFiles = parent.listFiles()
+                        if (siblingFiles != null) {
+                            for (sibling in siblingFiles) {
+                                if (sibling.isFile) {
+                                    val sibExt = sibling.extension.lowercase()
+                                    val sibBase = sibling.nameWithoutExtension.lowercase()
+                                    if (sibExt in subtitleExtensions && (sibBase == baseName || sibBase.startsWith("$baseName."))) {
+                                        val destSib = File(targetDir, sibling.name)
+                                        copyFileOrDirectory(sibling, destSib)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             withContext(Dispatchers.Main) {
@@ -584,6 +604,30 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
                 val srcFile = File(path)
                 if (srcFile.exists()) {
                     val destFile = File(targetDir, srcFile.name)
+                    
+                    // Automatically move companion subtitles first
+                    val parent = srcFile.parentFile
+                    if (parent != null && parent.exists() && parent.isDirectory) {
+                        val baseName = srcFile.nameWithoutExtension.lowercase()
+                        val subtitleExtensions = setOf("srt", "ass", "ssa", "sub", "vtt")
+                        val siblingFiles = parent.listFiles()
+                        if (siblingFiles != null) {
+                            for (sibling in siblingFiles) {
+                                if (sibling.isFile) {
+                                    val sibExt = sibling.extension.lowercase()
+                                    val sibBase = sibling.nameWithoutExtension.lowercase()
+                                    if (sibExt in subtitleExtensions && (sibBase == baseName || sibBase.startsWith("$baseName."))) {
+                                        val destSib = File(targetDir, sibling.name)
+                                        if (!sibling.renameTo(destSib)) {
+                                            copyFileOrDirectory(sibling, destSib)
+                                            deleteFileOrDirectory(sibling)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (srcFile.renameTo(destFile)) {
                         dao.deleteFolder(path)
                         dao.deleteMediaFileByPath(path)
