@@ -39,40 +39,45 @@ class MediaScanner(private val mediaDao: MediaDao) {
 
             // Scan and self-heal SecureVault folder
             try {
-                val secureDir = File(context.filesDir, "SecureVault")
-                if (secureDir.exists()) {
-                    val secureFiles = secureDir.listFiles()
-                    if (secureFiles != null) {
-                        for (file in secureFiles) {
-                            if (file.isFile && !file.name.equals(".nomedia", ignoreCase = true)) {
-                                val ext = file.extension.lowercase()
-                                val isVideo = ext == "mp4" || ext == "mkv" || ext == "webm" || ext == "avi" || ext == "3gp" || ext == "flv" || ext == "ts"
-                                val isAudio = ext == "mp3" || ext == "wav" || ext == "m4a" || ext == "ogg" || ext == "flac"
-                                if (isVideo || isAudio) {
-                                    val path = file.absolutePath
-                                    val size = file.length()
-                                    val dateModified = file.lastModified()
-                                    
-                                    var title = file.nameWithoutExtension
-                                    val underscoreIdx = title.indexOf('_')
-                                    if (underscoreIdx != -1) {
-                                        val prefix = title.substring(0, underscoreIdx)
-                                        if (prefix.all { it.isDigit() }) {
-                                            title = title.substring(underscoreIdx + 1)
+                val secureDirs = listOfNotNull(
+                    File(context.filesDir, "SecureVault"),
+                    context.getExternalFilesDir("SecureVault")
+                )
+                for (secureDir in secureDirs) {
+                    if (secureDir.exists()) {
+                        val secureFiles = secureDir.listFiles()
+                        if (secureFiles != null) {
+                            for (file in secureFiles) {
+                                if (file.isFile && !file.name.equals(".nomedia", ignoreCase = true)) {
+                                    val ext = file.extension.lowercase()
+                                    val isVideo = ext == "mp4" || ext == "mkv" || ext == "webm" || ext == "avi" || ext == "3gp" || ext == "flv" || ext == "ts"
+                                    val isAudio = ext == "mp3" || ext == "wav" || ext == "m4a" || ext == "ogg" || ext == "flac"
+                                    if (isVideo || isAudio) {
+                                        val path = file.absolutePath
+                                        val size = file.length()
+                                        val dateModified = file.lastModified()
+                                        
+                                        var title = file.nameWithoutExtension
+                                        val underscoreIdx = title.indexOf('_')
+                                        if (underscoreIdx != -1) {
+                                            val prefix = title.substring(0, underscoreIdx)
+                                            if (prefix.all { it.isDigit() }) {
+                                                title = title.substring(underscoreIdx + 1)
+                                            }
                                         }
-                                    }
-                                    
-                                    filesystemFiles.add(
-                                        MediaFile(
-                                            path = path,
-                                            title = title,
-                                            duration = 0L,
-                                            size = size,
-                                            dateModified = dateModified,
-                                            isVideo = isVideo,
-                                            isPrivate = true
+                                        
+                                        filesystemFiles.add(
+                                            MediaFile(
+                                                path = path,
+                                                title = title,
+                                                duration = 0L,
+                                                size = size,
+                                                dateModified = dateModified,
+                                                isVideo = isVideo,
+                                                isPrivate = true
+                                            )
                                         )
-                                    )
+                                    }
                                 }
                             }
                         }
@@ -126,7 +131,7 @@ class MediaScanner(private val mediaDao: MediaDao) {
                     // Only delete from DB if the physical private file doesn't exist anymore
                     !File(dbFile.path).exists()
                 } else {
-                    !scannedPathsSet.contains(dbFile.path)
+                    !scannedPathsSet.contains(dbFile.path) && !File(dbFile.path).exists()
                 }
             }.map { it.path }
 

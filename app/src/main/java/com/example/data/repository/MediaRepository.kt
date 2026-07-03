@@ -98,11 +98,49 @@ class MediaRepository(private val context: Context) {
         return null
     }
 
+    private fun copyWithLargeBuffer(input: java.io.InputStream, output: java.io.OutputStream) {
+        val buffer = ByteArray(128 * 1024) // 128 KB buffer
+        var bytesRead: Int
+        while (input.read(buffer).also { bytesRead = it } != -1) {
+            output.write(buffer, 0, bytesRead)
+        }
+    }
+
+    private fun fastCopyFile(src: File, dest: File): Boolean {
+        try {
+            java.io.FileInputStream(src).use { fis ->
+                java.io.FileOutputStream(dest).use { fos ->
+                    val inChannel = fis.channel
+                    val outChannel = fos.channel
+                    val size = inChannel.size()
+                    var position = 0L
+                    while (position < size) {
+                        val transferred = inChannel.transferTo(position, size - position, outChannel)
+                        if (transferred <= 0) break
+                        position += transferred
+                    }
+                    return dest.exists() && dest.length() == src.length()
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return false
+    }
+
+    private fun triggerMediaScan(context: Context, path: String) {
+        try {
+            android.media.MediaScannerConnection.scanFile(context, arrayOf(path), null, null)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     private fun copyFileViaContentResolver(context: Context, srcUri: android.net.Uri, destFile: File): Boolean {
         try {
             context.contentResolver.openInputStream(srcUri)?.use { input ->
                 destFile.outputStream().use { output ->
-                    input.copyTo(output)
+                    copyWithLargeBuffer(input, output)
                 }
             }
             return destFile.exists() && destFile.length() > 0
@@ -147,7 +185,7 @@ class MediaRepository(private val context: Context) {
             val uri = resolver.insert(collection, contentValues) ?: return null
             resolver.openOutputStream(uri)?.use { output ->
                 srcFile.inputStream().use { input ->
-                    input.copyTo(output)
+                    copyWithLargeBuffer(input, output)
                 }
             }
             val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
@@ -167,7 +205,8 @@ class MediaRepository(private val context: Context) {
         scanner.scanMutex.withLock {
             try {
                 val mediaFile = mediaDao.getMediaFileById(id) ?: return
-                val secureDir = File(context.filesDir, "SecureVault")
+                // Try external files directory first, then fallback to filesDir for secure folders
+                val secureDir = context.getExternalFilesDir("SecureVault") ?: File(context.filesDir, "SecureVault")
                 if (!secureDir.exists()) {
                     secureDir.mkdirs()
                     try {
@@ -183,11 +222,22 @@ class MediaRepository(private val context: Context) {
                     var copiedSuccessfully = false
                     var deletedSuccessfully = false
                     
-                    // Method 1: Try direct File API
+                    // Method 1: Try direct renameTo (instantaneous if same partition)
                     if (originalFile.exists() && !originalFile.absolutePath.contains("SecureVault")) {
                         try {
-                            originalFile.copyTo(destFile, overwrite = true)
-                            copiedSuccessfully = destFile.exists() && destFile.length() > 0
+                            copiedSuccessfully = originalFile.renameTo(destFile)
+                            if (copiedSuccessfully) {
+                                deletedSuccessfully = true
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    
+                    // Method 2: Try fast FileChannel copy
+                    if (!copiedSuccessfully && originalFile.exists() && !originalFile.absolutePath.contains("SecureVault")) {
+                        try {
+                            copiedSuccessfully = fastCopyFile(originalFile, destFile)
                             if (copiedSuccessfully) {
                                 deletedSuccessfully = originalFile.delete()
                             }
@@ -196,7 +246,7 @@ class MediaRepository(private val context: Context) {
                         }
                     }
                     
-                    // Method 2: Fallback to ContentResolver (essential for Scoped Storage / missing raw path write permission)
+                    // Method 3: Fallback to ContentResolver (essential for Scoped Storage / missing raw path write permission)
                     if (!copiedSuccessfully && !originalFile.absolutePath.contains("SecureVault")) {
                         try {
                             val srcUri = getContentUriForPath(context, mediaFile.path)
@@ -218,6 +268,9 @@ class MediaRepository(private val context: Context) {
                         
                         // Update in DB with the exact local private vault path
                         mediaDao.updatePathAndPrivateStatus(id, destFile.absolutePath, true)
+                        
+                        // Trigger a media scan on the original deleted/moved path
+                        triggerMediaScan(context, mediaFile.path)
                     } else {
                         // Fallback: at least flag it in the DB
                         mediaDao.updatePrivateStatus(id, true)
@@ -231,21 +284,34 @@ class MediaRepository(private val context: Context) {
                         var restoredSuccessfully = false
                         var restoredPath = originalPath
                         
-                        // Method 1: Try direct File API
+                        // Method 1: Try direct renameTo (instantaneous if same partition)
                         if (currentFile.exists() && currentFile.absolutePath.contains("SecureVault")) {
                             try {
                                 destFile.parentFile?.mkdirs()
-                                currentFile.copyTo(destFile, overwrite = true)
-                                restoredSuccessfully = destFile.exists() && destFile.length() > 0
+                                restoredSuccessfully = currentFile.renameTo(destFile)
                                 if (restoredSuccessfully) {
-                                    currentFile.delete()
+                                    restoredPath = originalPath
                                 }
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
                         }
                         
-                        // Method 2: Fallback to ContentResolver MediaStore Insertion
+                        // Method 2: Try fast FileChannel copy
+                        if (!restoredSuccessfully && currentFile.exists() && currentFile.absolutePath.contains("SecureVault")) {
+                            try {
+                                destFile.parentFile?.mkdirs()
+                                restoredSuccessfully = fastCopyFile(currentFile, destFile)
+                                if (restoredSuccessfully) {
+                                    currentFile.delete()
+                                    restoredPath = originalPath
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                        
+                        // Method 3: Fallback to ContentResolver MediaStore Insertion
                         if (!restoredSuccessfully && currentFile.exists() && currentFile.absolutePath.contains("SecureVault")) {
                             val insertedPath = copyFileToExternalStorage(context, currentFile, originalPath)
                             if (insertedPath != null) {
@@ -258,6 +324,9 @@ class MediaRepository(private val context: Context) {
                         if (restoredSuccessfully) {
                             mediaDao.updatePathAndPrivateStatus(id, restoredPath, false)
                             prefs.edit().remove("path_${mediaFile.id}").apply()
+                            
+                            // Trigger a scan so MediaStore indexes the restored file immediately!
+                            triggerMediaScan(context, restoredPath)
                         } else {
                             mediaDao.updatePathAndPrivateStatus(id, originalPath, false)
                             prefs.edit().remove("path_${mediaFile.id}").apply()
