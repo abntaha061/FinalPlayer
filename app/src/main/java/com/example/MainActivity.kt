@@ -122,6 +122,11 @@ class MainActivity : ComponentActivity() {
         viewModel.setPipMode(isInPictureInPictureMode)
     }
 
+    override fun onStop() {
+        super.onStop()
+        viewModel.lockPrivateFolder()
+    }
+
     fun updatePipParams(aspectRatio: android.util.Rational?, sourceRect: android.graphics.Rect?, autoEnter: Boolean) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {

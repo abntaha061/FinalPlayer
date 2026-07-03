@@ -3,6 +3,8 @@ package com.example.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -737,16 +739,7 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            // Visual badge with count
-                            if (privateFiles.isNotEmpty()) {
-                                Badge(
-                                    containerColor = currentAccentColor,
-                                    contentColor = Color.White,
-                                    modifier = Modifier.padding(horizontal = 4.dp)
-                                ) {
-                                    Text("${privateFiles.size}", fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                                }
-                            }
+                            // Badge with count removed as requested
                         }
                     }
 
@@ -1002,6 +995,7 @@ fun VaultKeypad(
 // ==========================================
 // --- PREMIUM VAULT DEDICATED DASHBOARD ---
 // ==========================================
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun VaultDashboard(
     viewModel: MediaViewModel,
@@ -1011,9 +1005,26 @@ fun VaultDashboard(
     onBackToSettings: () -> Unit,
     onChangePin: () -> Unit
 ) {
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.lockPrivateFolder()
+        }
+    }
+
     var searchQuery by remember { mutableStateOf("") }
     var sortBy by remember { mutableStateOf("date") } // "date", "title", "size"
     var showDeleteConfirmByFile by remember { mutableStateOf<MediaFile?>(null) }
+
+    val selectedVaultPaths = remember { mutableStateListOf<String>() }
+    var showPropertiesDialog by remember { mutableStateOf<MediaFile?>(null) }
+    var showMultiPropertiesDialog by remember { mutableStateOf(false) }
+    var showMultiDeleteConfirm by remember { mutableStateOf(false) }
+
+    LaunchedEffect(privateFiles) {
+        val currentPaths = privateFiles.map { it.path }
+        val toRemove = selectedVaultPaths.filter { it !in currentPaths }
+        selectedVaultPaths.removeAll(toRemove)
+    }
 
     val filteredFiles = remember(privateFiles, searchQuery, sortBy) {
         var list = privateFiles.filter { 
@@ -1043,33 +1054,74 @@ fun VaultDashboard(
     Scaffold(
         topBar = {
             @OptIn(ExperimentalMaterial3Api::class)
-            TopAppBar(
-                title = { 
-                    Text(
-                        "الخزنة الخاصة (Private Folder)",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackToSettings) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            if (selectedVaultPaths.isNotEmpty()) {
+                TopAppBar(
+                    title = { 
+                        Text(
+                            "${selectedVaultPaths.size} محدد",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { selectedVaultPaths.clear() }) {
+                            Icon(Icons.Default.Close, contentDescription = "إلغاء التحديد")
+                        }
+                    },
+                    actions = {
+                        // Unhide/Restore selected files
+                        IconButton(onClick = {
+                            val selectedFiles = privateFiles.filter { it.path in selectedVaultPaths }
+                            selectedFiles.forEach { file ->
+                                viewModel.setPrivateStatus(file, false)
+                            }
+                            selectedVaultPaths.clear()
+                        }) {
+                            Icon(Icons.Default.Visibility, contentDescription = "إظهار المحدّد", tint = accentColor)
+                        }
+                        // Delete selected files permanently
+                        IconButton(onClick = {
+                            showMultiDeleteConfirm = true
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = "حذف المحدّد نهائياً", tint = Color(0xFFFF5252))
+                        }
+                        // Info/Properties of selected files
+                        IconButton(onClick = {
+                            showMultiPropertiesDialog = true
+                        }) {
+                            Icon(Icons.Default.Info, contentDescription = "خصائص المحدّد", tint = MaterialTheme.colorScheme.onSurface)
+                        }
                     }
-                },
-                actions = {
-                    // Quick Lock Button
-                    Button(
-                        onClick = { 
-                            viewModel.lockPrivateFolder()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Text("قفل المجلد", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                )
+            } else {
+                TopAppBar(
+                    title = { 
+                        Text(
+                            "الخزنة الخاصة (Private Folder)",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBackToSettings) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        // Quick Lock Button
+                        Button(
+                            onClick = { 
+                                viewModel.lockPrivateFolder()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Text("قفل المجلد", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
-                }
-            )
+                )
+            }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
@@ -1094,10 +1146,10 @@ fun VaultDashboard(
                         modifier = Modifier.padding(14.dp),
                         horizontalAlignment = Alignment.Start
                     ) {
-                        Text("إجمالي الفيديوهات", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("حالة الخزنة", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "${privateFiles.size} فيديو",
+                            "مؤمنة 🛡️",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = accentColor
@@ -1244,9 +1296,35 @@ fun VaultDashboard(
                         val thumbnail = rememberVideoThumbnail(file.path)
                         val sizeMb = file.size / (1024f * 1024f)
 
+                        val isSelected = selectedVaultPaths.contains(file.path)
+                        var showPopupMenu by remember { mutableStateOf(false) }
+
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = {
+                                        if (selectedVaultPaths.isNotEmpty()) {
+                                            if (isSelected) selectedVaultPaths.remove(file.path)
+                                            else selectedVaultPaths.add(file.path)
+                                        } else {
+                                            showPopupMenu = true
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (selectedVaultPaths.isNotEmpty()) {
+                                            if (isSelected) selectedVaultPaths.remove(file.path)
+                                            else selectedVaultPaths.add(file.path)
+                                        } else {
+                                            selectedVaultPaths.add(file.path)
+                                        }
+                                    }
+                                ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) accentColor.copy(alpha = 0.2f)
+                                                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ),
+                            border = if (isSelected) BorderStroke(1.5.dp, accentColor) else null
                         ) {
                             Row(
                                 modifier = Modifier
@@ -1254,6 +1332,16 @@ fun VaultDashboard(
                                     .padding(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                // Multi-select Checkbox/Indicator
+                                if (selectedVaultPaths.isNotEmpty()) {
+                                    Icon(
+                                        imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = "Selected Status",
+                                        tint = if (isSelected) accentColor else Color.Gray,
+                                        modifier = Modifier.padding(end = 8.dp).size(20.dp)
+                                    )
+                                }
+
                                 // Thumbnail
                                 Box(
                                     modifier = Modifier
@@ -1320,45 +1408,59 @@ fun VaultDashboard(
                                     )
                                 }
 
-                                // Play button
-                                IconButton(
-                                    onClick = { onPlayFile?.invoke(file.path) },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = "Play Video",
-                                        tint = Color(0xFF34C759),
-                                        modifier = Modifier.size(26.dp)
-                                    )
-                                }
+                                // Popup menu anchor
+                                Box {
+                                    IconButton(
+                                        onClick = { showPopupMenu = true },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "خيارات الفيديو",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
 
-                                // Restore button
-                                IconButton(
-                                    onClick = { 
-                                        viewModel.setPrivateStatus(file, false) 
-                                    },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Visibility,
-                                        contentDescription = "Restore File",
-                                        tint = accentColor,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-
-                                // Permanent Delete button
-                                IconButton(
-                                    onClick = { showDeleteConfirmByFile = file },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete Permanent",
-                                        tint = Color(0xFFFF5252),
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                    DropdownMenu(
+                                        expanded = showPopupMenu,
+                                        onDismissRequest = { showPopupMenu = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("تشغيل الفيديو ▶️") },
+                                            onClick = {
+                                                showPopupMenu = false
+                                                onPlayFile?.invoke(file.path)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("إظهار من الخزنة 👁️") },
+                                            onClick = {
+                                                showPopupMenu = false
+                                                viewModel.setPrivateStatus(file, false)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("خصائص الملف ℹ️") },
+                                            onClick = {
+                                                showPopupMenu = false
+                                                showPropertiesDialog = file
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("تحديد الملف ☑️") },
+                                            onClick = {
+                                                showPopupMenu = false
+                                                selectedVaultPaths.add(file.path)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("حذف نهائي ❌") },
+                                            onClick = {
+                                                showPopupMenu = false
+                                                showDeleteConfirmByFile = file
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1404,6 +1506,52 @@ fun VaultDashboard(
                     Text("إلغاء")
                 }
             }
+        )
+    }
+
+    // Multiple Delete confirmation
+    if (showMultiDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showMultiDeleteConfirm = false },
+            title = { Text("حذف سري نهائي للمحدّد ⚠️", fontWeight = FontWeight.Bold, color = Color.Red) },
+            text = { Text("هل أنت متأكد تماماً أنك تريد حذف كافة مقاطع الفيديو المحددة (${selectedVaultPaths.size}) بشكل دائم ونهائي من جهازك؟ لن تتمكن من استرجاع هذه الملفات أبداً بعد الحذف!") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val selectedFiles = privateFiles.filter { it.path in selectedVaultPaths }
+                        selectedFiles.forEach { file ->
+                            viewModel.deleteFile(file)
+                        }
+                        selectedVaultPaths.clear()
+                        showMultiDeleteConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                ) {
+                    Text("نعم، احذف المحدّد نهائياً", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMultiDeleteConfirm = false }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
+    // Single properties dialog
+    showPropertiesDialog?.let { propFile ->
+        FilePropertiesDialog(
+            file = propFile,
+            onDismiss = { showPropertiesDialog = null }
+        )
+    }
+
+    // Multi properties dialog
+    if (showMultiPropertiesDialog) {
+        val selectedFiles = privateFiles.filter { it.path in selectedVaultPaths }
+        MultiFilesPropertiesDialog(
+            files = selectedFiles,
+            onDismiss = { showMultiPropertiesDialog = false }
         )
     }
 }
@@ -1482,6 +1630,84 @@ fun SettingsOptionRow(
                 modifier = Modifier.size(12.dp)
             )
         }
+    }
+}
+
+@Composable
+fun FilePropertiesDialog(
+    file: MediaFile,
+    onDismiss: () -> Unit
+) {
+    val sizeMb = file.size / (1024f * 1024f)
+    val dateStr = remember(file.dateModified) {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+        sdf.format(java.util.Date(file.dateModified * 1000))
+    }
+    val durationStr = remember(file.duration) {
+        val totalSec = file.duration / 1000
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        "%02d:%02d".format(min, sec)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("خصائص الملف ℹ️", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PropertyRow("اسم الملف:", file.title)
+                PropertyRow("المسار الحالي:", file.path)
+                PropertyRow("الحجم:", "%.2f MB".format(sizeMb))
+                PropertyRow("التاريخ:", dateStr)
+                if (file.duration > 0) {
+                    PropertyRow("المدة:", durationStr)
+                }
+                if (file.width > 0 && file.height > 0) {
+                    PropertyRow("الأبعاد:", "${file.width} x ${file.height}")
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("إغلاق")
+            }
+        }
+    )
+}
+
+@Composable
+fun MultiFilesPropertiesDialog(
+    files: List<MediaFile>,
+    onDismiss: () -> Unit
+) {
+    val totalSize = files.sumOf { it.size }
+    val formattedSize = remember(totalSize) {
+        val mb = totalSize / (1024f * 1024f)
+        if (mb > 1024) "%.2f GB".format(mb / 1024f) else "%.2f MB".format(mb)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("خصائص الملفات المحددة ℹ️", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PropertyRow("عدد الملفات:", "${files.size} ملف")
+                PropertyRow("إجمالي الحجم:", formattedSize)
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("إغلاق")
+            }
+        }
+    )
+}
+
+@Composable
+fun PropertyRow(label: String, value: String) {
+    Column {
+        Text(label, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color.Gray)
+        Text(value, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 

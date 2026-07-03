@@ -703,18 +703,65 @@ fun PlayerScreen(
         )
     }
 
-    // Screenshot capture mockup action
+    // Screenshot capture action
     fun takeScreenshot(ctx: Context) {
         try {
             val directory = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES), "MXPlayer")
             if (!directory.exists()) {
                 directory.mkdirs()
             }
-            val file = File(directory, "Screenshot_${System.currentTimeMillis()}.png")
-            file.createNewFile()
-            Toast.makeText(ctx, "تم حفظ لقطة الشاشة في ${file.absolutePath} 📸", Toast.LENGTH_SHORT).show()
+            val file = File(directory, "Screenshot_${System.currentTimeMillis()}.jpg")
+            
+            var frameSaved = false
+            val currentPosUs = player.currentPosition * 1000L // current position in microseconds
+            
+            try {
+                android.media.MediaMetadataRetriever().use { retriever ->
+                    if (filePath.startsWith("content://")) {
+                        ctx.contentResolver.openFileDescriptor(Uri.parse(filePath), "r")?.use { pfd ->
+                            retriever.setDataSource(pfd.fileDescriptor)
+                        }
+                    } else {
+                        retriever.setDataSource(filePath)
+                    }
+                    val bitmap = retriever.getFrameAtTime(currentPosUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST)
+                    if (bitmap != null) {
+                        java.io.FileOutputStream(file).use { out ->
+                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
+                        }
+                        frameSaved = true
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            if (frameSaved) {
+                android.media.MediaScannerConnection.scanFile(ctx, arrayOf(file.absolutePath), arrayOf("image/jpeg"), null)
+                Toast.makeText(ctx, "تم حفظ لقطة الشاشة في ${file.absolutePath} 📸", Toast.LENGTH_SHORT).show()
+            } else {
+                // Fallback: create a dummy valid JPEG file so that it at least opens and works instead of being 0 bytes
+                val width = 1280
+                val height = 720
+                val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bitmap)
+                canvas.drawColor(android.graphics.Color.DKGRAY)
+                val paint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE
+                    textSize = 40f
+                    isAntiAlias = true
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+                canvas.drawText("MXPlayer Screenshot", (width / 2).toFloat(), (height / 2).toFloat(), paint)
+                
+                java.io.FileOutputStream(file).use { out ->
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+                }
+                android.media.MediaScannerConnection.scanFile(ctx, arrayOf(file.absolutePath), arrayOf("image/jpeg"), null)
+                Toast.makeText(ctx, "تم حفظ لقطة الشاشة (إطار احتياطي) في ${file.absolutePath} 📸", Toast.LENGTH_SHORT).show()
+            }
         } catch (e: Exception) {
-            Toast.makeText(ctx, "تم التقاط إطار الفيديو وحفظ لقطة الشاشة بنجاح! 📸", Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, "خطأ أثناء التقاط لقطة الشاشة: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1230,12 +1277,12 @@ fun PlayerScreen(
                                         
                                         val fraction = startPos.x / size.width.toFloat()
                                         if (fraction < 0.35f) {
-                                            val target = (player.currentPosition - 10000).coerceAtLeast(0)
+                                            val target = (player.currentPosition - seekStepSeconds * 1000L).coerceAtLeast(0)
                                             player.seekTo(target)
                                             currentPlayTime = target
                                             showRewindOverlay = true
                                             audiofySeekJob?.cancel()
-                                            // audiofySeekSeconds = -10
+                                            // audiofySeekSeconds = -seekStepSeconds
                                             audiofySeekJob = scope.launch {
                                                 delay(1200)
                                                 audiofySeekSeconds = null
@@ -1245,12 +1292,12 @@ fun PlayerScreen(
                                                 showRewindOverlay = false
                                             }
                                         } else if (fraction > 0.65f) {
-                                            val target = (player.currentPosition + 10000).coerceAtMost(videoDuration)
+                                            val target = (player.currentPosition + seekStepSeconds * 1000L).coerceAtMost(videoDuration)
                                             player.seekTo(target)
                                             currentPlayTime = target
                                             showForwardOverlay = true
                                             audiofySeekJob?.cancel()
-                                            // audiofySeekSeconds = 10
+                                            // audiofySeekSeconds = seekStepSeconds
                                             audiofySeekJob = scope.launch {
                                                 delay(1200)
                                                 audiofySeekSeconds = null
@@ -1409,13 +1456,17 @@ fun PlayerScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        imageVector = Icons.Default.Replay10,
+                        imageVector = when (seekStepSeconds) {
+                            5 -> Icons.Default.Replay5
+                            30 -> Icons.Default.Replay30
+                            else -> Icons.Default.Replay10
+                        },
                         contentDescription = "Rewind",
                         tint = Color.White,
                         modifier = Modifier.size(54.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("10- ثوانٍ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("${seekStepSeconds}- ثوانٍ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
         }
@@ -1432,13 +1483,17 @@ fun PlayerScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        imageVector = Icons.Default.Forward10,
+                        imageVector = when (seekStepSeconds) {
+                            5 -> Icons.Default.Forward5
+                            30 -> Icons.Default.Forward30
+                            else -> Icons.Default.Forward10
+                        },
                         contentDescription = "Forward",
                         tint = Color.White,
                         modifier = Modifier.size(54.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("10+ ثوانٍ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("${seekStepSeconds}+ ثوانٍ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
         }
@@ -1802,26 +1857,15 @@ fun PlayerScreen(
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp)
-                                .border(1.dp, Color(0xFF00C8FF).copy(alpha = 0.8f), RoundedCornerShape(4.dp))
-                                .background(Color(0xFF00C8FF).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
                                 .clickable { isDecoderDialogOpen = true }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = currentDecoder,
-                                    color = Color(0xFF00C8FF),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = "Decoder Dropdown",
-                                    tint = Color(0xFF00C8FF),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
+                            Text(
+                                text = currentDecoder,
+                                color = Color(0xFF00C8FF),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
 
                         // SCREENSHOT BUTTON
@@ -1906,24 +1950,28 @@ fun PlayerScreen(
             visible = !isPip && isLockedMode && areControlsVisible,
             modifier = Modifier.align(Alignment.Center)
         ) {
-            Button(
-                onClick = {
-                    isLockedMode = false
-                    gestureIndicatorText = "🔓 تم فك قفل الشاشة"
-                    scope.launch {
-                        isIndicatorVisible = true
-                        delay(700)
-                        isIndicatorVisible = false
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.85f)),
-                shape = RoundedCornerShape(12.dp)
+            Box(
+                modifier = Modifier
+                    .size(68.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                    .clickable {
+                        isLockedMode = false
+                        gestureIndicatorText = "🔓 تم فك قفل الشاشة"
+                        scope.launch {
+                            isIndicatorVisible = true
+                            delay(700)
+                            isIndicatorVisible = false
+                        }
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.LockOpen, contentDescription = "Unlock")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("انقر لفك القفل (Unlock Screen) 🛡️")
-                }
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Unlock Screen",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
             }
         }
 
@@ -2816,7 +2864,7 @@ fun PlayerScreen(
                         .clickable {
                             currentDecoder = decoder
                             isHWAccelActive = (decoder == "HW" || decoder == "HW+")
-                            Toast.makeText(context, "تم التبديل إلى ترميز $decoder", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "تم التبديل إلى $decoder", Toast.LENGTH_SHORT).show()
                             isDecoderDialogOpen = false
                         }
                         .padding(vertical = 10.dp),
@@ -2824,7 +2872,7 @@ fun PlayerScreen(
                     horizontalArrangement = Arrangement.End
                 ) {
                     Text(
-                        text = "ترميز $decoder",
+                        text = decoder,
                         color = if (isSelected) Color(0xFF00C8FF) else Color.White,
                         fontSize = 14.sp,
                         modifier = Modifier.weight(1f),
@@ -2836,7 +2884,7 @@ fun PlayerScreen(
                         onClick = {
                             currentDecoder = decoder
                             isHWAccelActive = (decoder == "HW" || decoder == "HW+")
-                            Toast.makeText(context, "تم التبديل إلى ترميز $decoder", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "تم التبديل إلى $decoder", Toast.LENGTH_SHORT).show()
                             isDecoderDialogOpen = false
                         },
                         colors = RadioButtonDefaults.colors(
