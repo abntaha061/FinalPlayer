@@ -641,6 +641,7 @@ fun PlayerScreen(
     var audiofySeekSeconds by remember { mutableStateOf<Int?>(null) }
     var audiofySeekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var singleTapJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var centerDoubleTapJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var currentGestureType by remember { mutableStateOf("NONE") } // "NONE", "VOLUME", "BRIGHTNESS", "SEEK"
     var dragStartOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     var bottomControlsHeightPx by remember { mutableStateOf(0) }
@@ -706,7 +707,12 @@ fun PlayerScreen(
     // Screenshot capture action
     fun takeScreenshot(ctx: Context) {
         try {
-            val directory = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES), "MXPlayer")
+            val storageDir = android.os.Environment.getExternalStorageDirectory()
+            val directory = if (storageDir != null && storageDir.exists()) {
+                File(storageDir, "Pictures/FinalPlayer")
+            } else {
+                File("/storage/emulated/0/Pictures/FinalPlayer")
+            }
             if (!directory.exists()) {
                 directory.mkdirs()
             }
@@ -726,8 +732,89 @@ fun PlayerScreen(
                     }
                     val bitmap = retriever.getFrameAtTime(currentPosUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST)
                     if (bitmap != null) {
+                        val mutableBitmap = bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+                        
+                        if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
+                            val canvas = android.graphics.Canvas(mutableBitmap)
+                            val bmpWidth = mutableBitmap.width
+                            val bmpHeight = mutableBitmap.height
+                            
+                            val lines = activeSubtitleText.split("\n")
+                            val baseTextSize = (bmpHeight * 0.045f * subtitleStyle.textSize).coerceAtLeast(24f)
+                            
+                            val paintFill = android.graphics.Paint().apply {
+                                isAntiAlias = true
+                                textSize = baseTextSize
+                                color = subtitleStyle.textColor.toArgb()
+                                textAlign = android.graphics.Paint.Align.CENTER
+                                if (subtitleStyle.bold && subtitleStyle.italic) {
+                                    typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD_ITALIC)
+                                } else if (subtitleStyle.bold) {
+                                    typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                                } else if (subtitleStyle.italic) {
+                                    typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.ITALIC)
+                                } else {
+                                    typeface = android.graphics.Typeface.DEFAULT
+                                }
+                            }
+                            
+                            val paintOutline = android.graphics.Paint(paintFill).apply {
+                                style = android.graphics.Paint.Style.STROKE
+                                strokeWidth = baseTextSize * 0.12f
+                                color = subtitleStyle.edgeColor.toArgb()
+                                strokeJoin = android.graphics.Paint.Join.ROUND
+                                strokeCap = android.graphics.Paint.Cap.ROUND
+                            }
+                            
+                            val lineSpacing = baseTextSize * 0.2f
+                            val totalHeight = lines.size * baseTextSize + (lines.size - 1) * lineSpacing
+                            
+                            val bottomMargin = bmpHeight * 0.08f + (subtitleStyle.bottomPadding * bmpHeight * 2f).coerceAtLeast(0f)
+                            val startY = bmpHeight - bottomMargin - totalHeight + baseTextSize
+                            
+                            if (subtitleStyle.backgroundEnabled) {
+                                val bgPaint = android.graphics.Paint().apply {
+                                    color = subtitleStyle.backgroundColor.toArgb()
+                                    style = android.graphics.Paint.Style.FILL
+                                }
+                                var maxWidth = 0f
+                                for (line in lines) {
+                                    val w = paintFill.measureText(line)
+                                    if (w > maxWidth) maxWidth = w
+                                }
+                                val paddingX = baseTextSize * 0.5f
+                                val paddingY = baseTextSize * 0.25f
+                                val rectLeft = (bmpWidth / 2f) - (maxWidth / 2f) - paddingX
+                                val rectRight = (bmpWidth / 2f) + (maxWidth / 2f) + paddingX
+                                val rectTop = startY - baseTextSize - paddingY
+                                val rectBottom = startY + totalHeight - baseTextSize + paddingY
+                                
+                                canvas.drawRoundRect(
+                                    rectLeft, rectTop, rectRight, rectBottom,
+                                    baseTextSize * 0.2f, baseTextSize * 0.2f,
+                                    bgPaint
+                                )
+                            }
+                            
+                            for (i in lines.indices) {
+                                val line = lines[i]
+                                val x = bmpWidth / 2f
+                                val y = startY + i * (baseTextSize + lineSpacing)
+                                
+                                if (subtitleStyle.edgeType == CaptionStyleCompat.EDGE_TYPE_OUTLINE) {
+                                    canvas.drawText(line, x, y, paintOutline)
+                                } else if (subtitleStyle.edgeType == CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW) {
+                                    paintFill.setShadowLayer(3f, 2f, 2f, subtitleStyle.edgeColor.toArgb())
+                                }
+                                canvas.drawText(line, x, y, paintFill)
+                                if (subtitleStyle.edgeType == CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW) {
+                                    paintFill.clearShadowLayer()
+                                }
+                            }
+                        }
+                        
                         java.io.FileOutputStream(file).use { out ->
-                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
+                            mutableBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, out)
                         }
                         frameSaved = true
                     }
@@ -752,7 +839,14 @@ fun PlayerScreen(
                     isAntiAlias = true
                     textAlign = android.graphics.Paint.Align.CENTER
                 }
-                canvas.drawText("MXPlayer Screenshot", (width / 2).toFloat(), (height / 2).toFloat(), paint)
+                canvas.drawText("FinalPlayer Screenshot", (width / 2).toFloat(), (height / 2).toFloat(), paint)
+                
+                if (isSubtitleEnabled && activeSubtitleText.isNotEmpty()) {
+                    val lines = activeSubtitleText.split("\n")
+                    for (i in lines.indices) {
+                        canvas.drawText(lines[i], (width / 2).toFloat(), (height / 2 + 60 + i * 45).toFloat(), paint)
+                    }
+                }
                 
                 java.io.FileOutputStream(file).use { out ->
                     bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
@@ -1070,6 +1164,7 @@ fun PlayerScreen(
                     awaitPointerEventScope {
                         var lastTapTime = 0L
                         var lastTapPosition = androidx.compose.ui.geometry.Offset.Zero
+                        var tapCount = 0
                         
                         while (true) {
                             val down = awaitFirstDown(requireUnconsumed = false)
@@ -1267,11 +1362,18 @@ fun PlayerScreen(
                             if (!hasMoved) {
                                 val upTime = System.currentTimeMillis()
                                 if (upTime - downTime < 300) {
-                                    if (upTime - lastTapTime < 300 && 
-                                        kotlin.math.abs(startPos.x - lastTapPosition.x) < 50f && 
-                                        kotlin.math.abs(startPos.y - lastTapPosition.y) < 50f) {
-                                        
-                                        // Cancel the single tap controls toggle job so that player controls/progress bar do not appear
+                                    val isClose = upTime - lastTapTime < 350 && 
+                                                  kotlin.math.abs(startPos.x - lastTapPosition.x) < 120f && 
+                                                  kotlin.math.abs(startPos.y - lastTapPosition.y) < 120f
+                                    
+                                    if (isClose) {
+                                        tapCount++
+                                    } else {
+                                        tapCount = 1
+                                    }
+                                    
+                                    if (tapCount == 2) {
+                                        // Cancel single tap action
                                         singleTapJob?.cancel()
                                         singleTapJob = null
                                         
@@ -1282,7 +1384,6 @@ fun PlayerScreen(
                                             currentPlayTime = target
                                             showRewindOverlay = true
                                             audiofySeekJob?.cancel()
-                                            // audiofySeekSeconds = -seekStepSeconds
                                             audiofySeekJob = scope.launch {
                                                 delay(1200)
                                                 audiofySeekSeconds = null
@@ -1291,13 +1392,13 @@ fun PlayerScreen(
                                                 delay(700)
                                                 showRewindOverlay = false
                                             }
+                                            tapCount = 0 // reset
                                         } else if (fraction > 0.65f) {
                                             val target = (player.currentPosition + seekStepSeconds * 1000L).coerceAtMost(videoDuration)
                                             player.seekTo(target)
                                             currentPlayTime = target
                                             showForwardOverlay = true
                                             audiofySeekJob?.cancel()
-                                            // audiofySeekSeconds = seekStepSeconds
                                             audiofySeekJob = scope.launch {
                                                 delay(1200)
                                                 audiofySeekSeconds = null
@@ -1306,18 +1407,38 @@ fun PlayerScreen(
                                                 delay(700)
                                                 showForwardOverlay = false
                                             }
+                                            tapCount = 0 // reset
                                         } else {
-                                            if (player.isPlaying) {
-                                                player.pause()
-                                            } else {
-                                                player.play()
+                                            // Center double tap: delay play/pause to see if a triple tap is coming
+                                            centerDoubleTapJob?.cancel()
+                                            centerDoubleTapJob = scope.launch {
+                                                delay(250)
+                                                if (player.isPlaying) {
+                                                    player.pause()
+                                                } else {
+                                                    player.play()
+                                                }
+                                                tapCount = 0 // reset after execution
                                             }
                                         }
+                                        lastTapTime = upTime
+                                        lastTapPosition = startPos
+                                    } else if (tapCount >= 3) {
+                                        val fraction = startPos.x / size.width.toFloat()
+                                        if (fraction >= 0.35f && fraction <= 0.65f) {
+                                            // Cancel double tap action
+                                            centerDoubleTapJob?.cancel()
+                                            centerDoubleTapJob = null
+                                            
+                                            // Trigger screenshot!
+                                            takeScreenshot(context)
+                                        }
+                                        tapCount = 0 // reset
                                         lastTapTime = 0L
                                         lastTapPosition = androidx.compose.ui.geometry.Offset.Zero
                                     } else {
-                                        // Delay the single tap action to allow potential double taps to cancel it,
-                                        // keeping controls hidden on 10s seek
+                                        // tapCount == 1
+                                        // Delay single tap action to allow potential double/triple taps to cancel/intercept it
                                         singleTapJob?.cancel()
                                         singleTapJob = scope.launch {
                                             delay(250)
@@ -1325,6 +1446,7 @@ fun PlayerScreen(
                                             if (!areControlsVisible) {
                                                 isBrightnessSliderVisible = false
                                             }
+                                            tapCount = 0 // reset after execution
                                         }
                                         
                                         lastTapTime = upTime
