@@ -4608,7 +4608,7 @@ fun PrivateVaultTab(
                                         } catch (e: Exception) {}
                                         onPlayFile(target.path)
                                     },
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -5078,8 +5078,7 @@ fun MainVaultTabScreen(
                 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -5379,7 +5378,7 @@ fun MainVaultTabScreen(
                     ) {
                         Card(
                             modifier = Modifier.weight(1f),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text("حالة الخزنة", fontSize = 10.5.sp, color = Color.Gray)
@@ -5389,7 +5388,7 @@ fun MainVaultTabScreen(
                         }
                         Card(
                             modifier = Modifier.weight(1f),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text("إجمالي السعة المشغولة", fontSize = 10.5.sp, color = Color.Gray)
@@ -5539,7 +5538,7 @@ fun MainVaultTabScreen(
                                         ),
                                     colors = CardDefaults.cardColors(
                                         containerColor = if (isSelected) accentColor.copy(alpha = 0.2f)
-                                                         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                                         else MaterialTheme.colorScheme.surfaceVariant
                                     ),
                                     border = if (isSelected) BorderStroke(1.5.dp, accentColor) else null
                                 ) {
