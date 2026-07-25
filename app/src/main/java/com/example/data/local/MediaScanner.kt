@@ -375,6 +375,7 @@ class MediaScanner(private val mediaDao: MediaDao) {
             MediaStore.Video.Media.DURATION,
             MediaStore.Video.Media.SIZE,
             MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.DATE_MODIFIED,
             MediaStore.Video.Media.WIDTH,
             MediaStore.Video.Media.HEIGHT
         )
@@ -390,6 +391,7 @@ class MediaScanner(private val mediaDao: MediaDao) {
                 val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
                 val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
                 val dateAddedCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+                val dateModCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
                 val widthCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
                 val heightCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
 
@@ -398,14 +400,20 @@ class MediaScanner(private val mediaDao: MediaDao) {
                     if (shouldExcludeVideoFile(rawPath)) continue
                     val file = File(rawPath)
                     val path = try { file.canonicalPath } catch (e: Exception) { file.absolutePath }
-                    val dateAddedVal = cursor.getLong(dateAddedCol) * 1000L
+                    val dateModSec = cursor.getLong(dateModCol)
+                    val dateAddSec = cursor.getLong(dateAddedCol)
+                    val finalDateMs = when {
+                        dateModSec > 0L -> dateModSec * 1000L
+                        dateAddSec > 0L -> dateAddSec * 1000L
+                        else -> file.lastModified()
+                    }
                     foundFiles.add(
                         MediaFile(
                             path = path,
                             title = cursor.getString(nameCol) ?: file.name,
                             duration = cursor.getLong(durationCol),
                             size = cursor.getLong(sizeCol),
-                            dateModified = dateAddedVal,
+                            dateModified = if (finalDateMs > 0L) finalDateMs else System.currentTimeMillis(),
                             isVideo = true,
                             width = cursor.getInt(widthCol),
                             height = cursor.getInt(heightCol)

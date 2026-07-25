@@ -95,6 +95,7 @@ fun PlayerScreen(
     onNavigateToVideo: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
 
@@ -213,9 +214,8 @@ fun PlayerScreen(
         activity?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
 
-    // Keep screen on during media playback and restore original orientation on leave
+    // Clean up screen flags and restore original orientation/insets on leave
     DisposableEffect(Unit) {
-        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.requestedOrientation = initialOrientation
@@ -467,6 +467,16 @@ fun PlayerScreen(
     var isLockedMode by remember { mutableStateOf(false) }
     var playbackState by remember { mutableStateOf(Player.STATE_IDLE) }
     var isPlayingState by remember { mutableStateOf(false) }
+
+    // Manage screen keep awake dynamically: keep screen on ONLY when media is playing
+    DisposableEffect(isPlayingState) {
+        if (isPlayingState) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose { }
+    }
     var videoDuration by remember { mutableStateOf(0L) }
     var currentPlayTime by remember { mutableStateOf(0L) }
 
@@ -520,6 +530,7 @@ fun PlayerScreen(
     var isSpeedExpanded by remember { mutableStateOf(false) }
     var isSubtitlesExpanded by remember { mutableStateOf(false) }
     var isLongPressFastForwarding by remember { mutableStateOf(false) }
+    var selectedLongPressSpeed by remember { mutableStateOf(2.0f) }
 
     // Native resolution detector
     var videoWidth by remember { mutableStateOf(0) }
@@ -565,15 +576,33 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(videoWidth, videoHeight, videoSourceRect, isPip) {
-        if (!isPip) {
-            val aspectRational = if (videoWidth > 0 && videoHeight > 0) {
-                android.util.Rational(videoWidth, videoHeight)
-            } else {
-                android.util.Rational(16, 9)
-            }
-            mainActivity?.updatePipParams(aspectRational, videoSourceRect, true)
+    LaunchedEffect(videoWidth, videoHeight, videoSourceRect, isPip, isPlayingState) {
+        val aspectRational = if (videoWidth > 0 && videoHeight > 0) {
+            android.util.Rational(videoWidth, videoHeight)
+        } else {
+            android.util.Rational(16, 9)
         }
+        mainActivity?.updatePipParams(
+            aspectRatio = aspectRational,
+            sourceRect = videoSourceRect,
+            autoEnter = !isPip,
+            isPlaying = isPlayingState,
+            onPlayPause = {
+                if (player.isPlaying) {
+                    player.pause()
+                } else {
+                    player.play()
+                }
+            },
+            onRewind = {
+                val target = (player.currentPosition - 10000L).coerceAtLeast(0L)
+                player.seekTo(target)
+            },
+            onForward = {
+                val target = (player.currentPosition + 10000L).coerceAtMost(player.duration)
+                player.seekTo(target)
+            }
+        )
     }
 
     // -----------------------------------------------------
@@ -1221,6 +1250,7 @@ fun PlayerScreen(
                                     singleTapJob?.cancel()
                                     singleTapJob = null
                                     wasPlayingBeforeFastForward = player.isPlaying
+                                    selectedLongPressSpeed = 2.0f
                                     player.setPlaybackSpeed(2.0f)
                                     if (!wasPlayingBeforeFastForward) {
                                         player.play()
@@ -1256,7 +1286,7 @@ fun PlayerScreen(
                                     val totalY = startPos.y - change.position.y
                                     
                                     val threshold = 16f
-                                    if (currentGestureType == "NONE" && (kotlin.math.abs(totalX) >= threshold || kotlin.math.abs(totalY) >= threshold)) {
+                                    if (currentGestureType == "NONE" && !isLongPressFastForwarding && (kotlin.math.abs(totalX) >= threshold || kotlin.math.abs(totalY) >= threshold)) {
                                         hasMoved = true
                                         longPressJob?.cancel()
                                         longPressJob = null
@@ -1275,8 +1305,22 @@ fun PlayerScreen(
                                             }
                                         }
                                     }
-                                    
-                                    if (currentGestureType != "NONE") {
+
+                                    if (isLongPressFastForwarding) {
+                                        change.consume()
+                                        val speedOptions = listOf(0.5f, 0.75f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 4.0f)
+                                        val touchX = change.position.x
+                                        val fraction = (touchX / size.width.toFloat()).coerceIn(0f, 0.999f)
+                                        val speedIndex = (fraction * speedOptions.size).toInt().coerceIn(0, speedOptions.size - 1)
+                                        val newSpeed = speedOptions[speedIndex]
+                                        if (newSpeed != selectedLongPressSpeed) {
+                                            selectedLongPressSpeed = newSpeed
+                                            player.setPlaybackSpeed(newSpeed)
+                                            try {
+                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                            } catch (e: Exception) {}
+                                        }
+                                    } else if (currentGestureType != "NONE") {
                                         change.consume()
                                         val dragAmountX = change.position.x - change.previousPosition.x
                                         val dragAmountY = change.previousPosition.y - change.position.y
@@ -1524,9 +1568,85 @@ fun PlayerScreen(
             )
         }
 
-        // Top-Center HUD Notification Pill (Fast Forward indicator or system status alerts)
+        // Top-Center Long-Press Speed Scrubbing Bar Overlay
         androidx.compose.animation.AnimatedVisibility(
-            visible = !isPip && (isLongPressFastForwarding || (isIndicatorVisible && gestureIndicatorText != null)),
+            visible = !isPip && isLongPressFastForwarding,
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(initialOffsetY = { -it }),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 10.dp, start = 12.dp, end = 12.dp)
+        ) {
+            val speedOptions = listOf(0.5f, 0.75f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 4.0f)
+            Box(
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.85f), shape = RoundedCornerShape(20.dp))
+                    .border(width = 1.dp, color = currentAccentColor.copy(alpha = 0.6f), shape = RoundedCornerShape(20.dp))
+                    .padding(vertical = 10.dp, horizontal = 14.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Speed,
+                            contentDescription = "Speed",
+                            tint = currentAccentColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        val speedStr = if (selectedLongPressSpeed == selectedLongPressSpeed.toInt().toFloat()) "${selectedLongPressSpeed.toInt()}x" else "${selectedLongPressSpeed}x"
+                        Text(
+                            text = "سرعة التشغيل: $speedStr",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "(اسحب يمين/يسار للتغيير)",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 10.sp
+                        )
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        speedOptions.forEach { sp ->
+                            val isSelected = kotlin.math.abs(sp - selectedLongPressSpeed) < 0.05f
+                            val label = if (sp == sp.toInt().toFloat()) "${sp.toInt()}x" else "${sp}x"
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (isSelected) currentAccentColor else Color.White.copy(alpha = 0.15f)
+                                    )
+                                    .padding(vertical = 6.dp, horizontal = 9.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) Color.Black else Color.White,
+                                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                    fontSize = if (isSelected) 13.sp else 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Top-Center HUD Notification Pill (system status alerts when not long pressing)
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !isPip && !isLongPressFastForwarding && (isIndicatorVisible && gestureIndicatorText != null),
             enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(initialOffsetY = { -it }),
             exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }),
             modifier = Modifier
@@ -1534,32 +1654,19 @@ fun PlayerScreen(
                 .statusBarsPadding()
                 .padding(top = 16.dp)
         ) {
-            val pillText = if (isLongPressFastForwarding) "▶▶ 2x" else (gestureIndicatorText ?: "")
+            val pillText = gestureIndicatorText ?: ""
             Box(
                 modifier = Modifier
                     .background(Color.Black.copy(alpha = 0.72f), shape = RoundedCornerShape(percent = 50))
                     .border(width = 1.dp, color = Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(percent = 50))
                     .padding(vertical = 8.dp, horizontal = 18.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    if (isLongPressFastForwarding) {
-                        Icon(
-                            imageVector = Icons.Default.FastForward,
-                            contentDescription = "Fast Forwarding",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp).padding(end = 4.dp)
-                        )
-                    }
-                    Text(
-                        text = pillText,
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp
-                    )
-                }
+                Text(
+                    text = pillText,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp
+                )
             }
         }
 

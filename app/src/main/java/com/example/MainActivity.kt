@@ -59,6 +59,27 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val ACTION_PIP_PLAY_PAUSE = "com.example.PIP_PLAY_PAUSE"
+        const val ACTION_PIP_REWIND = "com.example.PIP_REWIND"
+        const val ACTION_PIP_FORWARD = "com.example.PIP_FORWARD"
+    }
+
+    var onPipPlayPause: (() -> Unit)? = null
+    var onPipRewind: (() -> Unit)? = null
+    var onPipForward: (() -> Unit)? = null
+
+    private var isPipReceiverRegistered = false
+    private val pipReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            when (intent?.action) {
+                ACTION_PIP_PLAY_PAUSE -> onPipPlayPause?.invoke()
+                ACTION_PIP_REWIND -> onPipRewind?.invoke()
+                ACTION_PIP_FORWARD -> onPipForward?.invoke()
+            }
+        }
+    }
+
     private val viewModel: MediaViewModel by lazy {
         androidx.lifecycle.ViewModelProvider(this)[MediaViewModel::class.java]
     }
@@ -67,6 +88,19 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleIncomingIntent(intent)
+
+        val filter = android.content.IntentFilter().apply {
+            addAction(ACTION_PIP_PLAY_PAUSE)
+            addAction(ACTION_PIP_REWIND)
+            addAction(ACTION_PIP_FORWARD)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(pipReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(pipReceiver, filter)
+        }
+        isPipReceiverRegistered = true
+
         setContent {
             val appThemeMode by viewModel.appThemeModeState.collectAsState()
             val isDark = when (appThemeMode) {
@@ -77,6 +111,16 @@ class MainActivity : ComponentActivity() {
             MyApplicationTheme(darkTheme = isDark) {
                 MainNavigationRoot(viewModel)
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isPipReceiverRegistered) {
+            try {
+                unregisterReceiver(pipReceiver)
+            } catch (e: Exception) {}
+            isPipReceiverRegistered = false
         }
     }
 
@@ -127,11 +171,23 @@ class MainActivity : ComponentActivity() {
         viewModel.lockPrivateFolder()
     }
 
-    fun updatePipParams(aspectRatio: android.util.Rational?, sourceRect: android.graphics.Rect?, autoEnter: Boolean) {
+    fun updatePipParams(
+        aspectRatio: android.util.Rational?,
+        sourceRect: android.graphics.Rect?,
+        autoEnter: Boolean,
+        isPlaying: Boolean = true,
+        onPlayPause: (() -> Unit)? = null,
+        onRewind: (() -> Unit)? = null,
+        onForward: (() -> Unit)? = null
+    ) {
+        if (onPlayPause != null) this.onPipPlayPause = onPlayPause
+        if (onRewind != null) this.onPipRewind = onRewind
+        if (onForward != null) this.onPipForward = onForward
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 val builder = android.app.PictureInPictureParams.Builder()
-                if (autoEnter && aspectRatio != null) {
+                if (aspectRatio != null) {
                     val value = aspectRatio.numerator.toFloat() / aspectRatio.denominator.toFloat()
                     if (value in 0.4184f..2.39f) {
                         builder.setAspectRatio(aspectRatio)
@@ -143,6 +199,44 @@ class MainActivity : ComponentActivity() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     builder.setAutoEnterEnabled(autoEnter)
                 }
+
+                // Register RemoteActions for PiP player control
+                val actions = mutableListOf<android.app.RemoteAction>()
+
+                // 1. Rewind (-10s)
+                val rewindIntent = android.app.PendingIntent.getBroadcast(
+                    this,
+                    101,
+                    android.content.Intent(ACTION_PIP_REWIND).setPackage(packageName),
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+                val rewindIcon = android.graphics.drawable.Icon.createWithResource(this, android.R.drawable.ic_media_rew)
+                actions.add(android.app.RemoteAction(rewindIcon, "إرجاع", "إرجاع 10 ثوانٍ", rewindIntent))
+
+                // 2. Play / Pause
+                val playPauseIntent = android.app.PendingIntent.getBroadcast(
+                    this,
+                    102,
+                    android.content.Intent(ACTION_PIP_PLAY_PAUSE).setPackage(packageName),
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+                val playPauseIconRes = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+                val playPauseTitle = if (isPlaying) "إيقاف مؤقت" else "تشغيل"
+                val playPauseIcon = android.graphics.drawable.Icon.createWithResource(this, playPauseIconRes)
+                actions.add(android.app.RemoteAction(playPauseIcon, playPauseTitle, playPauseTitle, playPauseIntent))
+
+                // 3. Forward (+10s)
+                val forwardIntent = android.app.PendingIntent.getBroadcast(
+                    this,
+                    103,
+                    android.content.Intent(ACTION_PIP_FORWARD).setPackage(packageName),
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+                val forwardIcon = android.graphics.drawable.Icon.createWithResource(this, android.R.drawable.ic_media_ff)
+                actions.add(android.app.RemoteAction(forwardIcon, "تقديم", "تقديم 10 ثوانٍ", forwardIntent))
+
+                builder.setActions(actions)
+
                 setPictureInPictureParams(builder.build())
             } catch (e: Exception) {
                 e.printStackTrace()

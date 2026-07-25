@@ -1717,9 +1717,10 @@ fun VideosAndFoldersTab(
         } else {
             foldersWithVideos.map { p ->
                 val list = videosByFolder[p] ?: emptyList()
+                val folderDate = list.maxOfOrNull { if (it.dateModified > 0L) it.dateModified else File(it.path).lastModified() } ?: File(p).lastModified()
                 ScannedFolder(
                     folderPath = p,
-                    lastModifiedTs = System.currentTimeMillis(),
+                    lastModifiedTs = folderDate,
                     fileCount = list.size,
                     lastScannedAt = System.currentTimeMillis()
                 )
@@ -1732,8 +1733,15 @@ fun VideosAndFoldersTab(
                 if (lastSlash >= 0) it.folderPath.substring(lastSlash + 1).lowercase() else it.folderPath.lowercase()
             }
             "DATE" -> rawFolders.sortedBy { folder ->
-                val folderVideos = videosByFolder[folder.folderPath] ?: emptyList()
-                folderVideos.maxOfOrNull { it.dateModified } ?: 0L
+                val folderVideos = videosByFolder[folder.folderPath] 
+                    ?: videosByFolder.entries.firstOrNull { File(it.key).equals(File(folder.folderPath)) }?.value 
+                    ?: emptyList()
+                val vidDates = folderVideos.map { if (it.dateModified > 0L) it.dateModified else File(it.path).lastModified() }
+                if (vidDates.isNotEmpty()) {
+                    vidDates.maxOrNull()!!
+                } else {
+                    if (folder.lastModifiedTs > 0L) folder.lastModifiedTs else File(folder.folderPath).lastModified()
+                }
             }
             "SIZE" -> rawFolders.sortedBy { folder ->
                 val folderVideos = videosByFolder[folder.folderPath] ?: emptyList()
@@ -1785,7 +1793,7 @@ fun VideosAndFoldersTab(
     val sortedVideos = remember(searchedVideos, sortOption, sortDirection, historyList) {
         val comparator = when (sortOption) {
             "TITLE" -> compareBy<MediaFile> { it.title.lowercase() }
-            "DATE" -> compareBy<MediaFile> { it.dateModified }
+            "DATE" -> compareBy<MediaFile> { if (it.dateModified > 0L) it.dateModified else File(it.path).lastModified() }
             "SIZE" -> compareBy<MediaFile> { it.size }
             "DURATION" -> compareBy<MediaFile> { it.duration }
             "PATH" -> compareBy<MediaFile> { it.path }
