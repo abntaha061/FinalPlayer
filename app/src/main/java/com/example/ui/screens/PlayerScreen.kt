@@ -1044,14 +1044,9 @@ fun PlayerScreen(
         }
     }
 
-    // Auto-advance to next video when the current video finishes playing
+    // Do not auto-advance automatically when video finishes; wait for user input on the overlay menu
     LaunchedEffect(playbackState) {
-        if (playbackState == Player.STATE_ENDED) {
-            if (hasNextVideo) {
-                val nextPath = allVideos[currentVideoIndex + 1].path
-                onNavigateToVideo(nextPath)
-            }
-        }
+        // Intentionally left empty so video stops on STATE_ENDED and shows the end-of-video overlay menu
     }
 
     // Auto fade controls delay helper
@@ -1667,6 +1662,136 @@ fun PlayerScreen(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp
                 )
+            }
+        }
+
+        // ----------------------------------------------------------------------
+        // END OF VIDEO OVERLAY (قائمة عند انتهاء الفيديو)
+        // ----------------------------------------------------------------------
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !isPip && (playbackState == Player.STATE_ENDED),
+            enter = androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .clickable(enabled = false) {},
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF1B1B22).copy(alpha = 0.95f)
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                    modifier = Modifier
+                        .padding(horizontal = 24.dp)
+                        .widthIn(max = 380.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .background(currentAccentColor.copy(alpha = 0.2f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Finished",
+                                tint = currentAccentColor,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "تم انتهاء الفيديو",
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        player.seekTo(0)
+                                        player.playWhenReady = true
+                                        player.play()
+                                        currentPlayTime = 0L
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color.White.copy(alpha = 0.15f),
+                                        contentColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(50.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Replay,
+                                        contentDescription = "Replay",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "إعادة",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    )
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (hasNextVideo) {
+                                            val nextPath = allVideos[currentVideoIndex + 1].path
+                                            onNavigateToVideo(nextPath)
+                                        } else if (allVideos.isNotEmpty()) {
+                                            val firstPath = allVideos[0].path
+                                            onNavigateToVideo(firstPath)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = currentAccentColor,
+                                        contentColor = Color.Black
+                                    ),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(50.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SkipNext,
+                                        contentDescription = "Next",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "التالي",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
