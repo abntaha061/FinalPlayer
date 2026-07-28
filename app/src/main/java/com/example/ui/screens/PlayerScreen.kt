@@ -38,6 +38,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -806,23 +809,24 @@ fun PlayerScreen(
                                     color = subtitleStyle.backgroundColor.toArgb()
                                     style = android.graphics.Paint.Style.FILL
                                 }
-                                var maxWidth = 0f
-                                for (line in lines) {
+                                val paddingX = baseTextSize * 0.4f
+                                val paddingY = baseTextSize * 0.15f
+                                for (i in lines.indices) {
+                                    val line = lines[i]
                                     val w = paintFill.measureText(line)
-                                    if (w > maxWidth) maxWidth = w
+                                    if (w > 0) {
+                                        val lineY = startY + i * (baseTextSize + lineSpacing)
+                                        val rectLeft = (bmpWidth / 2f) - (w / 2f) - paddingX
+                                        val rectRight = (bmpWidth / 2f) + (w / 2f) + paddingX
+                                        val rectTop = lineY - baseTextSize - paddingY
+                                        val rectBottom = lineY + paddingY
+                                        canvas.drawRoundRect(
+                                            rectLeft, rectTop, rectRight, rectBottom,
+                                            baseTextSize * 0.15f, baseTextSize * 0.15f,
+                                            bgPaint
+                                        )
+                                    }
                                 }
-                                val paddingX = baseTextSize * 0.5f
-                                val paddingY = baseTextSize * 0.25f
-                                val rectLeft = (bmpWidth / 2f) - (maxWidth / 2f) - paddingX
-                                val rectRight = (bmpWidth / 2f) + (maxWidth / 2f) + paddingX
-                                val rectTop = startY - baseTextSize - paddingY
-                                val rectBottom = startY + totalHeight - baseTextSize + paddingY
-                                
-                                canvas.drawRoundRect(
-                                    rectLeft, rectTop, rectRight, rectBottom,
-                                    baseTextSize * 0.2f, baseTextSize * 0.2f,
-                                    bgPaint
-                                )
                             }
                             
                             for (i in lines.indices) {
@@ -2052,6 +2056,9 @@ fun PlayerScreen(
                         label = "subtitle_rise"
                     )
                     val extraBottomPad = (bottomPadDp + animatedExtraPad).coerceAtLeast(0.dp)
+                    
+                    var textLayoutResult by remember(activeSubtitleText) { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+
                     Box(
                         modifier = Modifier
                             .align(gravityAlignment)
@@ -2084,19 +2091,13 @@ fun PlayerScreen(
                                     }
                                 }
                             }
-                            .background(
-                                color = if (!subtitleStyle.backgroundEnabled) Color.Transparent
-                                        else if (isDraggingSubtitle) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                                        else subtitleStyle.backgroundColor,
-                                shape = RoundedCornerShape(4.dp)
-                            )
                             .border(
                                 width = if (isDraggingSubtitle) 1.5.dp else 0.dp,
                                 color = if (isDraggingSubtitle) MaterialTheme.colorScheme.primary else Color.Transparent,
                                 shape = RoundedCornerShape(4.dp)
                             )
                             .clickable { isSubtitleCustomizationOpen = true }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
                     ) {
                         val fontWeight = if (subtitleStyle.bold) FontWeight.Bold else FontWeight.Normal
                         val fontStyle = if (subtitleStyle.italic)
@@ -2114,6 +2115,7 @@ fun PlayerScreen(
                             )
                             else -> null
                         }
+                        val primaryColor = MaterialTheme.colorScheme.primary
                         Text(
                             text = activeSubtitleText,
                             color = subtitleStyle.textColor,
@@ -2121,7 +2123,38 @@ fun PlayerScreen(
                             fontWeight = fontWeight,
                             fontStyle = fontStyle,
                             textAlign = TextAlign.Center,
-                            lineHeight = (16f * subtitleStyle.textSize * 1.2f).sp,
+                            lineHeight = (16f * subtitleStyle.textSize * 1.25f).sp,
+                            onTextLayout = { textLayoutResult = it },
+                            modifier = Modifier.drawWithCache {
+                                val padX = 6.dp.toPx()
+                                val padY = 2.dp.toPx()
+                                val cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                                val draggingBgColor = primaryColor.copy(alpha = 0.5f)
+
+                                onDrawWithContent {
+                                    val layoutResult = textLayoutResult
+                                    if (layoutResult != null && (subtitleStyle.backgroundEnabled || isDraggingSubtitle)) {
+                                        val bgColor = if (isDraggingSubtitle) draggingBgColor else subtitleStyle.backgroundColor
+
+                                        for (i in 0 until layoutResult.lineCount) {
+                                            val l = layoutResult.getLineLeft(i)
+                                            val r = layoutResult.getLineRight(i)
+                                            val t = layoutResult.getLineTop(i)
+                                            val b = layoutResult.getLineBottom(i)
+
+                                            if (r > l) {
+                                                drawRoundRect(
+                                                    color = bgColor,
+                                                    topLeft = Offset(l - padX, t - padY),
+                                                    size = Size((r - l) + (padX * 2), (b - t) + (padY * 2)),
+                                                    cornerRadius = cornerRadius
+                                                )
+                                            }
+                                        }
+                                    }
+                                    drawContent()
+                                }
+                            },
                             style = TextStyle(
                                 shadow = shadowStyle,
                                 platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false)

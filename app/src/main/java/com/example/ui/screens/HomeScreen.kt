@@ -1943,11 +1943,14 @@ fun VideosAndFoldersTab(
                     val totalBytes = stats.totalBytes
 
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                        Row(
+                        val isFolderSelected = selectedPaths.contains(folder.folderPath)
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .frostedGlass(isDark = isDark, shape = RoundedCornerShape(14.dp), drawBorder = false)
+                                .then(
+                                    if (isFolderSelected) Modifier.background(accentColor.copy(alpha = 0.22f))
+                                    else Modifier
+                                )
                                 .combinedClickable(
                                     onClick = {
                                         try {
@@ -1976,60 +1979,70 @@ fun VideosAndFoldersTab(
                                         }
                                     }
                                 )
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val folderNewVideosCount = stats.newVideosCount
-                            if (showThumbnail) {
-                                MXFolderIcon(folderName = folderName, filesCount = folderNewVideosCount, isSelected = selectedPaths.contains(folder.folderPath), accentColor = accentColor)
-                                Spacer(modifier = Modifier.width(16.dp))
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = folderName,
-                                        fontSize = 13.5.sp,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontWeight = FontWeight.Normal,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val folderNewVideosCount = stats.newVideosCount
+                                if (showThumbnail) {
+                                    MXFolderIcon(folderName = folderName, filesCount = folderNewVideosCount, isSelected = isFolderSelected, accentColor = accentColor)
+                                    Spacer(modifier = Modifier.width(16.dp))
                                 }
-                                if (showPath) {
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = folder.folderPath,
-                                        fontSize = 10.sp,
-                                        color = Color.Gray,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = formatVideosCountArabic(filesCount),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                                        fontSize = 11.5.sp
-                                    )
-                                    if (showSize) {
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Box(
-                                            modifier = Modifier
-                                                .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(3.dp))
-                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = formatFolderSizeArabic(totalBytes),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Medium
-                                            )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = folderName,
+                                            fontSize = 15.sp,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                    }
+                                    if (showPath) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = folder.folderPath,
+                                            fontSize = 11.sp,
+                                            color = Color.Gray,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = formatVideosCountArabic(filesCount),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                            fontSize = 12.sp
+                                        )
+                                        if (showSize) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape = RoundedCornerShape(3.dp))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = formatFolderSizeArabic(totalBytes),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 78.dp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                                thickness = 0.5.dp
+                            )
                         }
                     }
                 }
