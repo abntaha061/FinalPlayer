@@ -2061,7 +2061,7 @@ fun VideosAndFoldersTab(
                     if (false) {
                         items(displayVideos, key = { "all_file_${it.path}" }) { video ->
                             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                val thumbnail = rememberVideoThumbnail(video.path)
+                                val thumbnail = rememberVideoThumbnail(video.path, video.id)
                                 val currentTimeMs = System.currentTimeMillis()
                                 val threeDaysInMs = 3 * 24 * 60 * 60 * 1000L
                                 val isNewVideo = (currentTimeMs - video.dateModified) <= threeDaysInMs && video.isNew
@@ -2101,7 +2101,7 @@ fun VideosAndFoldersTab(
                                                 .background(Color(0xFF212121)),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            val thumb = rememberVideoThumbnail(video.path)
+                                            val thumb = rememberVideoThumbnail(video.path, video.id)
                                             if (thumb != null) {
                                                 Image(
                                                     bitmap = thumb,
@@ -2518,7 +2518,7 @@ fun VideosAndFoldersTab(
                 if (viewContentMode == "LIST" || viewContentMode == "FILES" || (viewContentMode != "GRID" && (selectedFolderPath != null || searchQuery.isNotBlank()))) {
                     items(displayVideos, key = { it.path }) { video ->
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            val thumbnail = rememberVideoThumbnail(video.path)
+                            val thumbnail = rememberVideoThumbnail(video.path, video.id)
                             val currentTimeMs = System.currentTimeMillis()
                             val threeDaysInMs = 3 * 24 * 60 * 60 * 1000L
                             val isNewVideo = (currentTimeMs - video.dateModified) <= threeDaysInMs && video.isNew
@@ -3037,17 +3037,6 @@ fun rememberVideoThumbnail(videoPath: String?, videoId: Long = 0L): androidx.com
     LaunchedEffect(cacheKey) {
         if (bitmap != null) return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            // 0. Try Android System Native MediaStore Thumbnail first (Fastest!)
-            if (videoId > 0L) {
-                val sysBitmap = com.example.util.getSystemVideoThumbnail(context, videoId)
-                if (sysBitmap != null) {
-                    val imageBitmap = sysBitmap.asImageBitmap()
-                    videoThumbnailCache.put(cacheKey, imageBitmap)
-                    bitmap = imageBitmap
-                    return@withContext
-                }
-            }
-
             val cacheDir = java.io.File(context.cacheDir, "video_thumbnails")
             if (!cacheDir.exists()) {
                 cacheDir.mkdirs()
@@ -3055,24 +3044,40 @@ fun rememberVideoThumbnail(videoPath: String?, videoId: Long = 0L): androidx.com
             val hash = videoPath.hashCode().toString()
             val cacheFile = java.io.File(cacheDir, "thumb_$hash.jpg")
 
-            // 1. Disk Cache First
+            // 1. Disk Cache First (check if non-black)
             if (cacheFile.exists()) {
                 try {
                     val diskBitmap = android.graphics.BitmapFactory.decodeFile(cacheFile.absolutePath)
                     if (diskBitmap != null) {
-                        val imageBitmap = diskBitmap.asImageBitmap()
-                        videoThumbnailCache.put(cacheKey, imageBitmap)
-                        bitmap = imageBitmap
-                        return@withContext
+                        if (!com.example.util.isBitmapBlack(diskBitmap)) {
+                            val imageBitmap = diskBitmap.asImageBitmap()
+                            videoThumbnailCache.put(cacheKey, imageBitmap)
+                            bitmap = imageBitmap
+                            return@withContext
+                        } else {
+                            // Clear corrupted/black cached thumbnail
+                            cacheFile.delete()
+                        }
                     }
                 } catch (e: Exception) {
-                    // Suppress and generate
+                    // Suppress and regenerate
+                }
+            }
+
+            // 2. Try Android System Native MediaStore Thumbnail (if non-black)
+            if (videoId > 0L) {
+                val sysBitmap = com.example.util.getSystemVideoThumbnail(context, videoId)
+                if (sysBitmap != null && !com.example.util.isBitmapBlack(sysBitmap)) {
+                    val imageBitmap = sysBitmap.asImageBitmap()
+                    videoThumbnailCache.put(cacheKey, imageBitmap)
+                    bitmap = imageBitmap
+                    return@withContext
                 }
             }
 
             if (!coroutineContext.isActive) return@withContext
 
-            // 2. Generate Thumbnail (Fallback)
+            // 3. Smart Extraction via MediaMetadataRetriever
             val file = java.io.File(videoPath)
             if (!file.exists()) return@withContext
 
@@ -3081,9 +3086,41 @@ fun rememberVideoThumbnail(videoPath: String?, videoId: Long = 0L): androidx.com
             try {
                 retriever = android.media.MediaMetadataRetriever()
                 retriever.setDataSource(videoPath)
-                // Single frame extraction at 1 second (OPTION_CLOSEST_SYNC)
-                loadedBitmap = retriever.getFrameAtTime(1_000_000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?: retriever.getFrameAtTime(0L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                val durationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                val durationMs = durationStr?.toLongOrNull() ?: 0L
+
+                val candidateTimesUs = mutableListOf<Long>()
+                if (durationMs > 0) {
+                    candidateTimesUs.add((durationMs * 0.15 * 1000).toLong())
+                    candidateTimesUs.add((durationMs * 0.05 * 1000).toLong())
+                    candidateTimesUs.add((durationMs * 0.30 * 1000).toLong())
+                    candidateTimesUs.add((durationMs * 0.50 * 1000).toLong())
+                    candidateTimesUs.add(15_000_000L)
+                    candidateTimesUs.add(5_000_000L)
+                    candidateTimesUs.add(1_000_000L)
+                    candidateTimesUs.add(0L)
+                } else {
+                    candidateTimesUs.addAll(listOf(15_000_000L, 5_000_000L, 30_000_000L, 1_000_000L, 0L))
+                }
+
+                var firstFrameBackup: android.graphics.Bitmap? = null
+                for (timeUs in candidateTimesUs) {
+                    val frame = retriever.getFrameAtTime(timeUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        ?: retriever.getFrameAtTime(timeUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST)
+                    if (frame != null) {
+                        if (firstFrameBackup == null) {
+                            firstFrameBackup = frame
+                        }
+                        if (!com.example.util.isBitmapBlack(frame)) {
+                            loadedBitmap = frame
+                            break
+                        }
+                    }
+                }
+
+                if (loadedBitmap == null) {
+                    loadedBitmap = firstFrameBackup
+                }
             } catch (e: Exception) {
                 // Fallback to ThumbnailUtils if MediaMetadataRetriever fails
                 try {
@@ -4338,7 +4375,7 @@ fun PlaylistsAndFavoritesTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (favorite.isVideo) {
-                        val thumbnail = rememberVideoThumbnail(favorite.path)
+                        val thumbnail = rememberVideoThumbnail(favorite.path, favorite.id)
                         Box(
                             modifier = Modifier
                                 .size(width = 68.dp, height = 40.dp)
@@ -4519,7 +4556,7 @@ fun PrivateVaultTab(
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
                         items(privateFiles) { target ->
-                            val thumbnail = rememberVideoThumbnail(target.path)
+                            val thumbnail = rememberVideoThumbnail(target.path, target.id)
                             val sizeMb = target.size / (1024f * 1024f)
                             
                             Card(
@@ -5433,7 +5470,7 @@ fun MainVaultTabScreen(
                             contentPadding = PaddingValues(bottom = 12.dp)
                         ) {
                             items(filteredFiles, key = { it.id }) { file ->
-                                val thumbnail = rememberVideoThumbnail(file.path)
+                                val thumbnail = rememberVideoThumbnail(file.path, file.id)
                                 val sizeMb = file.size / (1024f * 1024f)
 
                                 val isSelected = selectedVaultPaths.contains(file.path)

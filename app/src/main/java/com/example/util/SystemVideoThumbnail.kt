@@ -36,16 +36,44 @@ fun ImageRequest.Builder.videoFrameOption(option: Int): ImageRequest.Builder {
     return setParameter(VideoFrameDecoder.VIDEO_FRAME_OPTION_KEY, option)
 }
 
+fun isBitmapBlack(bitmap: Bitmap): Boolean {
+    return try {
+        val softwareBitmap = if (bitmap.config == Bitmap.Config.HARDWARE) {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: return false
+        } else {
+            bitmap
+        }
+        val w = softwareBitmap.width
+        val h = softwareBitmap.height
+        if (w <= 0 || h <= 0) return true
+        
+        var totalLuminance = 0L
+        var samples = 0
+        val stepX = (w / 7).coerceAtLeast(1)
+        val stepY = (h / 7).coerceAtLeast(1)
+        
+        for (x in stepX until w step stepX) {
+            for (y in stepY until h step stepY) {
+                val pixel = softwareBitmap.getPixel(x, y)
+                val r = (pixel shr 16) and 0xFF
+                val g = (pixel shr 8) and 0xFF
+                val b = pixel and 0xFF
+                val lum = (r * 299 + g * 587 + b * 114) / 1000
+                totalLuminance += lum
+                samples++
+            }
+        }
+        if (samples == 0) return true
+        val avgLuminance = totalLuminance / samples
+        avgLuminance < 15
+    } catch (e: Exception) {
+        false
+    }
+}
+
 /**
- * Fast Jetpack Compose UI component that fetches and displays video thumbnails using Coil
- * with VideoFrameDecoder.
- * 
- * Key Features:
- * 1. Fetches frame at 60 seconds (60,000 ms) to ensure real visual content.
- * 2. Uses OPTION_CLOSEST to force extracting exact frames rather than black keyframes.
- * 3. No placeholders, error images, or fallbacks.
- * 4. Enables Memory Cache and Disk Cache for smooth LazyColumn scrolling.
- * 5. Downscales to size(300) to keep memory footprint light and rendering fast.
+ * Fast Jetpack Compose UI component that fetches and displays video thumbnails using
+ * MediaMetadataRetriever with smart black-frame detection and candidate timestamps.
  */
 @Composable
 fun SmartVideoThumbnail(
@@ -61,14 +89,42 @@ fun SmartVideoThumbnail(
             try {
                 retriever.setDataSource(context, videoUri)
                 val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                val duration = durationStr?.toLongOrNull() ?: 0L
+                val durationMs = durationStr?.toLongOrNull() ?: 0L
                 
-                // جلب صورة عند 15% من مدة الفيديو لتخطي المقدمات
-                val targetTimeUs = if (duration > 0) (duration * 0.15 * 1000).toLong() else 1000000L
-                
-                val frame = retriever.getFrameAtTime(targetTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                if (frame != null) {
-                    bitmap = frame.asImageBitmap()
+                val candidateTimesUs = mutableListOf<Long>()
+                if (durationMs > 0) {
+                    candidateTimesUs.add((durationMs * 0.15 * 1000).toLong())
+                    candidateTimesUs.add((durationMs * 0.05 * 1000).toLong())
+                    candidateTimesUs.add((durationMs * 0.30 * 1000).toLong())
+                    candidateTimesUs.add((durationMs * 0.50 * 1000).toLong())
+                    candidateTimesUs.add(15_000_000L)
+                    candidateTimesUs.add(5_000_000L)
+                    candidateTimesUs.add(1_000_000L)
+                    candidateTimesUs.add(0L)
+                } else {
+                    candidateTimesUs.addAll(listOf(15_000_000L, 5_000_000L, 30_000_000L, 1_000_000L, 0L))
+                }
+
+                var firstFrameBackup: Bitmap? = null
+                var selectedFrame: Bitmap? = null
+
+                for (timeUs in candidateTimesUs) {
+                    val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        ?: retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                    if (frame != null) {
+                        if (firstFrameBackup == null) {
+                            firstFrameBackup = frame
+                        }
+                        if (!isBitmapBlack(frame)) {
+                            selectedFrame = frame
+                            break
+                        }
+                    }
+                }
+
+                val finalFrame = selectedFrame ?: firstFrameBackup
+                if (finalFrame != null) {
+                    bitmap = finalFrame.asImageBitmap()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
