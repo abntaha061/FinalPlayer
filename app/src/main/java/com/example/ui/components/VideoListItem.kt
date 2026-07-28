@@ -21,10 +21,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import coil.compose.AsyncImage
 import com.example.data.VideoItem
-import com.example.ui.screens.rememberVideoThumbnail
 import com.example.util.DateFormatter
 import com.example.util.FileSizeFormatter
+import java.io.File
 import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -35,7 +36,6 @@ fun VideoListItem(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val thumbnail = rememberVideoThumbnail(video.path)
 
     // Check if the video is "NEW" (added within last 3 days)
     val currentTimeSeconds = System.currentTimeMillis() / 1000L
@@ -49,34 +49,19 @@ fun VideoListItem(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left: Thumbnail Area
+        // Left: Thumbnail Area with Coil AsyncImage
         Box(
             modifier = Modifier
                 .size(width = 120.dp, height = 70.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF212121))
         ) {
-            if (thumbnail != null) {
-                Image(
-                    bitmap = thumbnail,
-                    contentDescription = "Video thumbnail",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                // Fallback icon placeholder
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Play Icon",
-                        tint = Color.Gray,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-            }
+            AsyncImage(
+                model = File(video.path),
+                contentDescription = "Video thumbnail",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
 
             // NEW Badge on TOP-LEFT
             if (isNew) {
