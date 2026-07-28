@@ -3,6 +3,7 @@ package com.example.util
 import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -23,15 +24,20 @@ fun ImageRequest.Builder.videoFrameMillis(frameMillis: Long): ImageRequest.Build
     return setParameter(VideoFrameDecoder.VIDEO_FRAME_MICROS_KEY, frameMillis * 1000L)
 }
 
+fun ImageRequest.Builder.videoFrameOption(option: Int): ImageRequest.Builder {
+    return setParameter(VideoFrameDecoder.VIDEO_FRAME_OPTION_KEY, option)
+}
+
 /**
  * Fast Jetpack Compose UI component that fetches and displays video thumbnails using Coil
  * with VideoFrameDecoder.
  * 
  * Key Features:
- * 1. Fetches frame at 15 seconds (15,000 ms) to skip black/blank intros.
- * 2. No placeholders, error images, or fallbacks (displays pure image when ready).
- * 3. Enables Memory Cache and Disk Cache for smooth LazyColumn scrolling.
- * 4. Downscales to size(300) to keep memory footprint light and rendering fast.
+ * 1. Fetches frame at 60 seconds (60,000 ms) to ensure real visual content.
+ * 2. Uses OPTION_CLOSEST to force extracting exact frames rather than black keyframes.
+ * 3. No placeholders, error images, or fallbacks.
+ * 4. Enables Memory Cache and Disk Cache for smooth LazyColumn scrolling.
+ * 5. Downscales to size(300) to keep memory footprint light and rendering fast.
  */
 @Composable
 fun FastVideoThumbnail(
@@ -42,8 +48,10 @@ fun FastVideoThumbnail(
         model = ImageRequest.Builder(LocalContext.current)
             .data(videoUri)
             .decoderFactory(VideoFrameDecoder.Factory())
-            // Fetch frame at 15 seconds to skip black introductory screens
-            .videoFrameMillis(15000L)
+            // الدخول للدقيقة الأولى لضمان وجود محتوى مرئي
+            .videoFrameMillis(60000L)
+            // إجبار المحرك على جلب الإطار الفعلي وتجاهل الـ Keyframes السوداء
+            .videoFrameOption(MediaMetadataRetriever.OPTION_CLOSEST)
             .crossfade(true)
             .size(300) // Downscale target size for fast list rendering
             .memoryCachePolicy(CachePolicy.ENABLED)
@@ -52,7 +60,6 @@ fun FastVideoThumbnail(
         contentDescription = "Video Thumbnail",
         modifier = modifier,
         contentScale = ContentScale.Crop
-        // No placeholders or error images as requested
     )
 }
 
