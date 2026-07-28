@@ -21,7 +21,7 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    # الخطوة الجديدة: إنشاء ملف debug.keystore وهمي لتجاوز خطأ التوقيع
+    # إنشاء ملف debug.keystore وهمي لتجاوز خطأ التوقيع
     - name: Generate debug keystore
       run: |
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "C=US, O=Android, CN=Android Debug"
@@ -32,11 +32,19 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    # التعديل الأول: بناء نسخة Release السريعة بدلاً من Debug البطيئة
     - name: Build with Gradle
-      run: ./gradlew assembleDebug
+      run: ./gradlew assembleRelease
 
+    # التعديل الثاني: توقيع التطبيق لكي تتمكن من تثبيته على هاتفك بدون أخطاء
+    - name: Sign Release APK
+      run: |
+        APKSIGNER=$(find $ANDROID_SDK_ROOT/build-tools -name apksigner | sort -r | head -n 1)
+        $APKSIGNER sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey app/build/outputs/apk/release/app-release-unsigned.apk
+
+    # التعديل الثالث: رفع ملف الـ Release النهائي
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+        name: app-release
+        path: app/build/outputs/apk/release/app-release-unsigned.apk
