@@ -8,8 +8,16 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Size
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
@@ -40,27 +48,76 @@ fun ImageRequest.Builder.videoFrameOption(option: Int): ImageRequest.Builder {
  * 5. Downscales to size(300) to keep memory footprint light and rendering fast.
  */
 @Composable
+fun SmartVideoThumbnail(
+    videoUri: Uri,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var bitmap by remember(videoUri) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+
+    LaunchedEffect(videoUri) {
+        withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, videoUri)
+                val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                val duration = durationStr?.toLongOrNull() ?: 0L
+                
+                // جلب صورة عند 15% من مدة الفيديو لتخطي المقدمات
+                val targetTimeUs = if (duration > 0) (duration * 0.15 * 1000).toLong() else 1000000L
+                
+                val frame = retriever.getFrameAtTime(targetTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                if (frame != null) {
+                    bitmap = frame.asImageBitmap()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                try {
+                    retriever.release()
+                } catch (e: Exception) {
+                    // Ignore release errors on older API levels
+                }
+            }
+        }
+    }
+
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap!!,
+            contentDescription = "Video Thumbnail",
+            modifier = modifier,
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        // يعرض مساحة فارغة في حالة التحميل أو الفشل (بدون Placeholders)
+        Box(modifier = modifier)
+    }
+}
+
+/**
+ * Overload for video file path string.
+ */
+@Composable
+fun SmartVideoThumbnail(
+    videoPath: String,
+    modifier: Modifier = Modifier
+) {
+    SmartVideoThumbnail(
+        videoUri = Uri.fromFile(File(videoPath)),
+        modifier = modifier
+    )
+}
+
+/**
+ * Legacy FastVideoThumbnail delegated to SmartVideoThumbnail for backward compatibility.
+ */
+@Composable
 fun FastVideoThumbnail(
     videoUri: Uri,
     modifier: Modifier = Modifier
 ) {
-    AsyncImage(
-        model = ImageRequest.Builder(LocalContext.current)
-            .data(videoUri)
-            .decoderFactory(VideoFrameDecoder.Factory())
-            // الدخول للدقيقة الأولى لضمان وجود محتوى مرئي
-            .videoFrameMillis(60000L)
-            // إجبار المحرك على جلب الإطار الفعلي وتجاهل الـ Keyframes السوداء
-            .videoFrameOption(MediaMetadataRetriever.OPTION_CLOSEST)
-            .crossfade(true)
-            .size(300) // Downscale target size for fast list rendering
-            .memoryCachePolicy(CachePolicy.ENABLED)
-            .diskCachePolicy(CachePolicy.ENABLED)
-            .build(),
-        contentDescription = "Video Thumbnail",
-        modifier = modifier,
-        contentScale = ContentScale.Crop
-    )
+    SmartVideoThumbnail(videoUri = videoUri, modifier = modifier)
 }
 
 /**
@@ -71,10 +128,7 @@ fun FastVideoThumbnail(
     videoPath: String,
     modifier: Modifier = Modifier
 ) {
-    FastVideoThumbnail(
-        videoUri = Uri.fromFile(File(videoPath)),
-        modifier = modifier
-    )
+    SmartVideoThumbnail(videoPath = videoPath, modifier = modifier)
 }
 
 /**
