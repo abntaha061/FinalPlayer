@@ -3025,41 +3025,14 @@ fun VideosAndFoldersTab(
     }
 }
 
-private val videoThumbnailCache = android.util.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(200)
-private val thumbnailSemaphore = kotlinx.coroutines.sync.Semaphore(3)
-
-private fun isBitmapMostlyBlack(bitmap: android.graphics.Bitmap): Boolean {
-    val width = bitmap.width
-    val height = bitmap.height
-    if (width <= 0 || height <= 0) return true
-    
-    var totalLuminance = 0f
-    var samples = 0
-    val stepX = (width / 6).coerceAtLeast(1)
-    val stepY = (height / 6).coerceAtLeast(1)
-    
-    for (x in stepX until width step stepX) {
-        for (y in stepY until height step stepY) {
-            val pixel = bitmap.getPixel(x, y)
-            val r = (pixel shr 16) and 0xFF
-            val g = (pixel shr 8) and 0xFF
-            val b = pixel and 0xFF
-            val luminance = 0.299f * r + 0.587f * g + 0.114f * b
-            totalLuminance += luminance
-            samples++
-        }
-    }
-    
-    if (samples == 0) return true
-    val avgLuminance = totalLuminance / samples
-    return avgLuminance < 15f
-}
+private val videoThumbnailCache = android.util.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(150)
 
 @Composable
 fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.ImageBitmap? {
     if (videoPath == null) return null
     val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
     var bitmap by remember(videoPath) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(videoThumbnailCache.get(videoPath)) }
+    
     LaunchedEffect(videoPath) {
         if (bitmap != null) return@LaunchedEffect
         withContext(Dispatchers.IO) {
@@ -3070,7 +3043,7 @@ fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.Ima
             val hash = videoPath.hashCode().toString()
             val cacheFile = java.io.File(cacheDir, "thumb_$hash.jpg")
 
-            // 1. Try disk cache first
+            // 1. Disk Cache First
             if (cacheFile.exists()) {
                 try {
                     val diskBitmap = android.graphics.BitmapFactory.decodeFile(cacheFile.absolutePath)
@@ -3081,153 +3054,84 @@ fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.Ima
                         return@withContext
                     }
                 } catch (e: Exception) {
-                    // Suppress and extract
+                    // Suppress and generate
                 }
             }
 
             if (!coroutineContext.isActive) return@withContext
 
-            // 2. Limit concurrency to 3 simultaneous decodes
-            thumbnailSemaphore.acquire()
+            // 2. Generate Thumbnail (Simple, fast, single-frame extraction like reference code)
+            val file = java.io.File(videoPath)
+            if (!file.exists()) return@withContext
+
+            var retriever: android.media.MediaMetadataRetriever? = null
+            var loadedBitmap: android.graphics.Bitmap? = null
             try {
-                if (!coroutineContext.isActive) return@withContext
-
-                val file = java.io.File(videoPath)
-                if (!file.exists()) return@withContext
-
-                var loadedBitmap: android.graphics.Bitmap? = null
-
-                suspend fun retrieveBestFrame(retriever: android.media.MediaMetadataRetriever): android.graphics.Bitmap? {
-                    val durationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-                    val durationMs = durationStr?.toLongOrNull() ?: 0L
-                    
-                    val candidateTimes = mutableListOf<Long>()
-                    if (durationMs > 4000L) {
-                        candidateTimes.add((durationMs / 10) * 1000L) // 10% of duration
-                        candidateTimes.add(2000000L)                 // 2s
-                    } else {
-                        candidateTimes.add(1000000L)                 // 1s
-                    }
-                    candidateTimes.add(0L)                           // 0s (fallback)
-
-                    var bestFrame: android.graphics.Bitmap? = null
-                    for (timeUs in candidateTimes) {
-                        if (!coroutineContext.isActive) break
-                        try {
-                            val frame = retriever.getFrameAtTime(timeUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                            if (frame != null) {
-                                if (!isBitmapMostlyBlack(frame)) {
-                                    return frame
-                                }
-                                if (bestFrame == null) {
-                                    bestFrame = frame
-                                }
-                            }
-                        } catch (e: Exception) {
-                            // Suppress
-                        }
-                    }
-                    return bestFrame ?: retriever.frameAtTime
-                }
-
-                // Method 1: Try MediaMetadataRetriever via FileInputStream's File Descriptor
+                retriever = android.media.MediaMetadataRetriever()
+                retriever.setDataSource(videoPath)
+                // Single frame extraction at 1 second (OPTION_CLOSEST_SYNC)
+                loadedBitmap = retriever.getFrameAtTime(1_000_000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    ?: retriever.getFrameAtTime(0L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            } catch (e: Exception) {
+                // Fallback to ThumbnailUtils if MediaMetadataRetriever fails
                 try {
-                    java.io.FileInputStream(file).use { fis ->
-                        val retriever = android.media.MediaMetadataRetriever()
-                        try {
-                            retriever.setDataSource(fis.fd)
-                            loadedBitmap = retrieveBestFrame(retriever)
-                        } finally {
-                            try {
-                                retriever.release()
-                            } catch (e: Exception) {
-                                // Suppress
-                            }
-                        }
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        loadedBitmap = android.media.ThumbnailUtils.createVideoThumbnail(
+                            file,
+                            android.util.Size(256, 144),
+                            null
+                        )
+                    } else {
+                        @Suppress("DEPRECATION")
+                        loadedBitmap = android.media.ThumbnailUtils.createVideoThumbnail(
+                            videoPath,
+                            android.provider.MediaStore.Video.Thumbnails.MINI_KIND
+                        )
                     }
-                } catch (e: Exception) {
-                    // Suppress and try next method
-                }
-
-                if (!coroutineContext.isActive) return@withContext
-
-                // Method 2: Try OS-native ThumbnailUtils
-                if (loadedBitmap == null) {
-                    try {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                            loadedBitmap = android.media.ThumbnailUtils.createVideoThumbnail(
-                                file,
-                                android.util.Size(320, 180), // standard 16:9 thumbnail size
-                                null
-                            )
-                        } else {
-                            @Suppress("DEPRECATION")
-                            loadedBitmap = android.media.ThumbnailUtils.createVideoThumbnail(
-                                videoPath,
-                                android.provider.MediaStore.Video.Thumbnails.MINI_KIND
-                            )
-                        }
-                    } catch (e: Exception) {
-                        // Suppress and try next method
-                    }
-                }
-
-                if (!coroutineContext.isActive) return@withContext
-
-                // Method 3: Direct setDataSource path fallback as a last resort
-                if (loadedBitmap == null) {
-                    try {
-                        val retriever = android.media.MediaMetadataRetriever()
-                        try {
-                            retriever.setDataSource(videoPath)
-                            loadedBitmap = retrieveBestFrame(retriever)
-                        } finally {
-                            try {
-                                retriever.release()
-                            } catch (e: Exception) {
-                                // Suppress
-                            }
-                        }
-                    } catch (e: Exception) {
-                        // Suppress
-                    }
-                }
-
-                if (loadedBitmap != null) {
-                    val finalBitmap = try {
-                        val w = loadedBitmap!!.width
-                        val h = loadedBitmap!!.height
-                        val maxTargetSide = 320
-                        if (w > maxTargetSide || h > maxTargetSide) {
-                            val ratio = w.toFloat() / h
-                            val (targetW, targetH) = if (w > h) {
-                                maxTargetSide to (maxTargetSide / ratio).toInt().coerceAtLeast(1)
-                            } else {
-                                (maxTargetSide * ratio).toInt().coerceAtLeast(1) to maxTargetSide
-                            }
-                            android.graphics.Bitmap.createScaledBitmap(loadedBitmap!!, targetW, targetH, true)
-                        } else {
-                            loadedBitmap!!
-                        }
-                    } catch (e: Exception) {
-                        loadedBitmap!!
-                    }
-
-                    // Save to disk cache
-                    try {
-                        java.io.FileOutputStream(cacheFile).use { out ->
-                            finalBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, out)
-                        }
-                    } catch (e: Exception) {
-                        // Suppress
-                    }
-
-                    val imageBitmap = finalBitmap.asImageBitmap()
-                    videoThumbnailCache.put(videoPath, imageBitmap)
-                    bitmap = imageBitmap
+                } catch (ex: Exception) {
+                    // Suppress
                 }
             } finally {
-                thumbnailSemaphore.release()
+                try {
+                    retriever?.release()
+                } catch (e: Exception) {
+                    // Suppress
+                }
+            }
+
+            if (loadedBitmap != null && coroutineContext.isActive) {
+                // Scale bitmap for list items (max 256px side)
+                val finalBitmap = try {
+                    val w = loadedBitmap.width
+                    val h = loadedBitmap.height
+                    val maxSide = 256
+                    if (w > maxSide || h > maxSide) {
+                        val ratio = w.toFloat() / h
+                        val (targetW, targetH) = if (w > h) {
+                            maxSide to (maxSide / ratio).toInt().coerceAtLeast(1)
+                        } else {
+                            (maxSide * ratio).toInt().coerceAtLeast(1) to maxSide
+                        }
+                        android.graphics.Bitmap.createScaledBitmap(loadedBitmap, targetW, targetH, true)
+                    } else {
+                        loadedBitmap
+                    }
+                } catch (e: Exception) {
+                    loadedBitmap
+                }
+
+                // Save to Disk Cache (JPEG 80%)
+                try {
+                    java.io.FileOutputStream(cacheFile).use { out ->
+                        finalBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+                    }
+                } catch (e: Exception) {
+                    // Suppress
+                }
+
+                val imageBitmap = finalBitmap.asImageBitmap()
+                videoThumbnailCache.put(videoPath, imageBitmap)
+                bitmap = imageBitmap
             }
         }
     }
