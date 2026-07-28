@@ -3028,14 +3028,26 @@ fun VideosAndFoldersTab(
 private val videoThumbnailCache = android.util.LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(150)
 
 @Composable
-fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.ImageBitmap? {
+fun rememberVideoThumbnail(videoPath: String?, videoId: Long = 0L): androidx.compose.ui.graphics.ImageBitmap? {
     if (videoPath == null) return null
     val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
-    var bitmap by remember(videoPath) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(videoThumbnailCache.get(videoPath)) }
+    val cacheKey = if (videoId > 0) "id_$videoId" else videoPath
+    var bitmap by remember(cacheKey) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(videoThumbnailCache.get(cacheKey)) }
     
-    LaunchedEffect(videoPath) {
+    LaunchedEffect(cacheKey) {
         if (bitmap != null) return@LaunchedEffect
         withContext(Dispatchers.IO) {
+            // 0. Try Android System Native MediaStore Thumbnail first (Fastest!)
+            if (videoId > 0L) {
+                val sysBitmap = com.example.util.getSystemVideoThumbnail(context, videoId)
+                if (sysBitmap != null) {
+                    val imageBitmap = sysBitmap.asImageBitmap()
+                    videoThumbnailCache.put(cacheKey, imageBitmap)
+                    bitmap = imageBitmap
+                    return@withContext
+                }
+            }
+
             val cacheDir = java.io.File(context.cacheDir, "video_thumbnails")
             if (!cacheDir.exists()) {
                 cacheDir.mkdirs()
@@ -3049,7 +3061,7 @@ fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.Ima
                     val diskBitmap = android.graphics.BitmapFactory.decodeFile(cacheFile.absolutePath)
                     if (diskBitmap != null) {
                         val imageBitmap = diskBitmap.asImageBitmap()
-                        videoThumbnailCache.put(videoPath, imageBitmap)
+                        videoThumbnailCache.put(cacheKey, imageBitmap)
                         bitmap = imageBitmap
                         return@withContext
                     }
@@ -3060,7 +3072,7 @@ fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.Ima
 
             if (!coroutineContext.isActive) return@withContext
 
-            // 2. Generate Thumbnail (Simple, fast, single-frame extraction like reference code)
+            // 2. Generate Thumbnail (Fallback)
             val file = java.io.File(videoPath)
             if (!file.exists()) return@withContext
 
@@ -3130,7 +3142,7 @@ fun rememberVideoThumbnail(videoPath: String?): androidx.compose.ui.graphics.Ima
                 }
 
                 val imageBitmap = finalBitmap.asImageBitmap()
-                videoThumbnailCache.put(videoPath, imageBitmap)
+                videoThumbnailCache.put(cacheKey, imageBitmap)
                 bitmap = imageBitmap
             }
         }
@@ -3161,7 +3173,7 @@ fun VideoGridItem(
     showPath: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val thumbnail = rememberVideoThumbnail(video.path)
+    val thumbnail = rememberVideoThumbnail(video.path, video.id)
     val titleText = remember(video.title, showExtension) {
         if (showExtension) video.title else video.title.substringBeforeLast(".")
     }
@@ -3553,7 +3565,7 @@ fun VideoListItem(
                         .background(Color(0xFF212121)),
                     contentAlignment = Alignment.Center
                 ) {
-                    val thumbnail = rememberVideoThumbnail(video.path)
+                    val thumbnail = rememberVideoThumbnail(video.path, video.id)
                     if (thumbnail != null) {
                         Image(
                             bitmap = thumbnail,
