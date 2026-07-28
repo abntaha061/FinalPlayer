@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
@@ -203,9 +204,8 @@ fun HomeScreen(
             if (selectedBottomTab != 2) {
                 Column(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
-                        .frostedGlass(isDark = isDark, shape = RoundedCornerShape(20.dp), opacity = if (isDark) 0.10f else 0.40f)
                 ) {
                      CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
                         if (selectedPaths.isNotEmpty()) {
@@ -435,12 +435,11 @@ fun HomeScreen(
                     }
                 } else {
                     NavigationBar(
-                        containerColor = Color.Transparent,
+                        containerColor = MaterialTheme.colorScheme.surface,
                         windowInsets = WindowInsets.navigationBars,
                         modifier = Modifier
-                            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
-                            .frostedGlass(isDark = isDark, shape = RoundedCornerShape(24.dp), opacity = if (isDark) 0.10f else 0.40f)
-                            .height(54.dp)
+                            .fillMaxWidth()
+                            .height(56.dp)
                     ) {
                         NavigationBarItem(
                             selected = selectedBottomTab == 0,
@@ -577,67 +576,95 @@ fun HomeScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                // Main dynamic content switcher depending on selected bottom or sub tabs
-                when (selectedBottomTab) {
-                    0 -> {
-                        when (selectedSubTabIndex) {
-                            0 -> VideosAndFoldersTab(
-                                videoList = videoList,
-                                scannedFolders = scannedFolders,
-                                onPlayFile = onPlayFile,
-                                viewModel = viewModel,
-                                viewContentMode = viewContentMode,
-                                onViewContentModeChange = { viewContentMode = it },
-                                sortOption = sortOption,
-                                sortDirection = sortDirection,
-                                searchQuery = searchQuery,
-                                onSelectedBottomTab = { selectedBottomTab = it },
-                                onSelectedSubTabIndex = { selectedSubTabIndex = it },
-                                onOptionsClick = { isOptionsSheetVisible = true },
-                                onShowTransfer = { isTransferDialogVisible = true },
-                                onShowStatusSaver = { isStatusSaverVisible = true },
-                                onShowCleaner = { isCleanerVisible = true },
-                                selectedFolderPath = selectedFolderPath,
-                                onSelectedFolderPathChange = { viewModel.setSelectedFolderPath(it) },
-                                selectedPaths = selectedPaths,
-                                showExtension = showExtension,
-                                showDuration = showDuration,
-                                showThumbnail = showThumbnail,
-                                showFramerate = showFramerate,
-                                showResolution = showResolution,
-                                showWatchTime = showWatchTime,
-                                showDate = showDate,
-                                showSize = showSize,
-                                showPath = showPath
-                            )
-                            1 -> PlaylistsAndFavoritesTab(
-                                playlists = playlistsList,
-                                favorites = favoritesList,
-                                onPlayFile = onPlayFile,
-                                onCreatePlaylist = { isPlaylistModalVisible = true },
-                                viewModel = viewModel
-                            )
-                            2 -> MainVaultTabScreen(
-                                viewModel = viewModel,
-                                onPlayFile = onPlayFile,
-                                accentColor = currentAccentColor,
-                                onBackToMainMenu = {
-                                    selectedBottomTab = 0
-                                    selectedSubTabIndex = 0
+                // Main dynamic content switcher depending on selected bottom or sub tabs with smooth slide & fade animation
+                AnimatedContent(
+                    targetState = selectedBottomTab,
+                    transitionSpec = {
+                        if (targetState > initialState) {
+                            (slideInHorizontally { width -> width } + fadeIn(animationSpec = androidx.compose.animation.core.tween(300)))
+                                .togetherWith(slideOutHorizontally { width -> -width } + fadeOut(animationSpec = androidx.compose.animation.core.tween(300)))
+                        } else {
+                            (slideInHorizontally { width -> -width } + fadeIn(animationSpec = androidx.compose.animation.core.tween(300)))
+                                .togetherWith(slideOutHorizontally { width -> width } + fadeOut(animationSpec = androidx.compose.animation.core.tween(300)))
+                        }.using(SizeTransform(clip = false))
+                    },
+                    label = "BottomTabTransition"
+                ) { bottomTab ->
+                    when (bottomTab) {
+                        0 -> {
+                            AnimatedContent(
+                                targetState = selectedSubTabIndex,
+                                transitionSpec = {
+                                    if (targetState > initialState) {
+                                        (slideInHorizontally { width -> width } + fadeIn(animationSpec = androidx.compose.animation.core.tween(300)))
+                                            .togetherWith(slideOutHorizontally { width -> -width } + fadeOut(animationSpec = androidx.compose.animation.core.tween(300)))
+                                    } else {
+                                        (slideInHorizontally { width -> -width } + fadeIn(animationSpec = androidx.compose.animation.core.tween(300)))
+                                            .togetherWith(slideOutHorizontally { width -> width } + fadeOut(animationSpec = androidx.compose.animation.core.tween(300)))
+                                    }.using(SizeTransform(clip = false))
+                                },
+                                label = "SubTabTransition"
+                            ) { subTab ->
+                                when (subTab) {
+                                    0 -> VideosAndFoldersTab(
+                                        videoList = videoList,
+                                        scannedFolders = scannedFolders,
+                                        onPlayFile = onPlayFile,
+                                        viewModel = viewModel,
+                                        viewContentMode = viewContentMode,
+                                        onViewContentModeChange = { viewContentMode = it },
+                                        sortOption = sortOption,
+                                        sortDirection = sortDirection,
+                                        searchQuery = searchQuery,
+                                        onSelectedBottomTab = { selectedBottomTab = it },
+                                        onSelectedSubTabIndex = { selectedSubTabIndex = it },
+                                        onOptionsClick = { isOptionsSheetVisible = true },
+                                        onShowTransfer = { isTransferDialogVisible = true },
+                                        onShowStatusSaver = { isStatusSaverVisible = true },
+                                        onShowCleaner = { isCleanerVisible = true },
+                                        selectedFolderPath = selectedFolderPath,
+                                        onSelectedFolderPathChange = { viewModel.setSelectedFolderPath(it) },
+                                        selectedPaths = selectedPaths,
+                                        showExtension = showExtension,
+                                        showDuration = showDuration,
+                                        showThumbnail = showThumbnail,
+                                        showFramerate = showFramerate,
+                                        showResolution = showResolution,
+                                        showWatchTime = showWatchTime,
+                                        showDate = showDate,
+                                        showSize = showSize,
+                                        showPath = showPath
+                                    )
+                                    1 -> PlaylistsAndFavoritesTab(
+                                        playlists = playlistsList,
+                                        favorites = favoritesList,
+                                        onPlayFile = onPlayFile,
+                                        onCreatePlaylist = { isPlaylistModalVisible = true },
+                                        viewModel = viewModel
+                                    )
+                                    2 -> MainVaultTabScreen(
+                                        viewModel = viewModel,
+                                        onPlayFile = onPlayFile,
+                                        accentColor = currentAccentColor,
+                                        onBackToMainMenu = {
+                                            selectedBottomTab = 0
+                                            selectedSubTabIndex = 0
+                                        }
+                                    )
                                 }
-                            )
+                            }
                         }
+                        1 -> MusicPlayerTab(
+                            audioList = audioList,
+                            onPlayFile = onPlayFile,
+                            viewModel = viewModel
+                        )
+                        2 -> SettingsScreen(
+                            viewModel = viewModel,
+                            onPlayFile = onPlayFile,
+                            onBack = { selectedBottomTab = 0 }
+                        )
                     }
-                    1 -> MusicPlayerTab(
-                        audioList = audioList,
-                        onPlayFile = onPlayFile,
-                        viewModel = viewModel
-                    )
-                    2 -> SettingsScreen(
-                        viewModel = viewModel,
-                        onPlayFile = onPlayFile,
-                        onBack = { selectedBottomTab = 0 }
-                    )
                 }
             }
 
@@ -4049,21 +4076,20 @@ fun MusicPlayerTab(
                 ) {
                     itemsIndexed(sortedList, key = { _, track -> track.path }) { index, track ->
                         TrackEntranceTransition(key = track.path, index = index) {
-                            val isDark = androidx.compose.foundation.isSystemInDarkTheme()
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .frostedGlass(isDark = isDark, shape = RoundedCornerShape(14.dp), drawBorder = false)
-                                    .clickable {
-                                        try {
-                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                            view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
-                                        } catch (e: Exception) {}
-                                        onPlayFile(track.path)
-                                    }
-                                    .padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            try {
+                                                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                                view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                            } catch (e: Exception) {}
+                                            onPlayFile(track.path)
+                                        }
+                                        .padding(vertical = 10.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                 // 1. Right side: Artwork
                                 TrackArtwork(
                                     filePath = track.path,
@@ -4149,6 +4175,10 @@ fun MusicPlayerTab(
                                     }
                                 }
                             }
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                                thickness = 0.5.dp
+                            )
                         }
                     }
                 }
@@ -4286,6 +4316,7 @@ fun MusicPlayerTab(
             )
         }
     }
+}
 }
 
 // ============================================
@@ -4801,16 +4832,44 @@ fun RedCircleIcon(
     contentDescription: String,
     themeColor: Color
 ) {
+    val scale by animateFloatAsState(
+        targetValue = if (isSelected) 1.18f else 1.0f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        ),
+        label = "scale"
+    )
+    val animatedBgColor by animateColorAsState(
+        targetValue = if (isSelected) themeColor else Color.Transparent,
+        animationSpec = androidx.compose.animation.core.tween(250),
+        label = "bgColor"
+    )
+    val animatedBorderColor by animateColorAsState(
+        targetValue = if (isSelected) themeColor else Color.Gray.copy(alpha = 0.3f),
+        animationSpec = androidx.compose.animation.core.tween(250),
+        label = "borderColor"
+    )
+    val animatedIconTint by animateColorAsState(
+        targetValue = if (isSelected) Color.White else Color.Gray,
+        animationSpec = androidx.compose.animation.core.tween(250),
+        label = "iconTint"
+    )
+
     Box(
         modifier = Modifier
-            .size(32.dp)
+            .size(34.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .background(
-                color = if (isSelected) themeColor else Color.Transparent,
+                color = animatedBgColor,
                 shape = CircleShape
             )
             .border(
                 width = 1.dp,
-                color = if (isSelected) themeColor else Color.Gray.copy(alpha = 0.3f),
+                color = animatedBorderColor,
                 shape = CircleShape
             ),
         contentAlignment = Alignment.Center
@@ -4818,8 +4877,8 @@ fun RedCircleIcon(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = if (isSelected) Color.White else Color.Gray,
-            modifier = Modifier.size(16.dp)
+            tint = animatedIconTint,
+            modifier = Modifier.size(18.dp)
         )
     }
 }

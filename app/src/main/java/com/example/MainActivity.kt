@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 
@@ -653,29 +654,13 @@ fun PermissionStatusCard(
     isGranted: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isGranted) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.08f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-            }
-        ),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isGranted) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
-            }
-        )
+    Column(
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(vertical = 10.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -687,7 +672,7 @@ fun PermissionStatusCard(
                         } else {
                             Color.Gray.copy(alpha = 0.15f)
                         },
-                        shape = RoundedCornerShape(10.dp)
+                        shape = CircleShape
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -707,16 +692,16 @@ fun PermissionStatusCard(
             ) {
                 Text(
                     text = title,
-                    fontSize = 12.5.sp,
+                    fontSize = 13.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = description,
-                    fontSize = 10.5.sp,
+                    fontSize = 11.sp,
                     color = Color.Gray,
-                    lineHeight = 14.sp
+                    lineHeight = 15.sp
                 )
             }
             
@@ -739,23 +724,11 @@ fun PermissionStatusCard(
                         fontWeight = FontWeight.Bold
                     )
                 }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .background(
-                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(6.dp)
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "مطلوب 🔑",
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
             }
         }
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+            thickness = 0.5.dp
+        )
     }
 }
