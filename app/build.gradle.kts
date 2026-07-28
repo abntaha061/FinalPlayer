@@ -41,6 +41,7 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      // Disabled signing here for GitHub Actions CI/CD compatibility
       // signingConfig = signingConfigs.getByName("release")
     }
     debug {
@@ -52,7 +53,6 @@ android {
     checkReleaseBuilds = false
     abortOnError = false
   }
-
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
@@ -98,6 +98,7 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   implementation(libs.androidx.work.runtime.ktx)
   implementation(libs.coil.compose)
+  implementation(libs.coil.video)
   implementation(libs.androidx.media3.exoplayer)
   implementation(libs.androidx.media3.ui)
   implementation(libs.androidx.media3.session)

@@ -49,17 +49,15 @@ fun VideoListItem(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left: Thumbnail Area with Coil AsyncImage
+        // Left: Thumbnail Area with FastVideoThumbnail
         Box(
             modifier = Modifier
                 .size(width = 120.dp, height = 70.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF212121))
         ) {
-            AsyncImage(
-                model = File(video.path),
-                contentDescription = "Video thumbnail",
-                contentScale = ContentScale.Crop,
+            com.example.util.FastVideoThumbnail(
+                videoPath = video.path,
                 modifier = Modifier.fillMaxSize()
             )
 

@@ -3,24 +3,75 @@ package com.example.util
 import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Size
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
+import coil.decode.VideoFrameDecoder
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+
+fun ImageRequest.Builder.videoFrameMillis(frameMillis: Long): ImageRequest.Builder {
+    return setParameter(VideoFrameDecoder.VIDEO_FRAME_MICROS_KEY, frameMillis * 1000L)
+}
+
+/**
+ * Fast Jetpack Compose UI component that fetches and displays video thumbnails using Coil
+ * with VideoFrameDecoder.
+ * 
+ * Key Features:
+ * 1. Fetches frame at 15 seconds (15,000 ms) to skip black/blank intros.
+ * 2. No placeholders, error images, or fallbacks (displays pure image when ready).
+ * 3. Enables Memory Cache and Disk Cache for smooth LazyColumn scrolling.
+ * 4. Downscales to size(300) to keep memory footprint light and rendering fast.
+ */
+@Composable
+fun FastVideoThumbnail(
+    videoUri: Uri,
+    modifier: Modifier = Modifier
+) {
+    AsyncImage(
+        model = ImageRequest.Builder(LocalContext.current)
+            .data(videoUri)
+            .decoderFactory(VideoFrameDecoder.Factory())
+            // Fetch frame at 15 seconds to skip black introductory screens
+            .videoFrameMillis(15000L)
+            .crossfade(true)
+            .size(300) // Downscale target size for fast list rendering
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .build(),
+        contentDescription = "Video Thumbnail",
+        modifier = modifier,
+        contentScale = ContentScale.Crop
+        // No placeholders or error images as requested
+    )
+}
+
+/**
+ * Overload for video file path string.
+ */
+@Composable
+fun FastVideoThumbnail(
+    videoPath: String,
+    modifier: Modifier = Modifier
+) {
+    FastVideoThumbnail(
+        videoUri = Uri.fromFile(File(videoPath)),
+        modifier = modifier
+    )
+}
 
 /**
  * Fetches pre-generated native Android system thumbnails from MediaStore.
- * Highly efficient and runs strictly on Dispatchers.IO.
  */
 suspend fun getSystemVideoThumbnail(context: Context, videoId: Long): Bitmap? {
     return withContext(Dispatchers.IO) {
@@ -33,14 +84,12 @@ suspend fun getSystemVideoThumbnail(context: Context, videoId: Long): Bitmap? {
             )
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+ (API 29+) native fast thumbnail loader
                 context.contentResolver.loadThumbnail(
                     videoUri,
                     Size(512, 512),
                     null
                 )
             } else {
-                // Android 9 and lower legacy thumbnail loader
                 @Suppress("DEPRECATION")
                 MediaStore.Video.Thumbnails.getThumbnail(
                     context.contentResolver,
@@ -52,39 +101,5 @@ suspend fun getSystemVideoThumbnail(context: Context, videoId: Long): Bitmap? {
         } catch (e: Exception) {
             null
         }
-    }
-}
-
-/**
- * Fast Jetpack Compose UI component that asynchronously fetches and displays
- * the Android system thumbnail for local videos without blocking the UI thread.
- */
-@Composable
-fun FastVideoThumbnail(
-    videoId: Long, 
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    
-    var thumbnailBitmap by remember(videoId) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-
-    LaunchedEffect(videoId) {
-        val bitmap = getSystemVideoThumbnail(context, videoId)
-        if (bitmap != null) {
-            thumbnailBitmap = bitmap.asImageBitmap()
-        }
-    }
-
-    if (thumbnailBitmap != null) {
-        Image(
-            bitmap = thumbnailBitmap!!,
-            contentDescription = "Video Thumbnail",
-            modifier = modifier,
-            contentScale = ContentScale.Crop
-        )
-    } else {
-        Box(
-            modifier = modifier.background(Color.DarkGray)
-        )
     }
 }
