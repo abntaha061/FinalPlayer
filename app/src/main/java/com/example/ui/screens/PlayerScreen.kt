@@ -648,6 +648,10 @@ fun PlayerScreen(
         if (isPip) {
             areControlsVisible = false
             isQuickSettingsOpen = false
+            isSpeedExpanded = false
+            isSubtitlesExpanded = false
+            isFilesListVisible = false
+            isVideoDetailsDialogOpen = false
             isDecoderDialogOpen = false
             isSleepTimerDialogOpen = false
             isEqualizerOpen = false
@@ -1053,30 +1057,34 @@ fun PlayerScreen(
         // Intentionally left empty so video stops on STATE_ENDED and shows the end-of-video overlay menu
     }
 
-    // Auto fade controls delay helper
+    val isAnyPopupOpen = isQuickSettingsOpen ||
+            isSpeedExpanded ||
+            isSubtitlesExpanded ||
+            isDecoderDialogOpen ||
+            isSleepTimerDialogOpen ||
+            isVideoDetailsDialogOpen ||
+            isEqualizerOpen ||
+            isMoreOptionsSheetOpen ||
+            isAudioTracksDialogOpen ||
+            isSubtitlePanelViewOpen ||
+            isSubtitleCustomizationOpen ||
+            isToolbarCustomizerDialogOpen ||
+            isFilesListVisible
+
+    // Ensure controls remain visible while any menu, sheet or dialog is open
+    LaunchedEffect(isAnyPopupOpen) {
+        if (isAnyPopupOpen) {
+            areControlsVisible = true
+        }
+    }
+
+    // Auto fade controls delay helper - pauses when any dialog or menu is open
     LaunchedEffect(
         areControlsVisible,
         isPlayingState,
-        isFilesListVisible,
-        isQuickSettingsOpen,
-        isSpeedExpanded,
-        isSubtitlesExpanded,
-        isMoreOptionsSheetOpen,
-        isAudioTracksDialogOpen,
-        isSubtitlePanelViewOpen,
-        isSubtitleCustomizationOpen,
-        isToolbarCustomizerDialogOpen,
-        isSleepTimerDialogOpen,
-        isEqualizerOpen
+        isAnyPopupOpen
     ) {
-        if (areControlsVisible && isPlayingState &&
-            !isFilesListVisible && !isQuickSettingsOpen &&
-            !isSpeedExpanded && !isSubtitlesExpanded &&
-            !isMoreOptionsSheetOpen && !isAudioTracksDialogOpen &&
-            !isSubtitlePanelViewOpen && !isSubtitleCustomizationOpen &&
-            !isToolbarCustomizerDialogOpen && !isSleepTimerDialogOpen &&
-            !isEqualizerOpen
-        ) {
+        if (areControlsVisible && isPlayingState && !isAnyPopupOpen) {
             delay(viewModel.getHideControlsDelay() * 1000L)
             areControlsVisible = false
             isBrightnessSliderVisible = false
@@ -1119,10 +1127,30 @@ fun PlayerScreen(
                 delay(2000)
                 isUnlockPromptVisible = false
             }
+        } else if (isSpeedExpanded) {
+            isSpeedExpanded = false
+        } else if (isSubtitlesExpanded) {
+            isSubtitlesExpanded = false
         } else if (isFilesListVisible) {
             isFilesListVisible = false
         } else if (isQuickSettingsOpen) {
             isQuickSettingsOpen = false
+        } else if (isMoreOptionsSheetOpen) {
+            isMoreOptionsSheetOpen = false
+        } else if (isAudioTracksDialogOpen) {
+            isAudioTracksDialogOpen = false
+        } else if (isSubtitlePanelViewOpen) {
+            isSubtitlePanelViewOpen = false
+        } else if (isSubtitleCustomizationOpen) {
+            isSubtitleCustomizationOpen = false
+        } else if (isToolbarCustomizerDialogOpen) {
+            isToolbarCustomizerDialogOpen = false
+        } else if (isSleepTimerDialogOpen) {
+            isSleepTimerDialogOpen = false
+        } else if (isEqualizerOpen) {
+            isEqualizerOpen = false
+        } else if (isDecoderDialogOpen) {
+            isDecoderDialogOpen = false
         } else if (isVideoDetailsDialogOpen) {
             isVideoDetailsDialogOpen = false
         } else {
@@ -1158,17 +1186,6 @@ fun PlayerScreen(
         else if (videoWidth > 0 && videoHeight > 0) "${videoHeight}p"
         else "1080p FHD"
     }
-
-    val isAnyPopupOpen = isQuickSettingsOpen ||
-            isDecoderDialogOpen ||
-            isSleepTimerDialogOpen ||
-            isVideoDetailsDialogOpen ||
-            isEqualizerOpen ||
-            isMoreOptionsSheetOpen ||
-            isAudioTracksDialogOpen ||
-            isSubtitlePanelViewOpen ||
-            isSubtitleCustomizationOpen ||
-            isToolbarCustomizerDialogOpen
 
     Box(
         modifier = Modifier
