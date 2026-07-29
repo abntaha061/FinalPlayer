@@ -32,8 +32,54 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.media3.ui.CaptionStyleCompat
 import java.io.File
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SleekSubtitleSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    steps: Int = 0,
+    activeColor: Color = Color(0xFF00C8FF),
+    inactiveColor: Color = Color.White.copy(alpha = 0.25f)
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val colors = SliderDefaults.colors(
+        thumbColor = activeColor,
+        activeTrackColor = activeColor,
+        inactiveTrackColor = inactiveColor
+    )
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        enabled = enabled,
+        valueRange = valueRange,
+        steps = steps,
+        colors = colors,
+        interactionSource = interactionSource,
+        thumb = {
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .background(if (enabled) activeColor else Color.Gray, CircleShape)
+            )
+        },
+        track = { sliderState ->
+            SliderDefaults.Track(
+                colors = colors,
+                sliderState = sliderState,
+                modifier = Modifier.height(4.dp)
+            )
+        }
+    )
+}
 
 @Composable
 fun SubtitleSettingsPanel(
@@ -79,12 +125,14 @@ fun SubtitleSettingsPanel(
                         .fillMaxHeight()
                         .fillMaxWidth(0.5f)
                         .align(Alignment.CenterEnd)
+                        .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                         .background(Color(0xFF1A1A1A))
                 } else {
                     Modifier
                         .fillMaxWidth()
                         .fillMaxHeight(0.55f)
                         .align(Alignment.BottomCenter)
+                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                         .background(Color(0xFF1A1A1A))
                 }
             ) {
@@ -216,7 +264,7 @@ fun SubtitleSettingsPanel(
                             Text(delayText, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Text("تأخير/تقديم النص:", color = Color.Gray, fontSize = 12.sp)
                         }
-                        Slider(
+                        SleekSubtitleSlider(
                             value = tempDelay,
                             onValueChange = {
                                 tempDelay = it
@@ -240,7 +288,7 @@ fun SubtitleSettingsPanel(
                             Text("${"%.2f".format(tempSpeed)}x", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Text("سرعة عرض الترجمة:", color = Color.Gray, fontSize = 12.sp)
                         }
-                        Slider(
+                        SleekSubtitleSlider(
                             value = tempSpeed,
                             onValueChange = {
                                 tempSpeed = it
@@ -290,7 +338,7 @@ fun SubtitleSettingsPanel(
 
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("الحجم: ${(subtitleStyle.textSize * 100).toInt()}%", fontSize = 12.sp, color = Color.Gray)
-                        Slider(
+                        SleekSubtitleSlider(
                             value = subtitleStyle.textSize,
                             onValueChange = { onSubtitleStyleChange(subtitleStyle.copy(textSize = it)) },
                             valueRange = 0.5f..2.0f,
@@ -434,7 +482,7 @@ fun SubtitleSettingsPanel(
 
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("المسافة من الأسفل: ${(subtitleStyle.bottomPadding * 1000).toInt()}dp", fontSize = 12.sp, color = Color.Gray)
-                        Slider(
+                        SleekSubtitleSlider(
                             value = subtitleStyle.bottomPadding,
                             onValueChange = { onSubtitleStyleChange(subtitleStyle.copy(bottomPadding = it)) },
                             valueRange = -0.03f..0.30f,

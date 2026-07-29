@@ -1071,6 +1071,22 @@ fun PlayerScreen(
             isToolbarCustomizerDialogOpen ||
             isFilesListVisible
 
+    val closeAllPopups = {
+        isQuickSettingsOpen = false
+        isSpeedExpanded = false
+        isSubtitlesExpanded = false
+        isFilesListVisible = false
+        isVideoDetailsDialogOpen = false
+        isDecoderDialogOpen = false
+        isSleepTimerDialogOpen = false
+        isEqualizerOpen = false
+        isMoreOptionsSheetOpen = false
+        isAudioTracksDialogOpen = false
+        isSubtitlePanelViewOpen = false
+        isSubtitleCustomizationOpen = false
+        isToolbarCustomizerDialogOpen = false
+    }
+
     // Ensure controls remain visible while any menu, sheet or dialog is open
     LaunchedEffect(isAnyPopupOpen) {
         if (isAnyPopupOpen) {
@@ -1127,32 +1143,8 @@ fun PlayerScreen(
                 delay(2000)
                 isUnlockPromptVisible = false
             }
-        } else if (isSpeedExpanded) {
-            isSpeedExpanded = false
-        } else if (isSubtitlesExpanded) {
-            isSubtitlesExpanded = false
-        } else if (isFilesListVisible) {
-            isFilesListVisible = false
-        } else if (isQuickSettingsOpen) {
-            isQuickSettingsOpen = false
-        } else if (isMoreOptionsSheetOpen) {
-            isMoreOptionsSheetOpen = false
-        } else if (isAudioTracksDialogOpen) {
-            isAudioTracksDialogOpen = false
-        } else if (isSubtitlePanelViewOpen) {
-            isSubtitlePanelViewOpen = false
-        } else if (isSubtitleCustomizationOpen) {
-            isSubtitleCustomizationOpen = false
-        } else if (isToolbarCustomizerDialogOpen) {
-            isToolbarCustomizerDialogOpen = false
-        } else if (isSleepTimerDialogOpen) {
-            isSleepTimerDialogOpen = false
-        } else if (isEqualizerOpen) {
-            isEqualizerOpen = false
-        } else if (isDecoderDialogOpen) {
-            isDecoderDialogOpen = false
-        } else if (isVideoDetailsDialogOpen) {
-            isVideoDetailsDialogOpen = false
+        } else if (isAnyPopupOpen) {
+            closeAllPopups()
         } else {
             onBack()
         }
@@ -1192,16 +1184,21 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .onSizeChanged { containerSize = it }
-            .pointerInput(videoDuration, isLockedMode, isAnyPopupOpen, isPip) {
-                if (isPip || isAnyPopupOpen) {
+            .pointerInput(videoDuration, isLockedMode, isPip) {
+                if (isPip) {
                     return@pointerInput
                 }
                 if (isLockedMode) {
                     detectTapGestures(
                         onTap = {
-                            areControlsVisible = !areControlsVisible
-                            if (!areControlsVisible) {
-                                isBrightnessSliderVisible = false
+                            if (isAnyPopupOpen) {
+                                closeAllPopups()
+                                areControlsVisible = true
+                            } else {
+                                areControlsVisible = !areControlsVisible
+                                if (!areControlsVisible) {
+                                    isBrightnessSliderVisible = false
+                                }
                             }
                         }
                     )
@@ -1502,9 +1499,14 @@ fun PlayerScreen(
                                         singleTapJob?.cancel()
                                         singleTapJob = scope.launch {
                                             delay(250)
-                                            areControlsVisible = !areControlsVisible
-                                            if (!areControlsVisible) {
-                                                isBrightnessSliderVisible = false
+                                            if (isAnyPopupOpen) {
+                                                closeAllPopups()
+                                                areControlsVisible = true
+                                            } else {
+                                                areControlsVisible = !areControlsVisible
+                                                if (!areControlsVisible) {
+                                                    isBrightnessSliderVisible = false
+                                                }
                                             }
                                             tapCount = 0 // reset after execution
                                         }
@@ -2391,10 +2393,10 @@ fun PlayerScreen(
                 .padding(start = 24.dp)
         ) {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.8f)),
                 modifier = Modifier
-                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(24.dp))
                     .width(60.dp)
                     .height(200.dp)
             ) {
@@ -2407,7 +2409,7 @@ fun PlayerScreen(
                 ) {
                     Icon(Icons.Default.Brightness5, contentDescription = "Brightness Low", tint = Color.White)
                     
-                    Slider(
+                    SleekPlayerSlider(
                         value = currentBrightness,
                         onValueChange = {
                             currentBrightness = it
@@ -2416,11 +2418,8 @@ fun PlayerScreen(
                             activity?.window?.attributes = layoutParams
                         },
                         valueRange = 0.05f..1.0f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = Color.DarkGray
-                        ),
+                        activeColor = MaterialTheme.colorScheme.primary,
+                        inactiveColor = Color.DarkGray,
                         modifier = Modifier
                             .weight(1f)
                             .graphicsLayer {
@@ -2850,8 +2849,9 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                     .background(Color.Black.copy(alpha = 0.92f))
-                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.15f))
+                    .border(width = 1.dp, color = Color.White.copy(alpha = 0.15f), shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                     .padding(16.dp)
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
@@ -3000,14 +3000,15 @@ fun PlayerScreen(
             )
             var subSize by remember { mutableStateOf(viewModel.getSubtitleSize()) }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Slider(
+                SleekPlayerSlider(
                     value = subSize,
                     onValueChange = {
                         subSize = it
                         viewModel.saveSubtitleSize(it)
                         subtitleStyle = subtitleStyle.copy(textSize = it / 16f)
                     },
-                    valueRange =  12f..30f,
+                    valueRange = 12f..30f,
+                    activeColor = Color(0xFF00C8FF),
                     modifier = Modifier.weight(1f).height(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -3103,7 +3104,7 @@ fun PlayerScreen(
                     val item = gridItems[index]
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF26262B)),
-                        shape = RoundedCornerShape(0.dp), // SHARP CORNERS!
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(64.dp)
@@ -3152,7 +3153,7 @@ fun PlayerScreen(
                 onDismissRequest = { isVideoDetailsDialogOpen = false }
             ) {
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(24.dp),
                     color = Color(0xFF1E1E22),
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
                     modifier = Modifier
@@ -3505,17 +3506,14 @@ fun PlayerScreen(
                         val dbValue = (equalizerBandLevels[band] * 12).toInt()
                         Text("${if (dbValue > 0) "+" else ""}${dbValue} dB", color = Color.LightGray, fontSize = 11.sp)
                     }
-                    Slider(
+                    SleekPlayerSlider(
                         value = equalizerBandLevels[band],
                         onValueChange = { newVal ->
                             setEqualizerBand(band, newVal)
                             isEqualizerActive = true
                         },
                         valueRange = -1.0f..1.0f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color(0xFF00C8FF),
-                            activeTrackColor = Color(0xFF00C8FF)
-                        ),
+                        activeColor = Color(0xFF00C8FF),
                         modifier = Modifier.height(20.dp)
                     )
                 }
@@ -3851,6 +3849,50 @@ fun PlayerProgressSlider(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SleekPlayerSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    steps: Int = 0,
+    activeColor: Color = Color(0xFF00C8FF),
+    inactiveColor: Color = Color.White.copy(alpha = 0.25f)
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val colors = SliderDefaults.colors(
+        thumbColor = activeColor,
+        activeTrackColor = activeColor,
+        inactiveTrackColor = inactiveColor
+    )
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        enabled = enabled,
+        valueRange = valueRange,
+        steps = steps,
+        colors = colors,
+        interactionSource = interactionSource,
+        thumb = {
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .background(if (enabled) activeColor else Color.Gray, CircleShape)
+            )
+        },
+        track = { sliderState ->
+            SliderDefaults.Track(
+                colors = colors,
+                sliderState = sliderState,
+                modifier = Modifier.height(4.dp)
+            )
+        }
+    )
+}
+
 @Composable
 fun SidePanel(
     visible: Boolean,
@@ -3886,7 +3928,7 @@ fun SidePanel(
                     .width(if (isLandscape) 340.dp else 280.dp)
                     .align(Alignment.CenterEnd), // Right side panel
                 color = Color(0xFF141419),
-                shape = RoundedCornerShape(0.dp), // SHARP CORNERS!
+                shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
             ) {
                 Column(
