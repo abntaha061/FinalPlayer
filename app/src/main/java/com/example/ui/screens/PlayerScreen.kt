@@ -532,6 +532,7 @@ fun PlayerScreen(
     var isBrightnessSliderVisible by remember { mutableStateOf(false) }
     var isSpeedExpanded by remember { mutableStateOf(false) }
     var isSubtitlesExpanded by remember { mutableStateOf(false) }
+    var isUnlockPromptVisible by remember { mutableStateOf(false) }
     var isLongPressFastForwarding by remember { mutableStateOf(false) }
     var selectedLongPressSpeed by remember { mutableStateOf(2.0f) }
 
@@ -1069,7 +1070,10 @@ fun PlayerScreen(
             isSubtitlePanelViewOpen ||
             isSubtitleCustomizationOpen ||
             isToolbarCustomizerDialogOpen ||
-            isFilesListVisible
+            isFilesListVisible ||
+            isBrightnessSliderVisible ||
+            isTutorialOverlayVisible ||
+            isUnlockPromptVisible
 
     val closeAllPopups = {
         isQuickSettingsOpen = false
@@ -1085,6 +1089,9 @@ fun PlayerScreen(
         isSubtitlePanelViewOpen = false
         isSubtitleCustomizationOpen = false
         isToolbarCustomizerDialogOpen = false
+        isBrightnessSliderVisible = false
+        isTutorialOverlayVisible = false
+        isUnlockPromptVisible = false
     }
 
     // Ensure controls remain visible while any menu, sheet or dialog is open
@@ -1133,8 +1140,6 @@ fun PlayerScreen(
             window.decorView.systemUiVisibility = flags
         }
     }
-
-    var isUnlockPromptVisible by remember { mutableStateOf(false) }
 
     BackHandler {
         if (isLockedMode) {
@@ -1209,7 +1214,10 @@ fun PlayerScreen(
                         var tapCount = 0
                         
                         while (true) {
-                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val down = awaitFirstDown(requireUnconsumed = true)
+                            if (isPip || isAnyPopupOpen) {
+                                continue
+                            }
                             if (isSubtitlePressed) {
                                 // Bypass all parent player gestures when dragging/pressing the subtitles
                                 var pointerId = down.id
@@ -1273,6 +1281,22 @@ fun PlayerScreen(
                             
                             while (pointerInputChange != null && pointerInputChange.pressed) {
                                 val event = awaitPointerEvent()
+                                if (isPip || isAnyPopupOpen) {
+                                    currentGestureType = "NONE"
+                                    showVolumeIndicator = false
+                                    showBrightnessIndicator = false
+                                    showSeekDragIndicator = false
+                                    longPressJob?.cancel()
+                                    longPressJob = null
+                                    singleTapJob?.cancel()
+                                    singleTapJob = null
+                                    if (isLongPressFastForwarding) {
+                                        player.setPlaybackSpeed(speedMultiplier)
+                                        isLongPressFastForwarding = false
+                                    }
+                                    pointerInputChange = null
+                                    break
+                                }
                                 // Check for multi-touch (pinch-to-zoom)
                                 val activePointers = event.changes.filter { it.pressed }
                                 if (activePointers.size > 1) {
@@ -1294,6 +1318,22 @@ fun PlayerScreen(
                                 }
                                 val change = event.changes.firstOrNull { it.id == pointerId }
                                 if (change != null && change.pressed) {
+                                    if (change.isConsumed) {
+                                        currentGestureType = "NONE"
+                                        showVolumeIndicator = false
+                                        showBrightnessIndicator = false
+                                        showSeekDragIndicator = false
+                                        longPressJob?.cancel()
+                                        longPressJob = null
+                                        singleTapJob?.cancel()
+                                        singleTapJob = null
+                                        if (isLongPressFastForwarding) {
+                                            player.setPlaybackSpeed(speedMultiplier)
+                                            isLongPressFastForwarding = false
+                                        }
+                                        pointerInputChange = null
+                                        break
+                                    }
                                     pointerInputChange = change
                                     val totalX = change.position.x - startPos.x
                                     val totalY = startPos.y - change.position.y
