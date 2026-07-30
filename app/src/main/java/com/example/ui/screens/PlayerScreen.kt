@@ -3053,44 +3053,65 @@ fun PlayerScreen(
         }
 
         // -----------------------------------------------------
-        // ADVANCED SETTINGS OVERLAY MENU (قائمة الإعدادات الشفافة)
+        // ANIMATED SLIDING SIDE SETTINGS PANEL (قائمة الإعدادات الجانبية المنزلقة)
         // -----------------------------------------------------
         var isCustomSleepTimerDialogOpen by remember { mutableStateOf(false) }
         var customSleepTimerMins by remember { mutableStateOf(30f) }
 
-        if (isMoreOptionsSheetOpen) {
-            val configuration = LocalConfiguration.current
-            val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.82f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        isMoreOptionsSheetOpen = false
-                    },
-                contentAlignment = Alignment.Center
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Background Dimmed Overlay
+            AnimatedVisibility(
+                visible = isMoreOptionsSheetOpen,
+                enter = fadeIn(animationSpec = tween(250)),
+                exit = fadeOut(animationSpec = tween(250))
             ) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E24).copy(alpha = 0.95f)),
-                    shape = RoundedCornerShape(24.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                Box(
                     modifier = Modifier
-                        .width(if (isLandscape) 520.dp else 340.dp)
-                        .fillMaxHeight(if (isLandscape) 0.92f else 0.85f)
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.75f))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
-                        ) { /* Consume click inside overlay */ }
-                        .padding(16.dp)
+                        ) {
+                            isMoreOptionsSheetOpen = false
+                        }
+                )
+            }
+
+            // Sliding Side Panel
+            AnimatedVisibility(
+                visible = isMoreOptionsSheetOpen,
+                enter = slideInHorizontally(
+                    initialOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = tween(300)
+                ) + fadeIn(animationSpec = tween(250)),
+                exit = slideOutHorizontally(
+                    targetOffsetX = { fullWidth -> fullWidth },
+                    animationSpec = tween(300)
+                ) + fadeOut(animationSpec = tween(250)),
+                modifier = Modifier.align(Alignment.CenterEnd)
+            ) {
+                val configuration = LocalConfiguration.current
+                val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+                Surface(
+                    color = Color(0xFF18181D).copy(alpha = 0.95f),
+                    shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .widthIn(min = 320.dp, max = 420.dp)
+                        .fillMaxWidth(if (isLandscape) 0.50f else 0.85f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { /* Consume clicks inside panel */ }
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(4.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
                     ) {
                         // Header
                         Row(
@@ -3103,11 +3124,11 @@ fun PlayerScreen(
                                     imageVector = Icons.Default.Tune,
                                     contentDescription = null,
                                     tint = Color(0xFF00C8FF),
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "الإعدادات المتقدمة",
+                                    text = "إعدادات المشغل (Settings)",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -3128,10 +3149,10 @@ fun PlayerScreen(
                         HorizontalDivider(
                             color = Color.White.copy(alpha = 0.12f),
                             thickness = 1.dp,
-                            modifier = Modifier.padding(vertical = 8.dp)
+                            modifier = Modifier.padding(vertical = 12.dp)
                         )
 
-                        // Requirement 3: Grid Items using LazyVerticalGrid
+                        // 1. Top Options Grid (Scrollable rows)
                         val playbackOrderLabel = when (playbackOrderIndex) {
                             1 -> "تكرار الملف"
                             2 -> "تكرار الكل"
@@ -3145,24 +3166,24 @@ fun PlayerScreen(
                             else -> Icons.Default.PlayArrow
                         }
 
-                        data class OverlayAction(
+                        data class PanelAction(
                             val title: String,
                             val subtitle: String,
                             val icon: @Composable () -> Unit,
                             val onClick: () -> Unit
                         )
 
-                        val gridItems = listOf(
-                            OverlayAction(
+                        val panelActions = listOf(
+                            PanelAction(
                                 title = "الترجمة",
-                                subtitle = if (isSubtitleEnabled) "مُفعل" else "معطل",
+                                subtitle = "اختيار ملف ترجمة",
                                 icon = { CcSubtitleIcon(modifier = Modifier.size(20.dp), tint = Color(0xFF00C8FF)) },
                                 onClick = {
-                                    isSubtitlePanelViewOpen = true
+                                    try { subtitlePickerLauncher.launch(arrayOf("*/*")) } catch (e: Exception) { }
                                     isMoreOptionsSheetOpen = false
                                 }
                             ),
-                            OverlayAction(
+                            PanelAction(
                                 title = "الصوت",
                                 subtitle = "المسارات الصوتية",
                                 icon = { HeadphonesCustomIcon(modifier = Modifier.size(20.dp), tint = Color(0xFF00C8FF)) },
@@ -3171,7 +3192,7 @@ fun PlayerScreen(
                                     isMoreOptionsSheetOpen = false
                                 }
                             ),
-                            OverlayAction(
+                            PanelAction(
                                 title = "نسبة العرض",
                                 subtitle = scaleMode,
                                 icon = { Icon(Icons.Default.AspectRatio, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
@@ -3185,7 +3206,7 @@ fun PlayerScreen(
                                     }
                                 }
                             ),
-                            OverlayAction(
+                            PanelAction(
                                 title = "انعكاس",
                                 subtitle = if (isMirrorModeActive) "مُفعل" else "معطل",
                                 icon = { Icon(Icons.Default.ScreenRotation, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
@@ -3193,7 +3214,7 @@ fun PlayerScreen(
                                     isMirrorModeActive = !isMirrorModeActive
                                 }
                             ),
-                            OverlayAction(
+                            PanelAction(
                                 title = "فك التشفير",
                                 subtitle = currentDecoder,
                                 icon = { Icon(Icons.Default.Memory, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
@@ -3206,7 +3227,7 @@ fun PlayerScreen(
                                     isHWAccelActive = (currentDecoder == "HW" || currentDecoder == "HW+")
                                 }
                             ),
-                            OverlayAction(
+                            PanelAction(
                                 title = "ترتيب التشغيل",
                                 subtitle = playbackOrderLabel,
                                 icon = { Icon(playbackOrderIcon, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
@@ -3232,7 +3253,7 @@ fun PlayerScreen(
                                     }
                                 }
                             ),
-                            OverlayAction(
+                            PanelAction(
                                 title = "تشغيل بالخلفية",
                                 subtitle = "نافذة عائمة / PiP",
                                 icon = { PipCustomIcon(modifier = Modifier.size(20.dp), tint = Color(0xFF00C8FF)) },
@@ -3243,7 +3264,7 @@ fun PlayerScreen(
                                     isMoreOptionsSheetOpen = false
                                 }
                             ),
-                            OverlayAction(
+                            PanelAction(
                                 title = "تفاصيل الفيديو",
                                 subtitle = "معلومات الملف",
                                 icon = { Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
@@ -3254,61 +3275,72 @@ fun PlayerScreen(
                             )
                         )
 
-                        LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 100.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
+                        val columnsCount = if (isLandscape) 3 else 2
+                        val chunkedActions = panelActions.chunked(columnsCount)
+
+                        Column(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(gridItems) { item ->
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF27272E)),
-                                    shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(68.dp)
-                                        .clickable { item.onClick() }
+                            chunkedActions.forEach { rowItems ->
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(6.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center
-                                    ) {
-                                        item.icon()
-                                        Spacer(modifier = Modifier.height(3.dp))
-                                        Text(
-                                            text = item.title,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = item.subtitle,
-                                            fontSize = 9.sp,
-                                            color = Color(0xFF00C8FF),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                    rowItems.forEach { item ->
+                                        Card(
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF24242A)),
+                                            shape = RoundedCornerShape(14.dp),
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(68.dp)
+                                                .clickable { item.onClick() }
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(6.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                item.icon()
+                                                Spacer(modifier = Modifier.height(3.dp))
+                                                Text(
+                                                    text = item.title,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = item.subtitle,
+                                                    fontSize = 9.sp,
+                                                    color = Color(0xFF00C8FF),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                    repeat(columnsCount - rowItems.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                        // Requirement 4: Sleep Timer Section
+                        // 2. Sleep Timer Section (قسم مؤقت النوم)
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF27272E))
-                                .padding(10.dp)
+                                .background(Color(0xFF24242A))
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                                .padding(12.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -3320,12 +3352,12 @@ fun PlayerScreen(
                                         imageVector = Icons.Default.Timer,
                                         contentDescription = null,
                                         tint = Color(0xFF00C8FF),
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "مؤقت النوم (Sleep Timer)",
-                                        fontSize = 12.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
                                     )
@@ -3334,19 +3366,19 @@ fun PlayerScreen(
                                     val mins = sleepTimerRemainingSecs / 60
                                     val secs = sleepTimerRemainingSecs % 60
                                     Text(
-                                        text = "متبقي: %02d:%02d".format(mins, secs),
-                                        fontSize = 11.sp,
+                                        text = "%02d:%02d".format(mins, secs),
+                                        fontSize = 12.sp,
                                         color = Color(0xFF00C8FF),
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 val quickTimers = listOf(
                                     "إيقاف" to 0,
@@ -3359,7 +3391,7 @@ fun PlayerScreen(
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(30.dp)
+                                            .height(34.dp)
                                             .clip(RoundedCornerShape(8.dp))
                                             .background(if (isSelected) Color(0xFF00C8FF) else Color(0xFF33333E))
                                             .clickable {
@@ -3387,7 +3419,7 @@ fun PlayerScreen(
                                 Box(
                                     modifier = Modifier
                                         .weight(1.2f)
-                                        .height(30.dp)
+                                        .height(34.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(Color(0xFF33333E))
                                         .clickable {
@@ -3405,17 +3437,25 @@ fun PlayerScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                        // Requirement 5: Volume & Brightness Sliders Section
+                        // 3. Sliders Section (أشرطة التحكم السفلية)
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF27272E))
-                                .padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                .background(Color(0xFF24242A))
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            Text(
+                                text = "التحكم بـ الصوت والإضاءة",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.LightGray
+                            )
+
                             // Volume Slider
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -3425,9 +3465,9 @@ fun PlayerScreen(
                                     imageVector = if (currentVolRatio <= 0.01f) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
                                     contentDescription = "الصوت",
                                     tint = Color(0xFF00C8FF),
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(20.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Slider(
                                     value = currentVolRatio,
                                     onValueChange = { ratio ->
@@ -3443,15 +3483,15 @@ fun PlayerScreen(
                                     ),
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(24.dp)
+                                        .height(28.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = "${(currentVolRatio * 100).toInt()}%",
-                                    fontSize = 10.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
-                                    modifier = Modifier.width(32.dp),
+                                    modifier = Modifier.width(36.dp),
                                     textAlign = TextAlign.End
                                 )
                             }
@@ -3465,9 +3505,9 @@ fun PlayerScreen(
                                     imageVector = Icons.Default.WbSunny,
                                     contentDescription = "الإضاءة",
                                     tint = Color(0xFFFFC107),
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(20.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Slider(
                                     value = currentBrightness.coerceIn(0.01f, 1f),
                                     onValueChange = { bright ->
@@ -3484,19 +3524,21 @@ fun PlayerScreen(
                                     ),
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(24.dp)
+                                        .height(28.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = "${(currentBrightness.coerceIn(0.01f, 1f) * 100).toInt()}%",
-                                    fontSize = 10.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
-                                    modifier = Modifier.width(32.dp),
+                                    modifier = Modifier.width(36.dp),
                                     textAlign = TextAlign.End
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
             }
