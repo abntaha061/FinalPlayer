@@ -93,6 +93,13 @@ import kotlin.math.absoluteValue
 import android.media.audiofx.Equalizer
 import android.widget.Toast
 
+enum class SidePanelMenuState {
+    MAIN,
+    DETAILS,
+    SUBTITLE_SETTINGS,
+    ASPECT_RATIO
+}
+
 // Secondary control items data layout
 data class ExtendedToolItem(
     val icon: String,
@@ -654,6 +661,7 @@ fun PlayerScreen(
     var currentVolRatio by remember { mutableStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume) }
 
     var isMoreOptionsSheetOpen by remember { mutableStateOf(false) }
+    var sidePanelMenuState by remember { mutableStateOf(SidePanelMenuState.MAIN) }
     var isAudioTracksDialogOpen by remember { mutableStateOf(false) }
     var isSubtitlePanelViewOpen by remember { mutableStateOf(false) }
     var isSubtitleCustomizationOpen by remember { mutableStateOf(false) }
@@ -1199,10 +1207,19 @@ fun PlayerScreen(
         else "1080p FHD"
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
+    val configuration = LocalConfiguration.current
+    val isMainLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    var isCustomSleepTimerDialogOpen by remember { mutableStateOf(false) }
+    var customSleepTimerMins by remember { mutableStateOf(30f) }
+
+    SplitScreenContainer(
+        isLandscape = isMainLandscape,
+        mainContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
             .onSizeChanged { containerSize = it }
             .pointerInput(videoDuration, isLockedMode, isPip, isAnyPopupOpen) {
                 if (isPip || isAnyPopupOpen) {
@@ -2379,7 +2396,10 @@ fun PlayerScreen(
 
                         // MORE OPTIONS MENU BUTTON (⋮)
                         IconButton(
-                            onClick = { isMoreOptionsSheetOpen = true }
+                            onClick = {
+                                sidePanelMenuState = SidePanelMenuState.MAIN
+                                isMoreOptionsSheetOpen = true
+                            }
                         ) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
@@ -3052,498 +3072,6 @@ fun PlayerScreen(
             }
         }
 
-        // -----------------------------------------------------
-        // ANIMATED SLIDING SIDE SETTINGS PANEL (قائمة الإعدادات الجانبية المنزلقة)
-        // -----------------------------------------------------
-        var isCustomSleepTimerDialogOpen by remember { mutableStateOf(false) }
-        var customSleepTimerMins by remember { mutableStateOf(30f) }
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Background Dimmed Overlay
-            AnimatedVisibility(
-                visible = isMoreOptionsSheetOpen,
-                enter = fadeIn(animationSpec = tween(250)),
-                exit = fadeOut(animationSpec = tween(250))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.75f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            isMoreOptionsSheetOpen = false
-                        }
-                )
-            }
-
-            // Sliding Side Panel
-            AnimatedVisibility(
-                visible = isMoreOptionsSheetOpen,
-                enter = slideInHorizontally(
-                    initialOffsetX = { fullWidth -> fullWidth },
-                    animationSpec = tween(300)
-                ) + fadeIn(animationSpec = tween(250)),
-                exit = slideOutHorizontally(
-                    targetOffsetX = { fullWidth -> fullWidth },
-                    animationSpec = tween(300)
-                ) + fadeOut(animationSpec = tween(250)),
-                modifier = Modifier.align(Alignment.CenterEnd)
-            ) {
-                val configuration = LocalConfiguration.current
-                val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-
-                Surface(
-                    color = Color(0xFF18181D).copy(alpha = 0.95f),
-                    shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .widthIn(min = 320.dp, max = 420.dp)
-                        .fillMaxWidth(if (isLandscape) 0.50f else 0.85f)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { /* Consume clicks inside panel */ }
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(16.dp)
-                    ) {
-                        // Header
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Tune,
-                                    contentDescription = null,
-                                    tint = Color(0xFF00C8FF),
-                                    modifier = Modifier.size(22.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "إعدادات المشغل (Settings)",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-                            IconButton(
-                                onClick = { isMoreOptionsSheetOpen = false },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "إغلاق",
-                                    tint = Color.LightGray
-                                )
-                            }
-                        }
-
-                        HorizontalDivider(
-                            color = Color.White.copy(alpha = 0.12f),
-                            thickness = 1.dp,
-                            modifier = Modifier.padding(vertical = 12.dp)
-                        )
-
-                        // 1. Top Options Grid (Scrollable rows)
-                        val playbackOrderLabel = when (playbackOrderIndex) {
-                            1 -> "تكرار الملف"
-                            2 -> "تكرار الكل"
-                            3 -> "عشوائي"
-                            else -> "عادي"
-                        }
-                        val playbackOrderIcon = when (playbackOrderIndex) {
-                            1 -> Icons.Default.RepeatOne
-                            2 -> Icons.Default.Repeat
-                            3 -> Icons.Default.Shuffle
-                            else -> Icons.Default.PlayArrow
-                        }
-
-                        data class PanelAction(
-                            val title: String,
-                            val subtitle: String,
-                            val icon: @Composable () -> Unit,
-                            val onClick: () -> Unit
-                        )
-
-                        val panelActions = listOf(
-                            PanelAction(
-                                title = "الترجمة",
-                                subtitle = "اختيار ملف ترجمة",
-                                icon = { CcSubtitleIcon(modifier = Modifier.size(20.dp), tint = Color(0xFF00C8FF)) },
-                                onClick = {
-                                    try { subtitlePickerLauncher.launch(arrayOf("*/*")) } catch (e: Exception) { }
-                                    isMoreOptionsSheetOpen = false
-                                }
-                            ),
-                            PanelAction(
-                                title = "الصوت",
-                                subtitle = "المسارات الصوتية",
-                                icon = { HeadphonesCustomIcon(modifier = Modifier.size(20.dp), tint = Color(0xFF00C8FF)) },
-                                onClick = {
-                                    isAudioTracksDialogOpen = true
-                                    isMoreOptionsSheetOpen = false
-                                }
-                            ),
-                            PanelAction(
-                                title = "نسبة العرض",
-                                subtitle = scaleMode,
-                                icon = { Icon(Icons.Default.AspectRatio, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
-                                onClick = {
-                                    scaleMode = when (scaleMode) {
-                                        "FIT" -> "FILL"
-                                        "FILL" -> "STRETCH"
-                                        "STRETCH" -> "CROP"
-                                        "CROP" -> "16:9"
-                                        else -> "FIT"
-                                    }
-                                }
-                            ),
-                            PanelAction(
-                                title = "انعكاس",
-                                subtitle = if (isMirrorModeActive) "مُفعل" else "معطل",
-                                icon = { Icon(Icons.Default.ScreenRotation, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
-                                onClick = {
-                                    isMirrorModeActive = !isMirrorModeActive
-                                }
-                            ),
-                            PanelAction(
-                                title = "فك التشفير",
-                                subtitle = currentDecoder,
-                                icon = { Icon(Icons.Default.Memory, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
-                                onClick = {
-                                    currentDecoder = when (currentDecoder) {
-                                        "HW" -> "HW+"
-                                        "HW+" -> "SW"
-                                        else -> "HW"
-                                    }
-                                    isHWAccelActive = (currentDecoder == "HW" || currentDecoder == "HW+")
-                                }
-                            ),
-                            PanelAction(
-                                title = "ترتيب التشغيل",
-                                subtitle = playbackOrderLabel,
-                                icon = { Icon(playbackOrderIcon, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
-                                onClick = {
-                                    playbackOrderIndex = (playbackOrderIndex + 1) % 4
-                                    when (playbackOrderIndex) {
-                                        0 -> {
-                                            player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
-                                            player.shuffleModeEnabled = false
-                                        }
-                                        1 -> {
-                                            player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
-                                            player.shuffleModeEnabled = false
-                                        }
-                                        2 -> {
-                                            player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                                            player.shuffleModeEnabled = false
-                                        }
-                                        3 -> {
-                                            player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
-                                            player.shuffleModeEnabled = true
-                                        }
-                                    }
-                                }
-                            ),
-                            PanelAction(
-                                title = "تشغيل بالخلفية",
-                                subtitle = "نافذة عائمة / PiP",
-                                icon = { PipCustomIcon(modifier = Modifier.size(20.dp), tint = Color(0xFF00C8FF)) },
-                                onClick = {
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                                        runCatching { activity?.enterPictureInPictureMode() }
-                                    }
-                                    isMoreOptionsSheetOpen = false
-                                }
-                            ),
-                            PanelAction(
-                                title = "تفاصيل الفيديو",
-                                subtitle = "معلومات الملف",
-                                icon = { Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
-                                onClick = {
-                                    isVideoDetailsDialogOpen = true
-                                    isMoreOptionsSheetOpen = false
-                                }
-                            )
-                        )
-
-                        val columnsCount = if (isLandscape) 3 else 2
-                        val chunkedActions = panelActions.chunked(columnsCount)
-
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            chunkedActions.forEach { rowItems ->
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    rowItems.forEach { item ->
-                                        Card(
-                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF24242A)),
-                                            shape = RoundedCornerShape(14.dp),
-                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(68.dp)
-                                                .clickable { item.onClick() }
-                                        ) {
-                                            Column(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .padding(6.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center
-                                            ) {
-                                                item.icon()
-                                                Spacer(modifier = Modifier.height(3.dp))
-                                                Text(
-                                                    text = item.title,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.White,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    text = item.subtitle,
-                                                    fontSize = 9.sp,
-                                                    color = Color(0xFF00C8FF),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                        }
-                                    }
-                                    repeat(columnsCount - rowItems.size) {
-                                        Spacer(modifier = Modifier.weight(1f))
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // 2. Sleep Timer Section (قسم مؤقت النوم)
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF24242A))
-                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
-                                .padding(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Timer,
-                                        contentDescription = null,
-                                        tint = Color(0xFF00C8FF),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "مؤقت النوم (Sleep Timer)",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                }
-                                if (sleepTimerActive) {
-                                    val mins = sleepTimerRemainingSecs / 60
-                                    val secs = sleepTimerRemainingSecs % 60
-                                    Text(
-                                        text = "%02d:%02d".format(mins, secs),
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF00C8FF),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                val quickTimers = listOf(
-                                    "إيقاف" to 0,
-                                    "10د" to 10,
-                                    "30د" to 30,
-                                    "60د" to 60
-                                )
-                                quickTimers.forEach { (label, mins) ->
-                                    val isSelected = if (mins == 0) !sleepTimerActive else (sleepTimerActive && sleepTimerInitialMinutes == mins)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(34.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isSelected) Color(0xFF00C8FF) else Color(0xFF33333E))
-                                            .clickable {
-                                                if (mins == 0) {
-                                                    sleepTimerActive = false
-                                                    sleepTimerRemainingSecs = 0
-                                                } else {
-                                                    sleepTimerInitialMinutes = mins
-                                                    sleepTimerRemainingSecs = mins * 60
-                                                    sleepTimerActive = true
-                                                }
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = label,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isSelected) Color.Black else Color.White
-                                        )
-                                    }
-                                }
-
-                                // Custom button
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1.2f)
-                                        .height(34.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFF33333E))
-                                        .clickable {
-                                            isCustomSleepTimerDialogOpen = true
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "مخصص ⚙️",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF00C8FF)
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // 3. Sliders Section (أشرطة التحكم السفلية)
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF24242A))
-                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "التحكم بـ الصوت والإضاءة",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.LightGray
-                            )
-
-                            // Volume Slider
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(
-                                    imageVector = if (currentVolRatio <= 0.01f) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                                    contentDescription = "الصوت",
-                                    tint = Color(0xFF00C8FF),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Slider(
-                                    value = currentVolRatio,
-                                    onValueChange = { ratio ->
-                                        currentVolRatio = ratio
-                                        val targetVol = (ratio * maxVolume).toInt().coerceIn(0, maxVolume.toInt())
-                                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                                    },
-                                    valueRange = 0f..1f,
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = Color(0xFF00C8FF),
-                                        activeTrackColor = Color(0xFF00C8FF),
-                                        inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                                    ),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(28.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "${(currentVolRatio * 100).toInt()}%",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    modifier = Modifier.width(36.dp),
-                                    textAlign = TextAlign.End
-                                )
-                            }
-
-                            // Brightness Slider
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.WbSunny,
-                                    contentDescription = "الإضاءة",
-                                    tint = Color(0xFFFFC107),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Slider(
-                                    value = currentBrightness.coerceIn(0.01f, 1f),
-                                    onValueChange = { bright ->
-                                        currentBrightness = bright
-                                        activity?.window?.attributes = activity?.window?.attributes?.apply {
-                                            screenBrightness = bright
-                                        }
-                                    },
-                                    valueRange = 0.01f..1f,
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = Color(0xFFFFC107),
-                                        activeTrackColor = Color(0xFFFFC107),
-                                        inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                                    ),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(28.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "${(currentBrightness.coerceIn(0.01f, 1f) * 100).toInt()}%",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    modifier = Modifier.width(36.dp),
-                                    textAlign = TextAlign.End
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-                }
-            }
-        }
-
         // Custom Sleep Timer Dialog
         if (isCustomSleepTimerDialogOpen) {
             androidx.compose.ui.window.Dialog(
@@ -4202,6 +3730,814 @@ fun PlayerScreen(
                     Text("انقر في أي مكان للإغلاق والعودة للمشاهدة", color = Color.Gray, fontSize = 11.sp)
                 }
             }
+        }
+
+        // Custom Sleep Timer Dialog
+        if (isCustomSleepTimerDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { isCustomSleepTimerDialogOpen = false },
+                title = {
+                    Text("تحديد مؤقت النوم (Sleep Timer)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "اختر الوقت بالدقائق لإيقاف التشغيل تلقائياً:",
+                            color = Color.LightGray,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "${customSleepTimerMins.toInt()} دقيقة",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF00C8FF),
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Slider(
+                            value = customSleepTimerMins,
+                            onValueChange = { customSleepTimerMins = it },
+                            valueRange = 1f..120f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFF00C8FF),
+                                activeTrackColor = Color(0xFF00C8FF),
+                                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                            )
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8FF)),
+                        onClick = {
+                            val mins = customSleepTimerMins.toInt()
+                            sleepTimerInitialMinutes = mins
+                            sleepTimerRemainingSecs = mins * 60
+                            sleepTimerActive = true
+                            isCustomSleepTimerDialogOpen = false
+                            Toast.makeText(context, "تم ضبط مؤقت النوم بعد $mins دقيقة ⏱️", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Text("بدء المؤقت", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { isCustomSleepTimerDialogOpen = false }) {
+                        Text("إلغاء", color = Color.LightGray)
+                    }
+                },
+                containerColor = Color(0xFF24242A),
+                shape = RoundedCornerShape(20.dp)
+            )
+        }
+    }
+},
+sideContent = {
+    if (isMoreOptionsSheetOpen) {
+        BackHandler {
+            if (sidePanelMenuState != SidePanelMenuState.MAIN) {
+                sidePanelMenuState = SidePanelMenuState.MAIN
+            } else {
+                isMoreOptionsSheetOpen = false
+            }
+        }
+    }
+
+    AnimatedVisibility(
+        visible = isMoreOptionsSheetOpen,
+        enter = if (isMainLandscape) {
+            slideInHorizontally(
+                initialOffsetX = { fullWidth -> fullWidth },
+                animationSpec = tween(300)
+            ) + fadeIn(animationSpec = tween(250))
+        } else {
+            slideInVertically(
+                initialOffsetY = { fullHeight -> fullHeight },
+                animationSpec = tween(300)
+            ) + fadeIn(animationSpec = tween(250))
+        },
+        exit = if (isMainLandscape) {
+            slideOutHorizontally(
+                targetOffsetX = { fullWidth -> fullWidth },
+                animationSpec = tween(300)
+            ) + fadeOut(animationSpec = tween(250))
+        } else {
+            slideOutVertically(
+                targetOffsetY = { fullHeight -> fullHeight },
+                animationSpec = tween(300)
+            ) + fadeOut(animationSpec = tween(250))
+        }
+    ) {
+        Surface(
+            color = Color(0xEE121216),
+            shape = if (isMainLandscape) {
+                RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp)
+            } else {
+                RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+            },
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+            modifier = if (isMainLandscape) {
+                Modifier
+                    .fillMaxHeight()
+                    .width(350.dp)
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .height(420.dp)
+            }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Side Panel Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (sidePanelMenuState != SidePanelMenuState.MAIN) {
+                            IconButton(
+                                onClick = { sidePanelMenuState = SidePanelMenuState.MAIN },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowBack,
+                                    contentDescription = "رجوع",
+                                    tint = Color(0xFF00C8FF)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                tint = Color(0xFF00C8FF),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+
+                        val titleText = when (sidePanelMenuState) {
+                            SidePanelMenuState.MAIN -> "إعدادات المشغل (Settings)"
+                            SidePanelMenuState.SUBTITLE_SETTINGS -> "إعدادات الترجمة (Subtitles)"
+                            SidePanelMenuState.ASPECT_RATIO -> "نسبة العرض (Aspect Ratio)"
+                            SidePanelMenuState.DETAILS -> "تفاصيل الفيديو والمعلومات"
+                        }
+
+                        Text(
+                            text = titleText,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { isMoreOptionsSheetOpen = false },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "إغلاق",
+                            tint = Color.LightGray
+                        )
+                    }
+                }
+
+                HorizontalDivider(
+                    color = Color.White.copy(alpha = 0.12f),
+                    thickness = 1.dp,
+                    modifier = Modifier.padding(vertical = 12.dp)
+                )
+
+                // Sub-Screen Content via AnimatedContent
+                AnimatedContent(
+                    targetState = sidePanelMenuState,
+                    label = "side_panel_navigation",
+                    modifier = Modifier.weight(1f)
+                ) { currentMenuState ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        when (currentMenuState) {
+                            SidePanelMenuState.MAIN -> {
+                                // 1. MAIN GRID ACTIONS
+                                val playbackOrderLabel = when (playbackOrderIndex) {
+                                    1 -> "تكرار الملف"
+                                    2 -> "تكرار الكل"
+                                    3 -> "عشوائي"
+                                    else -> "عادي"
+                                }
+                                val playbackOrderIcon = when (playbackOrderIndex) {
+                                    1 -> Icons.Default.RepeatOne
+                                    2 -> Icons.Default.Repeat
+                                    3 -> Icons.Default.Shuffle
+                                    else -> Icons.Default.PlayArrow
+                                }
+
+                                data class PanelAction(
+                                    val title: String,
+                                    val subtitle: String,
+                                    val icon: @Composable () -> Unit,
+                                    val onClick: () -> Unit
+                                )
+
+                                val panelActions = listOf(
+                                    PanelAction(
+                                        title = "الترجمة",
+                                        subtitle = if (isSubtitleEnabled) "مُفعلة" else "معطلة",
+                                        icon = { CcSubtitleIcon(modifier = Modifier.size(20.dp), tint = Color(0xFF00C8FF)) },
+                                        onClick = { sidePanelMenuState = SidePanelMenuState.SUBTITLE_SETTINGS }
+                                    ),
+                                    PanelAction(
+                                        title = "الصوت",
+                                        subtitle = "المسارات الصوتية",
+                                        icon = { HeadphonesCustomIcon(modifier = Modifier.size(20.dp), tint = Color(0xFF00C8FF)) },
+                                        onClick = { isAudioTracksDialogOpen = true }
+                                    ),
+                                    PanelAction(
+                                        title = "نسبة العرض",
+                                        subtitle = scaleMode,
+                                        icon = { Icon(Icons.Default.AspectRatio, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
+                                        onClick = { sidePanelMenuState = SidePanelMenuState.ASPECT_RATIO }
+                                    ),
+                                    PanelAction(
+                                        title = "انعكاس",
+                                        subtitle = if (isMirrorModeActive) "مُفعل" else "معطل",
+                                        icon = { Icon(Icons.Default.ScreenRotation, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
+                                        onClick = { isMirrorModeActive = !isMirrorModeActive }
+                                    ),
+                                    PanelAction(
+                                        title = "فك التشفير",
+                                        subtitle = currentDecoder,
+                                        icon = { Icon(Icons.Default.Memory, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
+                                        onClick = {
+                                            currentDecoder = when (currentDecoder) {
+                                                "HW" -> "HW+"
+                                                "HW+" -> "SW"
+                                                else -> "HW"
+                                            }
+                                            isHWAccelActive = (currentDecoder == "HW" || currentDecoder == "HW+")
+                                        }
+                                    ),
+                                    PanelAction(
+                                        title = "ترتيب التشغيل",
+                                        subtitle = playbackOrderLabel,
+                                        icon = { Icon(playbackOrderIcon, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
+                                        onClick = {
+                                            playbackOrderIndex = (playbackOrderIndex + 1) % 4
+                                            when (playbackOrderIndex) {
+                                                0 -> {
+                                                    player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
+                                                    player.shuffleModeEnabled = false
+                                                }
+                                                1 -> {
+                                                    player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
+                                                    player.shuffleModeEnabled = false
+                                                }
+                                                2 -> {
+                                                    player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                                                    player.shuffleModeEnabled = false
+                                                }
+                                                3 -> {
+                                                    player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
+                                                    player.shuffleModeEnabled = true
+                                                }
+                                            }
+                                        }
+                                    ),
+                                    PanelAction(
+                                        title = "التشغيل بالخلفية",
+                                        subtitle = "نافذة عائمة / PiP",
+                                        icon = { PipCustomIcon(modifier = Modifier.size(20.dp), tint = Color(0xFF00C8FF)) },
+                                        onClick = {
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                                                runCatching { activity?.enterPictureInPictureMode() }
+                                            }
+                                            isMoreOptionsSheetOpen = false
+                                        }
+                                    ),
+                                    PanelAction(
+                                        title = "تفاصيل الفيديو",
+                                        subtitle = "معلومات الملف",
+                                        icon = { Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp)) },
+                                        onClick = { sidePanelMenuState = SidePanelMenuState.DETAILS }
+                                    )
+                                )
+
+                                val columnsCount = if (isMainLandscape) 3 else 2
+                                val chunkedActions = panelActions.chunked(columnsCount)
+
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    chunkedActions.forEach { rowItems ->
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            rowItems.forEach { item ->
+                                                Card(
+                                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF24242A)),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(68.dp)
+                                                        .clickable { item.onClick() }
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .padding(6.dp),
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.Center
+                                                    ) {
+                                                        item.icon()
+                                                        Spacer(modifier = Modifier.height(3.dp))
+                                                        Text(
+                                                            text = item.title,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Text(
+                                                            text = item.subtitle,
+                                                            fontSize = 9.sp,
+                                                            color = Color(0xFF00C8FF),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            repeat(columnsCount - rowItems.size) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                // 2. SLEEP TIMER SECTION
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Color(0xFF24242A))
+                                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                                        .padding(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.Timer,
+                                                contentDescription = null,
+                                                tint = Color(0xFF00C8FF),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "مؤقت النوم (Sleep Timer)",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                        if (sleepTimerActive) {
+                                            val mins = sleepTimerRemainingSecs / 60
+                                            val secs = sleepTimerRemainingSecs % 60
+                                            Text(
+                                                text = "%02d:%02d".format(mins, secs),
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF00C8FF),
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        val quickTimers = listOf(
+                                            "إيقاف" to 0,
+                                            "10د" to 10,
+                                            "30د" to 30,
+                                            "60د" to 60
+                                        )
+                                        quickTimers.forEach { (label, mins) ->
+                                            val isSelected = if (mins == 0) !sleepTimerActive else (sleepTimerActive && sleepTimerInitialMinutes == mins)
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(34.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(if (isSelected) Color(0xFF00C8FF) else Color(0xFF33333E))
+                                                    .clickable {
+                                                        if (mins == 0) {
+                                                            sleepTimerActive = false
+                                                            sleepTimerRemainingSecs = 0
+                                                        } else {
+                                                            sleepTimerInitialMinutes = mins
+                                                            sleepTimerRemainingSecs = mins * 60
+                                                            sleepTimerActive = true
+                                                        }
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = label,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSelected) Color.Black else Color.White
+                                                )
+                                            }
+                                        }
+
+                                        // Custom button
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1.2f)
+                                                .height(34.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color(0xFF33333E))
+                                                .clickable {
+                                                    isCustomSleepTimerDialogOpen = true
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "مخصص ⚙️",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF00C8FF)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                // 3. SLIDERS SECTION
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Color(0xFF24242A))
+                                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "التحكم بـ الصوت والإضاءة",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.LightGray
+                                    )
+
+                                    // Volume Slider
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(
+                                            imageVector = if (currentVolRatio <= 0.01f) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                            contentDescription = "الصوت",
+                                            tint = Color(0xFF00C8FF),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Slider(
+                                            value = currentVolRatio,
+                                            onValueChange = { ratio ->
+                                                currentVolRatio = ratio
+                                                val targetVol = (ratio * maxVolume).toInt().coerceIn(0, maxVolume.toInt())
+                                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                            },
+                                            valueRange = 0f..1f,
+                                            colors = SliderDefaults.colors(
+                                                thumbColor = Color(0xFF00C8FF),
+                                                activeTrackColor = Color(0xFF00C8FF),
+                                                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(28.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${(currentVolRatio * 100).toInt()}%",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.width(36.dp),
+                                            textAlign = TextAlign.End
+                                        )
+                                    }
+
+                                    // Brightness Slider
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.WbSunny,
+                                            contentDescription = "الإضاءة",
+                                            tint = Color(0xFFFFC107),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Slider(
+                                            value = currentBrightness.coerceIn(0.01f, 1f),
+                                            onValueChange = { bright ->
+                                                currentBrightness = bright
+                                                activity?.window?.attributes = activity?.window?.attributes?.apply {
+                                                    screenBrightness = bright
+                                                }
+                                            },
+                                            valueRange = 0.01f..1f,
+                                            colors = SliderDefaults.colors(
+                                                thumbColor = Color(0xFFFFC107),
+                                                activeTrackColor = Color(0xFFFFC107),
+                                                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(28.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "${(currentBrightness.coerceIn(0.01f, 1f) * 100).toInt()}%",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.width(36.dp),
+                                            textAlign = TextAlign.End
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+
+                            SidePanelMenuState.SUBTITLE_SETTINGS -> {
+                                // SUBTITLE SUB-SCREEN
+                                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    // Toggle Enable Card
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF24242A)),
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(14.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("تفعيل الترجمة", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Switch(
+                                                checked = isSubtitleEnabled,
+                                                onCheckedChange = { enabled ->
+                                                    isSubtitleEnabled = enabled
+                                                    player.trackSelectionParameters = player.trackSelectionParameters
+                                                        .buildUpon()
+                                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
+                                                        .build()
+                                                },
+                                                colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF00C8FF))
+                                            )
+                                        }
+                                    }
+
+                                    // Pick External File
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF24242A)),
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                try { subtitlePickerLauncher.launch(arrayOf("*/*")) } catch (e: Exception) { }
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(14.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.FileOpen, contentDescription = null, tint = Color(0xFF00C8FF), modifier = Modifier.size(20.dp))
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Text("اختيار ملف ترجمة من الهاتف", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                            }
+                                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
+                                        }
+                                    }
+
+                                    // Size Slider
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(Color(0xFF24242A))
+                                            .padding(14.dp)
+                                    ) {
+                                        Text("حجم خط الترجمة", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Slider(
+                                            value = subtitleStyle.textSize,
+                                            onValueChange = { subtitleStyle = subtitleStyle.copy(textSize = it) },
+                                            valueRange = 0.6f..2.0f,
+                                            colors = SliderDefaults.colors(thumbColor = Color(0xFF00C8FF), activeTrackColor = Color(0xFF00C8FF))
+                                        )
+                                    }
+
+                                    // Color Choices
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(Color(0xFF24242A))
+                                            .padding(14.dp)
+                                    ) {
+                                        Text("لون نص الترجمة", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            val colorChoices = listOf(
+                                                Color.White to "أبيض",
+                                                Color(0xFFFFD700) to "أصفر",
+                                                Color(0xFF4CAF50) to "أخضر",
+                                                Color(0xFF00C8FF) to "أزرق",
+                                                Color(0xFFFF5252) to "أحمر"
+                                            )
+                                            colorChoices.forEach { (color, label) ->
+                                                val isSelected = subtitleStyle.textColor == color
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(36.dp)
+                                                        .clip(CircleShape)
+                                                        .background(color)
+                                                        .border(
+                                                            width = if (isSelected) 3.dp else 1.dp,
+                                                            color = if (isSelected) Color.White else Color.Transparent,
+                                                            shape = CircleShape
+                                                        )
+                                                        .clickable {
+                                                            subtitleStyle = subtitleStyle.copy(textColor = color)
+                                                        }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            SidePanelMenuState.ASPECT_RATIO -> {
+                                // ASPECT RATIO SUB-SCREEN
+                                val aspectRatios = listOf(
+                                    Triple("FIT", "تكييف الشاشة", "إظهار الفيديو كاملاً بدون قص مع الحفاظ على الأبعاد الأصليية"),
+                                    Triple("FILL", "تعبئة الشاشة", "ملء كامل الشاشة مع قص بسيط للحواف لتجنب الأشرطة السوداء"),
+                                    Triple("STRETCH", "تطويع الصورة", "تمديد الصورة قسرياً لتغطي كامل العرض والارتفاع"),
+                                    Triple("CROP", "قص الحواف", "تكبير الفيديو لقص الشريط الأسود العلوي والسفلي"),
+                                    Triple("16:9", "شاشة عريضة 16:9", "النسبة القياسية والشائعة لمعظم أجهزة التلفزيون والأنمي"),
+                                    Triple("4:3", "شاشة كلاسيكية 4:3", "نسبة العرض القديمة للشاشات المربعة والأنمي القديم"),
+                                    Triple("21:9", "سينمائي عريض 21:9", "أبعاد الشاشات السينمائية للأفلام الحماسية")
+                                )
+
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    aspectRatios.forEach { (mode, name, desc) ->
+                                        val isSelected = scaleMode == mode
+                                        Card(
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = if (isSelected) Color(0xFF00C8FF).copy(alpha = 0.15f) else Color(0xFF24242A)
+                                            ),
+                                            shape = RoundedCornerShape(12.dp),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (isSelected) Color(0xFF00C8FF) else Color.White.copy(alpha = 0.08f)
+                                            ),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { scaleMode = mode }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(12.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(name, color = if (isSelected) Color(0xFF00C8FF) else Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                    Text(desc, color = Color.Gray, fontSize = 10.sp)
+                                                }
+                                                RadioButton(
+                                                    selected = isSelected,
+                                                    onClick = { scaleMode = mode },
+                                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF00C8FF))
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            SidePanelMenuState.DETAILS -> {
+                                // VIDEO DETAILS SUB-SCREEN
+                                val detailsList = listOf(
+                                    "اسم الملف" to java.io.File(filePath).name,
+                                    "دقة الفيديو" to resolutionLabel,
+                                    "الأبعاد الإجمالية" to "${videoWidth} x ${videoHeight} px",
+                                    "مدة الفيديو" to "%02d:%02d:%02d".format(
+                                        java.util.concurrent.TimeUnit.MILLISECONDS.toHours(videoDuration),
+                                        java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(videoDuration) % 60,
+                                        java.util.concurrent.TimeUnit.MILLISECONDS.toSeconds(videoDuration) % 60
+                                    ),
+                                    "محرك فك التشفير" to currentDecoder,
+                                    "مسار الملف" to filePath
+                                )
+
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    detailsList.forEach { (label, value) ->
+                                        Card(
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF24242A)),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text(label, color = Color(0xFF00C8FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(value, color = Color.White, fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+)
+}
+
+@Composable
+private fun SplitScreenContainer(
+    isLandscape: Boolean,
+    mainContent: @Composable () -> Unit,
+    sideContent: @Composable () -> Unit
+) {
+    if (isLandscape) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+            ) {
+                mainContent()
+            }
+            sideContent()
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                mainContent()
+            }
+            sideContent()
         }
     }
 }
