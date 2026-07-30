@@ -269,6 +269,57 @@ fun HeadphonesCustomIcon(
 }
 
 /**
+ * Custom Screenshot Icon matching the user's uploaded image:
+ * Outer frame with extended crop corner marks, containing a dot and mountain landscape inside.
+ */
+@Composable
+fun CustomScreenshotCropIcon(
+    modifier: Modifier = Modifier,
+    tint: Color = Color.White
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeWidth = 1.8.dp.toPx()
+        val ext = 3.5.dp.toPx()
+
+        val left = w * 0.18f
+        val top = h * 0.18f
+        val right = w * 0.82f
+        val bottom = h * 0.82f
+
+        // Top horizontal line (extended)
+        drawLine(tint, Offset(left - ext, top), Offset(right + ext, top), strokeWidth, StrokeCap.Square)
+        // Bottom horizontal line (extended)
+        drawLine(tint, Offset(left - ext, bottom), Offset(right + ext, bottom), strokeWidth, StrokeCap.Square)
+        // Left vertical line (extended)
+        drawLine(tint, Offset(left, top - ext), Offset(left, bottom + ext), strokeWidth, StrokeCap.Square)
+        // Right vertical line (extended)
+        drawLine(tint, Offset(right, top - ext), Offset(right, bottom + ext), strokeWidth, StrokeCap.Square)
+
+        // Inside dot (sun)
+        drawCircle(
+            color = tint,
+            radius = (right - left) * 0.09f,
+            center = Offset(left + (right - left) * 0.30f, top + (bottom - top) * 0.32f)
+        )
+
+        // Mountain landscape
+        val path = Path().apply {
+            moveTo(left, bottom)
+            lineTo(left, top + (bottom - top) * 0.65f)
+            lineTo(left + (right - left) * 0.38f, top + (bottom - top) * 0.38f)
+            lineTo(left + (right - left) * 0.60f, top + (bottom - top) * 0.58f)
+            lineTo(left + (right - left) * 0.78f, top + (bottom - top) * 0.42f)
+            lineTo(right, top + (bottom - top) * 0.65f)
+            lineTo(right, bottom)
+            close()
+        }
+        drawPath(path = path, color = tint)
+    }
+}
+
+/**
  * Square with Play Triangle inside Icon:
  * Bordered square with a small solid play triangle inside.
  */

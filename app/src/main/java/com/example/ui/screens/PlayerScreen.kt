@@ -58,6 +58,7 @@ import com.example.ui.components.CustomLockIcon
 import com.example.ui.components.CustomPlayPauseButton
 import com.example.ui.components.CustomSeek10Icon
 import com.example.ui.components.HeadphonesCustomIcon
+import com.example.ui.components.CustomScreenshotCropIcon
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -2328,11 +2329,9 @@ fun PlayerScreen(
                         IconButton(
                             onClick = { takeScreenshot(context) }
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.PhotoCamera,
-                                contentDescription = "لقطة الشاشة",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                            CustomScreenshotCropIcon(
+                                modifier = Modifier.size(20.dp),
+                                tint = Color.White
                             )
                         }
 
@@ -2395,8 +2394,15 @@ fun PlayerScreen(
                                 }
                             }
                         ) {
+                            val resizeIcon = when (scaleMode) {
+                                "FIT" -> Icons.Default.FitScreen
+                                "FILL" -> Icons.Default.Fullscreen
+                                "STRETCH" -> Icons.Default.AspectRatio
+                                "CROP" -> Icons.Default.Crop
+                                else -> Icons.Default.FitScreen
+                            }
                             Icon(
-                                imageVector = Icons.Default.AspectRatio,
+                                imageVector = resizeIcon,
                                 contentDescription = "أبعاد الشاشة",
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp)
@@ -2553,7 +2559,7 @@ fun PlayerScreen(
                     // Left row controls
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
@@ -2731,7 +2737,7 @@ fun PlayerScreen(
                     // Right row details
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         IconButton(
                             onClick = {
@@ -2854,38 +2860,6 @@ fun PlayerScreen(
                                     }
                                 }
                             }
-                        }
-
-                        // Fullscreen / Aspect Ratio Card matching Photo 3
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .padding(horizontal = 2.dp)
-                                .size(30.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.White)
-                                .clickable {
-                                    scaleMode = when (scaleMode) {
-                                        "FIT" -> "FILL"
-                                        "FILL" -> "STRETCH"
-                                        "STRETCH" -> "CROP"
-                                        else -> "FIT"
-                                    }
-                                    gestureIndicatorText = "أبعاد الشاشة: $scaleMode"
-                                    scope.launch {
-                                        isIndicatorVisible = true
-                                        delay(800)
-                                        isIndicatorVisible = false
-                                    }
-                                }
-                                .testTag("fullscreen_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CropFree,
-                                contentDescription = "Resize mode",
-                                tint = Color.Black,
-                                modifier = Modifier.size(16.dp)
-                            )
                         }
                     }
                 }
