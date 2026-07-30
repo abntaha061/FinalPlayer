@@ -49,6 +49,10 @@ import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import com.example.ui.components.AppSlider
+import com.example.ui.components.PipCustomIcon
+import com.example.ui.components.OrientationCustomIcon
+import com.example.ui.components.CcSubtitleIcon
+import com.example.ui.components.SpeedometerCustomIcon
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -2339,15 +2343,27 @@ fun PlayerScreen(
                             )
                         }
 
+                        // PIP BUTTON
+                        IconButton(
+                            onClick = {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                                    activity?.enterPictureInPictureMode()
+                                }
+                            }
+                        ) {
+                            PipCustomIcon(
+                                modifier = Modifier.size(20.dp),
+                                tint = Color.White
+                            )
+                        }
+
                         // SUBTITLES BUTTON
                         IconButton(
                             onClick = { isSubtitlePanelViewOpen = true }
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Subtitles,
-                                contentDescription = "الترجمة",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                            CcSubtitleIcon(
+                                modifier = Modifier.size(22.dp),
+                                tint = if (isSubtitleEnabled) MaterialTheme.colorScheme.primary else Color.White
                             )
                         }
 
@@ -2523,8 +2539,22 @@ fun PlayerScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        IconButton(onClick = { isLockedMode = true }, modifier = Modifier.size(34.dp)) {
-                            Icon(Icons.Default.Lock, contentDescription = "Lock controls", tint = Color.White, modifier = Modifier.size(18.dp))
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .padding(horizontal = 2.dp)
+                                .size(30.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White)
+                                .clickable { isLockedMode = true }
+                                .testTag("lock_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Lock controls",
+                                tint = Color.Black,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
 
                         IconButton(onClick = { isFilesListVisible = !isFilesListVisible }, modifier = Modifier.size(34.dp)) {
@@ -2772,11 +2802,9 @@ fun PlayerScreen(
                             },
                             modifier = Modifier.size(34.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.ScreenRotation,
-                                contentDescription = "دوران الشاشة",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                            OrientationCustomIcon(
+                                modifier = Modifier.size(20.dp),
+                                tint = Color.White
                             )
                         }
 
@@ -2785,7 +2813,10 @@ fun PlayerScreen(
                                 onClick = { isSpeedExpanded = true },
                                 modifier = Modifier.size(34.dp)
                             ) {
-                                Icon(Icons.Default.Speed, contentDescription = "Speed multiplier rate", tint = Color.White, modifier = Modifier.size(18.dp))
+                                SpeedometerCustomIcon(
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color.White
+                                )
                             }
                             DropdownMenu(
                                 expanded = isSpeedExpanded,
@@ -2815,9 +2846,8 @@ fun PlayerScreen(
                         if (subtitleLanguages.isNotEmpty()) {
                             Box {
                                 IconButton(onClick = { isSubtitlesExpanded = true }) {
-                                    Icon(
-                                        imageVector = Icons.Default.ClosedCaption,
-                                        contentDescription = "الترجمة",
+                                    CcSubtitleIcon(
+                                        modifier = Modifier.size(20.dp),
                                         tint = if (isSubtitleEnabled) MaterialTheme.colorScheme.primary else Color.LightGray
                                     )
                                 }
@@ -2869,11 +2899,43 @@ fun PlayerScreen(
                                 }
                             }
                         }
+
+                        // Fullscreen / Aspect Ratio Card matching Photo 3
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .padding(horizontal = 2.dp)
+                                .size(30.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White)
+                                .clickable {
+                                    scaleMode = when (scaleMode) {
+                                        "FIT" -> "FILL"
+                                        "FILL" -> "STRETCH"
+                                        "STRETCH" -> "CROP"
+                                        else -> "FIT"
+                                    }
+                                    gestureIndicatorText = "أبعاد الشاشة: $scaleMode"
+                                    scope.launch {
+                                        isIndicatorVisible = true
+                                        delay(800)
+                                        isIndicatorVisible = false
+                                    }
+                                }
+                                .testTag("fullscreen_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CropFree,
+                                contentDescription = "Resize mode",
+                                tint = Color.Black,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
-            } // End of CompositionLocalProvider Ltr
-        }
+            } // End CompositionLocalProvider
+        } // End AnimatedVisibility
 
         // -----------------------------------------------------
         // SIDE BAR EXPLORER: FILES LIST DRAWER OVERLAY PANEL
@@ -3797,8 +3859,8 @@ fun PlayerProgressSlider(
     currentAccentColor: Color,
     onSeek: (Long) -> Unit
 ) {
-    val totalSecs = videoDuration / 1000
-    val curSecs = currentPlayTimeProvider() / 1000
+    val totalSecs = (videoDuration / 1000).coerceAtLeast(0)
+    val curSecs = (currentPlayTimeProvider() / 1000).coerceAtLeast(0)
 
     val totalHours = totalSecs / 3600
     val totalMinutes = (totalSecs % 3600) / 60
@@ -3808,19 +3870,36 @@ fun PlayerProgressSlider(
     val curMinutes = (curSecs % 3600) / 60
     val curSeconds = curSecs % 60
 
-    val totalStr = "%02d:%02d:%02d".format(totalHours, totalMinutes, totalSeconds)
-    val curStr = "%02d:%02d:%02d".format(curHours, curMinutes, curSeconds)
+    val totalStr = if (totalHours > 0) {
+        "%02d:%02d:%02d".format(totalHours, totalMinutes, totalSeconds)
+    } else {
+        "%02d:%02d".format(totalMinutes, totalSeconds)
+    }
+
+    val curStr = if (totalHours > 0) {
+        "%02d:%02d:%02d".format(curHours, curMinutes, curSeconds)
+    } else {
+        "%02d:%02d".format(curMinutes, curSeconds)
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
-        Text(curStr, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = curStr,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+
         BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = 10.dp)
-                .height(18.dp)
+                .padding(horizontal = 12.dp)
+                .height(28.dp)
                 .testTag("player_seek_bar")
                 .pointerInput(videoDuration) {
                     detectTapGestures(
@@ -3834,7 +3913,7 @@ fun PlayerProgressSlider(
                     )
                 }
                 .pointerInput(videoDuration) {
-                    detectDragGestures { change, dragAmount ->
+                    detectDragGestures { change, _ ->
                         change.consume()
                         if (videoDuration > 0) {
                             val percent = (change.position.x / size.width).coerceIn(0f, 1f)
@@ -3845,58 +3924,46 @@ fun PlayerProgressSlider(
                 }
         ) {
             val widthDp = with(LocalDensity.current) { constraints.maxWidth.toDp() }
-            val fraction = if (videoDuration > 0) currentPlayTimeProvider().toFloat() / videoDuration else 0f
+            val fraction = if (videoDuration > 0) (currentPlayTimeProvider().toFloat() / videoDuration).coerceIn(0f, 1f) else 0f
 
             // Inactive track (grey thin line)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.5.dp)
+                    .height(2.dp)
                     .align(Alignment.Center)
-                    .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(1.dp))
+                    .background(Color.White.copy(alpha = 0.35f), CircleShape)
             )
 
-            // Active track (primary colored thin line)
+            // Active track (white line)
             Box(
                 modifier = Modifier
                     .fillMaxWidth(fraction)
-                    .height(2.5.dp)
+                    .height(2.dp)
                     .align(Alignment.CenterStart)
-                    .background(currentAccentColor, RoundedCornerShape(1.dp))
+                    .background(Color.White, CircleShape)
             )
 
-            // Tiny circular thumb element
-            val thumbSize = 8.dp
+            // Prominent solid white circular thumb (18.dp)
+            val thumbSize = 18.dp
             val halfThumb = thumbSize / 2
             val thumbOffset = (widthDp * fraction - halfThumb).coerceIn(0.dp, widthDp - thumbSize)
 
-            // Glow ring خلف الـ thumb
-            Box(
-                modifier = Modifier
-                    .offset(x = thumbOffset - 4.dp)
-                    .size(16.dp)
-                    .align(Alignment.CenterStart)
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                currentAccentColor.copy(alpha = 0.45f),
-                                currentAccentColor.copy(alpha = 0f)
-                            )
-                        ),
-                        shape = CircleShape
-                    )
-            )
-
-            // الـ thumb الأصلي
             Box(
                 modifier = Modifier
                     .offset(x = thumbOffset)
                     .size(thumbSize)
                     .align(Alignment.CenterStart)
-                    .background(currentAccentColor, CircleShape)
+                    .background(Color.White, CircleShape)
             )
         }
-        Text(totalStr, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+
+        Text(
+            text = totalStr,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
