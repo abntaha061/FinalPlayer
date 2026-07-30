@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.layout.ContentScale
 import com.example.data.local.entities.MediaFile
 import com.example.ui.components.frostedGlass
+import com.example.ui.components.AppSlider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -664,7 +665,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(16.dp))
 
                             Text("حجم خط الترجمة (Subtitle size): ${subtitleSize.toInt()}sp", fontSize = 14.sp)
-                            Slider(
+                            AppSlider(
                                 value = subtitleSize,
                                 onValueChange = {
                                     subtitleSize = it

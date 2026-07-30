@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import com.example.ui.components.AppSlider
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -449,14 +450,11 @@ fun PlaybackControlsSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(progressStr, color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
-            Slider(
+            AppSlider(
                 value = if (duration > 0) progress.toFloat() / duration else 0f,
                 onValueChange = { onSeek((it * duration).toLong()) },
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                ),
+                activeColor = MaterialTheme.colorScheme.primary,
+                inactiveColor = Color.White.copy(alpha = 0.2f),
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp)
@@ -632,16 +630,11 @@ fun AudioProgressBar(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Slider(
+        AppSlider(
             value = if (duration > 0) progress.toFloat() / duration else 0f,
             onValueChange = { onSeek((it * duration).toLong()) },
-            colors = SliderDefaults.colors(
-                thumbColor = contentColor,
-                activeTrackColor = contentColor,
-                inactiveTrackColor = inactiveTrackColor,
-                activeTickColor = Color.Transparent,
-                inactiveTickColor = Color.Transparent
-            ),
+            activeColor = contentColor,
+            inactiveColor = inactiveTrackColor,
             modifier = Modifier
                 .weight(1f)
                 .testTag("lyrics_player_seek")

@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import com.example.ui.components.AppSlider
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -2449,7 +2450,7 @@ fun PlayerScreen(
                 ) {
                     Icon(Icons.Default.Brightness5, contentDescription = "Brightness Low", tint = Color.White)
                     
-                    Slider(
+                    AppSlider(
                         value = currentBrightness,
                         onValueChange = {
                             currentBrightness = it
@@ -2458,11 +2459,8 @@ fun PlayerScreen(
                             activity?.window?.attributes = layoutParams
                         },
                         valueRange = 0.05f..1.0f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = Color.DarkGray
-                        ),
+                        activeColor = MaterialTheme.colorScheme.primary,
+                        inactiveColor = Color.DarkGray,
                         modifier = Modifier
                             .weight(1f)
                             .graphicsLayer {
@@ -3047,7 +3045,7 @@ fun PlayerScreen(
             )
             var subSize by remember { mutableStateOf(viewModel.getSubtitleSize()) }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Slider(
+                AppSlider(
                     value = subSize,
                     onValueChange = {
                         subSize = it
@@ -3055,11 +3053,8 @@ fun PlayerScreen(
                         subtitleStyle = subtitleStyle.copy(textSize = it / 16f)
                     },
                     valueRange = 12f..30f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFF00C8FF),
-                        activeTrackColor = Color(0xFF00C8FF),
-                        inactiveTrackColor = Color.White.copy(alpha = 0.25f)
-                    ),
+                    activeColor = Color(0xFF00C8FF),
+                    inactiveColor = Color.White.copy(alpha = 0.25f),
                     modifier = Modifier.weight(1f).height(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -3561,18 +3556,15 @@ fun PlayerScreen(
                         val dbValue = (equalizerBandLevels[band] * 12).toInt()
                         Text("${if (dbValue > 0) "+" else ""}${dbValue} dB", color = Color.LightGray, fontSize = 11.sp)
                     }
-                    Slider(
+                    AppSlider(
                         value = equalizerBandLevels[band],
                         onValueChange = { newVal ->
                             setEqualizerBand(band, newVal)
                             isEqualizerActive = true
                         },
                         valueRange = -1.0f..1.0f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color(0xFF00C8FF),
-                            activeTrackColor = Color(0xFF00C8FF),
-                            inactiveTrackColor = Color.White.copy(alpha = 0.25f)
-                        ),
+                        activeColor = Color(0xFF00C8FF),
+                        inactiveColor = Color.White.copy(alpha = 0.25f),
                         modifier = Modifier.height(20.dp)
                     )
                 }

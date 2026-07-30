@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.components.AppSlider
 import androidx.media3.ui.CaptionStyleCompat
 import java.io.File
 
@@ -223,7 +224,7 @@ fun SubtitleSettingsPanel(
                             Text(delayText, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Text("تأخير/تقديم النص:", color = Color.Gray, fontSize = 12.sp)
                         }
-                        Slider(
+                        AppSlider(
                             value = tempDelay,
                             onValueChange = {
                                 tempDelay = it
@@ -231,11 +232,6 @@ fun SubtitleSettingsPanel(
                             },
                             valueRange = -5000f..5000f,
                             steps = 100,
-                            colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.primary,
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.25f)
-                            ),
                             modifier = Modifier.fillMaxWidth().height(20.dp)
                         )
 
@@ -252,7 +248,7 @@ fun SubtitleSettingsPanel(
                             Text("${"%.2f".format(tempSpeed)}x", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Text("سرعة عرض الترجمة:", color = Color.Gray, fontSize = 12.sp)
                         }
-                        Slider(
+                        AppSlider(
                             value = tempSpeed,
                             onValueChange = {
                                 tempSpeed = it
@@ -260,11 +256,6 @@ fun SubtitleSettingsPanel(
                             },
                             valueRange = 0.5f..2.0f,
                             steps = 15,
-                            colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.primary,
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.25f)
-                            ),
                             modifier = Modifier.fillMaxWidth().height(20.dp)
                         )
 
@@ -307,16 +298,11 @@ fun SubtitleSettingsPanel(
 
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("الحجم: ${(subtitleStyle.textSize * 100).toInt()}%", fontSize = 12.sp, color = Color.Gray)
-                        Slider(
+                        AppSlider(
                             value = subtitleStyle.textSize,
                             onValueChange = { onSubtitleStyleChange(subtitleStyle.copy(textSize = it)) },
                             valueRange = 0.5f..2.0f,
                             steps = 15,
-                            colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.primary,
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.25f)
-                            ),
                             modifier = Modifier.height(20.dp)
                         )
 
@@ -456,16 +442,11 @@ fun SubtitleSettingsPanel(
 
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("المسافة من الأسفل: ${(subtitleStyle.bottomPadding * 1000).toInt()}dp", fontSize = 12.sp, color = Color.Gray)
-                        Slider(
+                        AppSlider(
                             value = subtitleStyle.bottomPadding,
                             onValueChange = { onSubtitleStyleChange(subtitleStyle.copy(bottomPadding = it)) },
                             valueRange = -0.03f..0.30f,
                             steps = 33,
-                            colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.primary,
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.25f)
-                            ),
                             modifier = Modifier.height(20.dp)
                         )
 
