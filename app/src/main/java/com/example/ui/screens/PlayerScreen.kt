@@ -48,11 +48,16 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import com.example.data.local.entities.MediaFile
 import com.example.ui.components.AppSlider
 import com.example.ui.components.PipCustomIcon
 import com.example.ui.components.OrientationCustomIcon
 import com.example.ui.components.CcSubtitleIcon
 import com.example.ui.components.SpeedometerCustomIcon
+import com.example.ui.components.CustomLockIcon
+import com.example.ui.components.CustomPlayPauseButton
+import com.example.ui.components.CustomSeek10Icon
+import com.example.ui.components.HeadphonesCustomIcon
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -2331,15 +2336,27 @@ fun PlayerScreen(
                             )
                         }
 
-                        // AUDIO TRACKS BUTTON
+                        // HEADPHONES AUDIO MODE BUTTON
                         IconButton(
-                            onClick = { isAudioTracksDialogOpen = true }
+                            onClick = {
+                                val currentPos = player.currentPosition
+                                val mediaFile = MediaFile(
+                                    id = filePath.hashCode().toLong(),
+                                    title = java.io.File(filePath).nameWithoutExtension,
+                                    path = filePath,
+                                    size = java.io.File(filePath).length(),
+                                    dateModified = System.currentTimeMillis(),
+                                    duration = videoDuration,
+                                    isVideo = false
+                                )
+                                viewModel.playAudio(mediaFile)
+                                viewModel.seekAudioTo(currentPos)
+                                onBack()
+                            }
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Audiotrack,
-                                contentDescription = "مسار الصوت",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                            HeadphonesCustomIcon(
+                                modifier = Modifier.size(20.dp),
+                                tint = Color.White
                             )
                         }
 
@@ -2429,11 +2446,10 @@ fun PlayerScreen(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = "Unlock Screen",
+                CustomLockIcon(
+                    modifier = Modifier.size(36.dp),
                     tint = Color.White,
-                    modifier = Modifier.size(32.dp)
+                    holeColor = Color.Black
                 )
             }
         }
@@ -2549,11 +2565,10 @@ fun PlayerScreen(
                                 .clickable { isLockedMode = true }
                                 .testTag("lock_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Lock controls",
+                            CustomLockIcon(
+                                modifier = Modifier.size(16.dp),
                                 tint = Color.Black,
-                                modifier = Modifier.size(16.dp)
+                                holeColor = Color.White
                             )
                         }
 
@@ -2624,84 +2639,30 @@ fun PlayerScreen(
                                 }
                             },
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(36.dp)
                                 .graphicsLayer {
                                     scaleX = rewindScale
                                     scaleY = rewindScale
                                 }
                         ) {
-                            Icon(
-                                imageVector = when (seekStepSeconds) {
-                                    5 -> Icons.Default.Replay5
-                                    30 -> Icons.Default.Replay30
-                                    else -> Icons.Default.Replay10
-                                },
-                                contentDescription = "Back Step",
-                                tint = Color.LightGray,
-                                modifier = Modifier.size(20.dp)
+                            CustomSeek10Icon(
+                                isForward = false,
+                                modifier = Modifier.size(24.dp),
+                                tint = Color.White
                             )
                         }
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // Pulse animation state
-                        val pulseAnim = remember { androidx.compose.animation.core.Animatable(1f) }
-                        LaunchedEffect(isPlayingState) {
-                            if (!isPlayingState) {
-                                while (true) {
-                                    pulseAnim.animateTo(
-                                        targetValue = 1.12f,
-                                        animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                                    )
-                                    pulseAnim.animateTo(
-                                        targetValue = 1f,
-                                        animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                                    )
-                                }
-                            } else {
-                                pulseAnim.snapTo(1f)
-                            }
-                        }
-
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.size(52.dp)
-                        ) {
-                            // Pulse ring خلف الزر
-                            if (!isPlayingState) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(52.dp)
-                                        .graphicsLayer {
-                                            scaleX = pulseAnim.value
-                                            scaleY = pulseAnim.value
-                                            alpha = (1.4f - pulseAnim.value) * 0.6f
-                                        }
-                                        .background(
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                                            shape = CircleShape
-                                        )
-                                )
-                            }
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                                    .clickable {
-                                        if (isPlayingState) player.pause() else player.play()
-                                    }
-                                    .testTag("player_play_pause")
-                            ) {
-                                Icon(
-                                    imageVector = if (isPlayingState) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = "Play Control Toggle",
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
+                        CustomPlayPauseButton(
+                            isPlaying = isPlayingState,
+                            onClick = {
+                                if (isPlayingState) player.pause() else player.play()
+                            },
+                            modifier = Modifier
+                                .size(46.dp)
+                                .testTag("player_play_pause")
+                        )
 
                         Spacer(modifier = Modifier.width(6.dp))
 
@@ -2735,21 +2696,16 @@ fun PlayerScreen(
                                 }
                             },
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(36.dp)
                                 .graphicsLayer {
                                     scaleX = forwardScale
                                     scaleY = forwardScale
                                 }
                         ) {
-                            Icon(
-                                imageVector = when (seekStepSeconds) {
-                                    5 -> Icons.Default.Forward5
-                                    30 -> Icons.Default.Forward30
-                                    else -> Icons.Default.Forward10
-                                },
-                                contentDescription = "Forward Step",
-                                tint = Color.LightGray,
-                                modifier = Modifier.size(20.dp)
+                            CustomSeek10Icon(
+                                isForward = true,
+                                modifier = Modifier.size(24.dp),
+                                tint = Color.White
                             )
                         }
 

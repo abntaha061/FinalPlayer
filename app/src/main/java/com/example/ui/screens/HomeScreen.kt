@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.ui.components.SquareWithTriangleIcon
 import android.app.AlertDialog
 import android.content.Context
 import androidx.compose.animation.*
@@ -4793,6 +4794,22 @@ fun MiniPlayer(viewModel: MediaViewModel) {
                     overflow = TextOverflow.Ellipsis
                 )
             }
+
+            IconButton(
+                onClick = {
+                    val videoPath = track.path
+                    viewModel.stopAudio()
+                    viewModel.setActivePlayingVideoPath(videoPath)
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
+                SquareWithTriangleIcon(
+                    modifier = Modifier.size(20.dp),
+                    tint = Color.White
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
 
             IconButton(
                 onClick = { viewModel.toggleAudioPlayPause() },
