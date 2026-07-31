@@ -1712,6 +1712,14 @@ fun VideosAndFoldersTab(
     var videoToRename by remember { mutableStateOf<MediaFile?>(null) }
     var newNameText by remember { mutableStateOf("") }
     var videoToDelete by remember { mutableStateOf<MediaFile?>(null) }
+
+    // Video Options Bottom Sheet & Action Dialog States
+    var videoForBottomSheet by remember { mutableStateOf<MediaFile?>(null) }
+    var videoForExtractAudio by remember { mutableStateOf<MediaFile?>(null) }
+    var videoForDetails by remember { mutableStateOf<MediaFile?>(null) }
+    var videoForRename by remember { mutableStateOf<MediaFile?>(null) }
+    var videoForPlaylist by remember { mutableStateOf<MediaFile?>(null) }
+    var videoForTrimming by remember { mutableStateOf<MediaFile?>(null) }
     val historyList by viewModel.history.collectAsState(initial = emptyList())
 
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
@@ -2508,6 +2516,7 @@ fun VideosAndFoldersTab(
                                             onDeleteClick = {
                                                 videoToDelete = video
                                             },
+                                            onOptionsClick = { videoForBottomSheet = video },
                                             isSelected = selectedPaths.contains(video.path),
                                             historyList = historyList,
                                             onLongClick = {
@@ -2965,6 +2974,7 @@ fun VideosAndFoldersTab(
                                         onDeleteClick = {
                                             videoToDelete = video
                                         },
+                                        onOptionsClick = { videoForBottomSheet = video },
                                         isSelected = selectedPaths.contains(video.path),
                                         historyList = historyList,
                                         onLongClick = {
@@ -2995,6 +3005,83 @@ fun VideosAndFoldersTab(
                 }
             }
         }
+    }
+
+    // --- VIDEO OPTIONS BOTTOM SHEET & ACTION DIALOGS ---
+    videoForBottomSheet?.let { video ->
+        com.example.ui.components.VideoOptionsBottomSheet(
+            video = video,
+            onDismiss = { videoForBottomSheet = null },
+            onActionSelected = { action ->
+                when (action) {
+                    is com.example.ui.components.VideoOptionAction.AddToPlaylist -> {
+                        videoForPlaylist = video
+                    }
+                    is com.example.ui.components.VideoOptionAction.ConvertToMp3 -> {
+                        videoForExtractAudio = video
+                    }
+                    is com.example.ui.components.VideoOptionAction.LockVault -> {
+                        viewModel.setPrivateStatus(video, true)
+                        android.widget.Toast.makeText(context, "تم نقل الفيديو إلى الخزنة المشفرة", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    is com.example.ui.components.VideoOptionAction.TrimVideo -> {
+                        videoForTrimming = video
+                    }
+                    is com.example.ui.components.VideoOptionAction.Edit -> {
+                        videoForRename = video
+                    }
+                    is com.example.ui.components.VideoOptionAction.Share -> {
+                        com.example.ui.components.shareVideoFile(context, video.path)
+                    }
+                    is com.example.ui.components.VideoOptionAction.Rename -> {
+                        videoForRename = video
+                    }
+                    is com.example.ui.components.VideoOptionAction.Details -> {
+                        videoForDetails = video
+                    }
+                }
+            }
+        )
+    }
+
+    videoForExtractAudio?.let { video ->
+        com.example.ui.components.ExtractAudioDialog(
+            video = video,
+            viewModel = viewModel,
+            onDismiss = { videoForExtractAudio = null }
+        )
+    }
+
+    videoForDetails?.let { video ->
+        com.example.ui.components.VideoDetailsDialog(
+            video = video,
+            onDismiss = { videoForDetails = null }
+        )
+    }
+
+    videoForRename?.let { video ->
+        com.example.ui.components.RenameFileDialog(
+            video = video,
+            viewModel = viewModel,
+            onDismiss = { videoForRename = null }
+        )
+    }
+
+    videoForPlaylist?.let { video ->
+        com.example.ui.components.AddToPlaylistDialog(
+            video = video,
+            viewModel = viewModel,
+            onDismiss = { videoForPlaylist = null }
+        )
+    }
+
+    videoForTrimming?.let { video ->
+        com.example.ui.screens.TrimScreen(
+            video = video,
+            viewModel = viewModel,
+            onDismiss = { videoForTrimming = null },
+            onTrimFinished = { videoForTrimming = null }
+        )
     }
 
     // --- Rename Dialog ---
@@ -3237,6 +3324,7 @@ fun VideoGridItem(
     onVaultClick: () -> Unit,
     onRenameClick: () -> Unit,
     onDeleteClick: () -> Unit,
+    onOptionsClick: (() -> Unit)? = null,
     isSelected: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     historyList: List<com.example.data.local.entities.HistoryEntity> = emptyList(),
@@ -3505,7 +3593,13 @@ fun VideoGridItem(
                     var isMenuExpanded by remember { mutableStateOf(false) }
                     Box {
                         IconButton(
-                            onClick = { isMenuExpanded = true },
+                            onClick = {
+                                if (onOptionsClick != null) {
+                                    onOptionsClick()
+                                } else {
+                                    isMenuExpanded = true
+                                }
+                            },
                             modifier = Modifier.size(28.dp)
                         ) {
                             Icon(

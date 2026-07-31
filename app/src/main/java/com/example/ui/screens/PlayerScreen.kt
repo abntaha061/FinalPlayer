@@ -968,7 +968,7 @@ fun PlayerScreen(
                     bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
                 }
                 android.media.MediaScannerConnection.scanFile(ctx, arrayOf(file.absolutePath), arrayOf("image/jpeg"), null)
-                Toast.makeText(ctx, "تم حفظ لقطة الشاشة (إطار احتياطي) في ${file.absolutePath} 📸", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "تم حفظ لقطة الشاشة (إطار احتياطي) في ${file.absolutePath}", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Toast.makeText(ctx, "خطأ أثناء التقاط لقطة الشاشة: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -2423,7 +2423,7 @@ fun PlayerScreen(
                                     .padding(horizontal = 4.dp)
                                     .border(1.dp, Color(0xFFFF5252).copy(alpha = 0.8f), RoundedCornerShape(4.dp))
                                     .background(Color(0xFFFF5252).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                    .clickable { isSleepTimerDialogOpen = true }
+                                    .clickable { isMoreOptionsSheetOpen = true }
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2435,7 +2435,7 @@ fun PlayerScreen(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "⏰ $sleepTimerText",
+                                        text = sleepTimerText,
                                         color = Color(0xFFFF5252),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
@@ -3172,193 +3172,6 @@ fun PlayerScreen(
             }
         }
 
-        // Custom Sleep Timer Dialog
-        if (isCustomSleepTimerDialogOpen) {
-            androidx.compose.ui.window.Dialog(
-                onDismissRequest = { isCustomSleepTimerDialogOpen = false }
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF222228),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "تحديد مؤقت نوم مخصص",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(
-                            text = "${customSleepTimerMins.toInt()} دقيقة",
-                            color = Color(0xFF00C8FF),
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Slider(
-                            value = customSleepTimerMins,
-                            onValueChange = { customSleepTimerMins = it },
-                            valueRange = 1f..120f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF00C8FF),
-                                activeTrackColor = Color(0xFF00C8FF),
-                                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(onClick = { isCustomSleepTimerDialogOpen = false }) {
-                                Text("إلغاء", color = Color.LightGray)
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(
-                                onClick = {
-                                    val mins = customSleepTimerMins.toInt()
-                                    sleepTimerInitialMinutes = mins
-                                    sleepTimerRemainingSecs = mins * 60
-                                    sleepTimerActive = true
-                                    isCustomSleepTimerDialogOpen = false
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8FF))
-                            ) {
-                                Text("تأكيد", color = Color.Black, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // -----------------------------------------------------
-        // VIDEO DETAILS DIALOG
-        // -----------------------------------------------------
-        if (isVideoDetailsDialogOpen) {
-            val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-            val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-            
-            androidx.compose.ui.window.Dialog(
-                onDismissRequest = { isVideoDetailsDialogOpen = false }
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF1E1E22),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
-                    modifier = Modifier
-                        .width(if (isLandscape) 420.dp else 300.dp)
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null
-                        ) { }
-                        .padding(16.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        // Header
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(onClick = { isVideoDetailsDialogOpen = false }) {
-                                Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.LightGray)
-                            }
-                            Text(
-                                text = "تفاصيل الفيديو ℹ️",
-                                color = Color(0xFF00C8FF),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.End
-                            )
-                        }
-                        
-                        HorizontalDivider(
-                            color = Color(0xFF00C8FF).copy(alpha = 0.3f),
-                            thickness = 1.dp,
-                            modifier = Modifier.padding(vertical = 12.dp)
-                        )
-                        
-                        // Detailed Information Items
-                        val durationSec = player.duration / 1000
-                        val formattedDuration = if (durationSec > 0) {
-                            "%02d:%02d:%02d".format(durationSec / 3600, (durationSec % 3600) / 60, durationSec % 60)
-                        } else {
-                            "غير معروف"
-                        }
-                        
-                        val detailsList = listOf(
-                            "اسم الملف" to fileName,
-                            "المسار الكامل" to absolutePathDisplay,
-                            "حجم الملف" to fileSizeFormatted,
-                            "المدة الزمنية" to formattedDuration,
-                            "أبعاد الفيديو" to "$videoWidth × $videoHeight",
-                            "صيغة الملف" to fileExtension
-                        )
-                        
-                        detailsList.forEach { (label, value) ->
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                horizontalAlignment = Alignment.End
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = Color.Gray,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.End
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = value,
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    textAlign = TextAlign.End,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                HorizontalDivider(
-                                    color = Color.White.copy(alpha = 0.08f),
-                                    thickness = 1.dp,
-                                    modifier = Modifier.padding(top = 6.dp)
-                                )
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        Button(
-                            onClick = { isVideoDetailsDialogOpen = false },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8FF)),
-                            modifier = Modifier.align(Alignment.CenterHorizontally),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("تم", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
-        }
-
         // -----------------------------------------------------
         // DECODER SELECTION DIALOG
         // -----------------------------------------------------
@@ -3701,88 +3514,6 @@ fun PlayerScreen(
         }
 
         // -----------------------------------------------------
-        // SLEEP TIMER DIALOG
-        // -----------------------------------------------------
-        SidePanel(
-            visible = isSleepTimerDialogOpen,
-            onDismissRequest = { isSleepTimerDialogOpen = false },
-            title = "مؤقت النوم (Sleep Timer) ⏱"
-        ) {
-            Text("تحديد وقت إيقاف التشغيل التلقائي للفيديو الحالي:", color = Color.LightGray, fontSize = 12.sp)
-            Spacer(modifier = Modifier.height(10.dp))
-            
-            val timesList = listOf(
-                Pair(5, "5 دقائق"),
-                Pair(10, "10 دقائق"),
-                Pair(15, "15 دقيقة"),
-                Pair(20, "20 دقيقة"),
-                Pair(30, "30 دقيقة")
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                timesList.forEach { (mins, label) ->
-                    Button(
-                        onClick = {
-                            isSleepTimerEndOfVideo = false
-                            sleepTimerInitialMinutes = mins
-                            sleepTimerRemainingSecs = mins * 60
-                            sleepTimerActive = true
-                            isSleepTimerDialogOpen = false
-                            gestureIndicatorText = "تم تفعيل مؤقت النوم: $label"
-                            scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(label, color = Color.White, fontSize = 13.sp)
-                    }
-                }
-                
-                // نهاية الفيديو (End of video)
-                Button(
-                    onClick = {
-                        isSleepTimerEndOfVideo = true
-                        sleepTimerInitialMinutes = 0
-                        val remaining = ((player.duration - player.currentPosition) / 1000).toInt().coerceAtLeast(0)
-                        sleepTimerRemainingSecs = remaining
-                        sleepTimerActive = true
-                        isSleepTimerDialogOpen = false
-                        gestureIndicatorText = "تم تفعيل مؤقت النوم: نهاية الفيديو"
-                        scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8FF).copy(alpha = 0.25f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("نهاية الفيديو (End of Video) 🎬", color = Color(0xFF00C8FF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-                
-                if (sleepTimerActive) {
-                    Button(
-                        onClick = {
-                            sleepTimerActive = false
-                            isSleepTimerEndOfVideo = false
-                            sleepTimerRemainingSecs = 0
-                            isSleepTimerDialogOpen = false
-                            gestureIndicatorText = "مؤقت النوم: معطل"
-                            scope.launch { isIndicatorVisible = true; delay(900); isIndicatorVisible = false }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.7f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("إيقاف المؤقت النشط", color = Color.White, fontSize = 13.sp)
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = { isSleepTimerDialogOpen = false },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("إلغاء", color = Color.White, fontSize = 13.sp)
-            }
-        }
-
-        // -----------------------------------------------------
         // TOOLBAR CUSTOMIZATION DIALOG
         // -----------------------------------------------------
         SidePanel(
@@ -3896,62 +3627,6 @@ fun PlayerScreen(
             }
         }
 
-        // Custom Sleep Timer Dialog
-        if (isCustomSleepTimerDialogOpen) {
-            AlertDialog(
-                onDismissRequest = { isCustomSleepTimerDialogOpen = false },
-                title = {
-                    Text("Select time", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                },
-                text = {
-                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${customSleepTimerMins.toInt()} دقائق",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = redAccent,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Slider(
-                            value = customSleepTimerMins,
-                            onValueChange = { customSleepTimerMins = it },
-                            valueRange = 1f..180f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = redAccent,
-                                activeTrackColor = redAccent,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                            )
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        colors = ButtonDefaults.buttonColors(containerColor = redAccent),
-                        shape = RoundedCornerShape(12.dp),
-                        onClick = {
-                            val mins = customSleepTimerMins.toInt()
-                            sleepTimerInitialMinutes = mins
-                            sleepTimerRemainingSecs = mins * 60
-                            sleepTimerActive = true
-                            isSleepTimerEndOfVideo = false
-                            isCustomSleepTimerDialogOpen = false
-                            Toast.makeText(context, "After $mins mins into the sleep mode ⏱️", Toast.LENGTH_SHORT).show()
-                        }
-                    ) {
-                        Text("موافق", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { isCustomSleepTimerDialogOpen = false }) {
-                        Text("إلغاء", color = Color.LightGray)
-                    }
-                },
-                containerColor = Color(0xFF24242A),
-                shape = RoundedCornerShape(20.dp)
-            )
-        }
-
         // Floating Sleep Timer Stop Button (وقف مؤقت النوم)
         AnimatedVisibility(
             visible = sleepTimerActive,
@@ -3970,7 +3645,7 @@ fun PlayerScreen(
                     sleepTimerActive = false
                     isSleepTimerEndOfVideo = false
                     sleepTimerRemainingSecs = 0
-                    Toast.makeText(context, "تم إيقاف مؤقت النوم ⏹️", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "تم إيقاف مؤقت النوم", Toast.LENGTH_SHORT).show()
                 }
             ) {
                 Row(
@@ -4107,7 +3782,7 @@ fun PlayerScreen(
                         Button(
                             onClick = {
                                 pointA = player.currentPosition
-                                Toast.makeText(context, "تم تحديد النقطة A 📌", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "تم تحديد النقطة A", Toast.LENGTH_SHORT).show()
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (pointA != null) redAccent else Color(0xFF32323D)
@@ -4122,7 +3797,7 @@ fun PlayerScreen(
                         Button(
                             onClick = {
                                 pointB = player.currentPosition
-                                Toast.makeText(context, "تم تحديد النقطة B 📌 وتفعيل التكرار", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "تم تحديد النقطة B وتفعيل التكرار", Toast.LENGTH_SHORT).show()
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (pointB != null) redAccent else Color(0xFF32323D)
@@ -4138,7 +3813,7 @@ fun PlayerScreen(
                             onClick = {
                                 pointA = null
                                 pointB = null
-                                Toast.makeText(context, "تم إلغاء التكرار ❌", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "تم إلغاء التكرار", Toast.LENGTH_SHORT).show()
                             },
                             shape = RoundedCornerShape(8.dp),
                             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
@@ -4214,7 +3889,7 @@ fun PlayerScreen(
                             if (!bookmarksList.contains(pos)) {
                                 bookmarksList.add(pos)
                                 bookmarksList.sort()
-                                Toast.makeText(context, "تم إضافة علامة مرجعية جديدة 📌", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "تم إضافة علامة مرجعية جديدة", Toast.LENGTH_SHORT).show()
                             }
                         }) {
                             Icon(Icons.Default.Add, contentDescription = "إضافة", tint = Color(0xFFFF2A4B))
@@ -4450,8 +4125,21 @@ sideContent = {
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .clickable {
-                                                    isAudioTracksDialogOpen = true
+                                                    val currentPos = player.currentPosition
+                                                    val mediaFile = MediaFile(
+                                                        id = filePath.hashCode().toLong(),
+                                                        title = java.io.File(filePath).nameWithoutExtension,
+                                                        path = filePath,
+                                                        size = java.io.File(filePath).length(),
+                                                        dateModified = System.currentTimeMillis(),
+                                                        duration = videoDuration,
+                                                        isVideo = false
+                                                    )
+                                                    viewModel.playAudio(mediaFile)
+                                                    viewModel.seekAudioTo(currentPos)
+                                                    Toast.makeText(context, "تم التحويل إلى التشغيل في الخلفية", Toast.LENGTH_SHORT).show()
                                                     isMoreOptionsSheetOpen = false
+                                                    onBack()
                                                 }
                                                 .padding(vertical = 4.dp)
                                         ) {
@@ -4633,8 +4321,7 @@ sideContent = {
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .clickable {
-                                                    isVideoDetailsDialogOpen = true
-                                                    isMoreOptionsSheetOpen = false
+                                                    sidePanelMenuState = SidePanelMenuState.DETAILS
                                                 }
                                                 .padding(vertical = 4.dp)
                                         ) {
@@ -4672,7 +4359,7 @@ sideContent = {
                                                 horizontalAlignment = Alignment.CenterHorizontally,
                                                 modifier = Modifier.clickable {
                                                     isNightModeActive = !isNightModeActive
-                                                     Toast.makeText(context, if (isNightModeActive) "تم تفعيل الوضع الداكن 🌙" else "تم إيقاف الوضع الداكن ☀️", Toast.LENGTH_SHORT).show()
+                                                     Toast.makeText(context, if (isNightModeActive) "تم تفعيل الوضع الداكن" else "تم إيقاف الوضع الداكن", Toast.LENGTH_SHORT).show()
                                                 }
                                             ) {
                                                 Icon(Icons.Default.NightsStay, contentDescription = "الوضع الداكن", tint = if (isNightModeActive) redAccent else Color.White, modifier = Modifier.size(20.dp))
@@ -4685,7 +4372,7 @@ sideContent = {
                                                 modifier = Modifier.clickable {
                                                     isAbRepeatBarOpen = !isAbRepeatBarOpen
                                                     isMoreOptionsSheetOpen = false
-                                                    Toast.makeText(context, "تم فتح شريط كرر AB 🔁", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, "تم فتح شريط كرر AB", Toast.LENGTH_SHORT).show()
                                                 }
                                             ) {
                                                 Icon(Icons.Default.Repeat, contentDescription = "كرر AB", tint = if (pointA != null || pointB != null || isAbRepeatBarOpen) redAccent else Color.White, modifier = Modifier.size(20.dp))
@@ -4739,7 +4426,7 @@ sideContent = {
                                         ) {
                                             IconButton(onClick = {
                                                 playbackOrderIndex = 4
-                                                Toast.makeText(context, "الإيقاف عند انتهاء الفيديو الحالي 🛑", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "الإيقاف عند انتهاء الفيديو الحالي", Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Default.SwapHoriz,
@@ -4752,7 +4439,7 @@ sideContent = {
                                                 playbackOrderIndex = 0
                                                 player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
                                                 player.shuffleModeEnabled = false
-                                                Toast.makeText(context, "قائمة 📋", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "قائمة", Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Default.SyncAlt,
@@ -4765,7 +4452,7 @@ sideContent = {
                                                 playbackOrderIndex = 1
                                                 player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
                                                 player.shuffleModeEnabled = false
-                                                Toast.makeText(context, "تكرار مرة 🔂", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "تكرار مرة", Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Default.RepeatOne,
@@ -4778,7 +4465,7 @@ sideContent = {
                                                 playbackOrderIndex = 3
                                                 player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
                                                 player.shuffleModeEnabled = true
-                                                Toast.makeText(context, "تشغيل عشوائي 🔀", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "تشغيل عشوائي", Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Default.Shuffle,
@@ -4791,7 +4478,7 @@ sideContent = {
                                                 playbackOrderIndex = 2
                                                 player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                                                 player.shuffleModeEnabled = false
-                                                Toast.makeText(context, "تكرار الكل 🔁", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "تكرار الكل", Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Default.Repeat,
@@ -4833,7 +4520,7 @@ sideContent = {
                                                         }
                                                         currentDecoder = "SW"
                                                         isHWAccelActive = false
-                                                        Toast.makeText(context, "تم التبديل إلى فك التشفير البرمجي (SW) ⚙️", Toast.LENGTH_SHORT).show()
+                                                        Toast.makeText(context, "تم التبديل إلى فك التشفير SW", Toast.LENGTH_SHORT).show()
                                                     }
                                                     .padding(6.dp)
                                             )
@@ -4850,7 +4537,7 @@ sideContent = {
                                                         }
                                                         currentDecoder = "HW"
                                                         isHWAccelActive = true
-                                                        Toast.makeText(context, "تم التبديل إلى فك التشفير العتادي (HW) ⚡", Toast.LENGTH_SHORT).show()
+                                                        Toast.makeText(context, "تم التبديل إلى فك التشفير HW", Toast.LENGTH_SHORT).show()
                                                     }
                                                     .padding(6.dp)
                                             )
@@ -4867,7 +4554,7 @@ sideContent = {
                                                         }
                                                         currentDecoder = "HW+"
                                                         isHWAccelActive = true
-                                                        Toast.makeText(context, "تم التبديل إلى فك التشفير العتادي المتقدم (HW+) ⚡+", Toast.LENGTH_SHORT).show()
+                                                        Toast.makeText(context, "تم التبديل إلى فك التشفير HW+", Toast.LENGTH_SHORT).show()
                                                     }
                                                     .padding(6.dp)
                                             )
@@ -4896,19 +4583,17 @@ sideContent = {
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             val timerOptions = listOf(
-                                                "Off" to 0,
-                                                "10 mins" to 10,
-                                                "30 mins" to 30,
-                                                "60 mins" to 60,
-                                                "إلى النهاية" to -1,
-                                                "الشخصية" to -2
+                                                "إيقاف" to 0,
+                                                "10 دقائق" to 10,
+                                                "30 دقيقة" to 30,
+                                                "60 دقيقة" to 60,
+                                                "إلى النهاية" to -1
                                             )
 
                                             timerOptions.forEach { (label, value) ->
                                                 val isSelected = when (value) {
                                                     0 -> !sleepTimerActive
                                                     -1 -> sleepTimerActive && sleepTimerInitialMinutes == -1
-                                                    -2 -> false
                                                     else -> sleepTimerActive && sleepTimerInitialMinutes == value
                                                 }
 
@@ -4924,23 +4609,20 @@ sideContent = {
                                                                     sleepTimerActive = false
                                                                     sleepTimerRemainingSecs = 0
                                                                     isSleepTimerEndOfVideo = false
-                                                                    Toast.makeText(context, "تم إيقاف مؤقت النوم ⏹️", Toast.LENGTH_SHORT).show()
+                                                                    Toast.makeText(context, "تم إيقاف مؤقت النوم", Toast.LENGTH_SHORT).show()
                                                                 }
                                                                 -1 -> {
                                                                     sleepTimerInitialMinutes = -1
                                                                     isSleepTimerEndOfVideo = true
                                                                     sleepTimerActive = true
-                                                                    Toast.makeText(context, "Will stop when finish current video 🎬", Toast.LENGTH_SHORT).show()
-                                                                }
-                                                                -2 -> {
-                                                                    isCustomSleepTimerDialogOpen = true
+                                                                    Toast.makeText(context, "سيتم الإيقاف عند نهاية الفيديو الحالي", Toast.LENGTH_SHORT).show()
                                                                 }
                                                                 else -> {
                                                                     sleepTimerInitialMinutes = value
                                                                     sleepTimerRemainingSecs = value * 60
                                                                     sleepTimerActive = true
                                                                     isSleepTimerEndOfVideo = false
-                                                                    Toast.makeText(context, "After $value mins into the sleep mode ⏱️", Toast.LENGTH_SHORT).show()
+                                                                    Toast.makeText(context, "تم ضبط مؤقت النوم: $value دقيقة", Toast.LENGTH_SHORT).show()
                                                                 }
                                                             }
                                                         }

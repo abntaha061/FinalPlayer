@@ -264,7 +264,7 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
             // Notify user with elegant Toast if more than 3 files are added / detected in real time
             if (addedCount > 3) {
                 withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(context, "تم إضافة $addedCount ملفات جديدة ✨", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(context, "تم إضافة $addedCount ملفات جديدة", android.widget.Toast.LENGTH_LONG).show()
                 }
             }
         }

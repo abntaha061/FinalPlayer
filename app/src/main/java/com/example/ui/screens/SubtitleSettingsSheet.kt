@@ -203,7 +203,7 @@ fun SubtitleSettingsPanel(
                     }
 
                     Text(
-                        text = "ملفات الترجمة المتاحة 📂",
+                        text = "ملفات الترجمة المتاحة",
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
@@ -222,7 +222,7 @@ fun SubtitleSettingsPanel(
                         FilterChip(
                             selected = isOff,
                             onClick = { onSubtitleEnabledChange(false) },
-                            label = { Text("إيقاف الترجمة 🚫", fontSize = 11.sp) },
+                            label = { Text("إيقاف الترجمة", fontSize = 11.sp) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = Color.Red.copy(alpha = 0.3f),
                                 selectedLabelColor = Color(0xFFFF5252),
@@ -293,10 +293,11 @@ fun SubtitleSettingsPanel(
                 LaunchedEffect(subtitleDelayMs) { tempDelay = subtitleDelayMs.toFloat() }
 
                 val delaySeconds = tempDelay / 1000f
+                val formattedDelay = String.format(java.util.Locale.US, "%.1f", delaySeconds)
                 val delayLabel = when {
-                    tempDelay == 0f -> "0.0 ثانية (مضبوطة ✅)"
-                    tempDelay > 0 -> "+${"%.1f".format(delaySeconds)} ثانية (تأخير ⏩)"
-                    else -> "${"%.1f".format(delaySeconds)} ثانية (تقديم ⏪)"
+                    tempDelay == 0f -> "0.0 ثانية (مضبوطة)"
+                    tempDelay > 0 -> "+$formattedDelay ثانية (تأخير)"
+                    else -> "$formattedDelay ثانية (تقديم)"
                 }
 
                 Row(
@@ -312,7 +313,7 @@ fun SubtitleSettingsPanel(
                     )
 
                     Text(
-                        text = "تقديم وتأخير النص (المزامنة) ⏱️",
+                        text = "تقديم وتأخير النص (المزامنة)",
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
@@ -428,7 +429,7 @@ fun SubtitleSettingsPanel(
                             tint = accentRed
                         )
                         Text(
-                            text = "تخصيص الترجمة والمظهر 🎨",
+                            text = "تخصيص الترجمة والمظهر",
                             color = Color.White,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
