@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.local.dao.MediaDao
+import com.example.data.local.dao.WatchHistoryDao
 import com.example.data.local.entities.*
 
 @Database(
@@ -13,13 +14,15 @@ import com.example.data.local.entities.*
         MediaFile::class,
         PlaylistEntity::class,
         PlaylistItemEntity::class,
-        HistoryEntity::class
+        HistoryEntity::class,
+        WatchHistoryEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class MediaDatabase : RoomDatabase() {
     abstract fun mediaDao(): MediaDao
+    abstract fun watchHistoryDao(): WatchHistoryDao
 
     companion object {
         @Volatile
