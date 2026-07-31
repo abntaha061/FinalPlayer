@@ -82,6 +82,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.CaptionStyleCompat
@@ -110,7 +113,7 @@ data class ExtendedToolItem(
     val badgeText: String? = null
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
     filePath: String,
@@ -122,6 +125,7 @@ fun PlayerScreen(
     val view = androidx.compose.ui.platform.LocalView.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
+    val redAccent = Color(0xFFFF2A4B)
 
     // -----------------------------------------------------
     // STATE DECLARATIONS
@@ -309,9 +313,12 @@ fun PlayerScreen(
 
     var isSubtitleEnabled by remember { mutableStateOf(true) }
     var selectedSubtitleLang by remember { mutableStateOf<String?>(subtitleLanguages.firstOrNull()) }
+    var isHWAccelActive by remember { mutableStateOf(true) }
+    var currentDecoder by remember { mutableStateOf("HW+") }
+    var savedPosForDecoderChange by remember { mutableStateOf(0L) }
 
-    // Init player
-    val player = remember(filePath) {
+    // Init player with real HW / SW decoder selection
+    val player = remember(filePath, currentDecoder) {
         val videoFile = File(filePath)
         val uri = if (filePath.startsWith("http://") || filePath.startsWith("https://") || filePath.startsWith("content://") || filePath.startsWith("file://")) {
             Uri.parse(filePath)
@@ -337,7 +344,41 @@ fun PlayerScreen(
             .setSubtitleConfigurations(subtitleConfigs)
             .build()
 
-        ExoPlayer.Builder(context).build().also {
+        val renderersFactory = DefaultRenderersFactory(context).apply {
+            setEnableDecoderFallback(true)
+            if (currentDecoder == "HW+") {
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            } else {
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+            }
+            setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunneling ->
+                val decoders = try {
+                    MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunneling)
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                when (currentDecoder) {
+                    "SW" -> {
+                        val sw = decoders.filter { 
+                            it.softwareOnly || !it.hardwareAccelerated || 
+                            it.name.startsWith("OMX.google.", ignoreCase = true) || 
+                            it.name.startsWith("c2.android.", ignoreCase = true)
+                        }
+                        if (sw.isNotEmpty()) sw else decoders
+                    }
+                    "HW" -> {
+                        val hw = decoders.filter { it.hardwareAccelerated && !it.softwareOnly }
+                        if (hw.isNotEmpty()) hw else decoders
+                    }
+                    else -> { // "HW+"
+                        val hwPlus = decoders.filter { it.hardwareAccelerated }
+                        if (hwPlus.isNotEmpty()) hwPlus else decoders
+                    }
+                }
+            }
+        }
+
+        ExoPlayer.Builder(context, renderersFactory).build().also {
             it.setMediaItem(mediaItem)
             val firstLang = subtitleLanguages.firstOrNull() ?: "ar"
             it.trackSelectionParameters = it.trackSelectionParameters
@@ -345,6 +386,9 @@ fun PlayerScreen(
                 .setPreferredTextLanguage(firstLang)
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !isSubtitleEnabled)
                 .build()
+            if (savedPosForDecoderChange > 0L) {
+                it.seekTo(savedPosForDecoderChange)
+            }
             it.prepare()
             it.playWhenReady = true
         }
@@ -503,14 +547,18 @@ fun PlayerScreen(
     }
     var videoDuration by remember { mutableStateOf(0L) }
     var currentPlayTime by remember { mutableStateOf(0L) }
+    var isFavorite by remember { mutableStateOf(false) }
 
-    // Seek to last played position upon initial video load
+    // Seek to last played position upon initial video load & sync favorite state
     LaunchedEffect(player, filePath) {
         val dbMedia = viewModel.getMediaByPath(filePath)
-        val initialPosition = dbMedia?.lastPlayPosition ?: 0L
-        if (initialPosition > 0) {
-            player.seekTo(initialPosition)
-            currentPlayTime = initialPosition
+        if (dbMedia != null) {
+            isFavorite = dbMedia.isFavorite
+            val initialPosition = dbMedia.lastPlayPosition
+            if (initialPosition > 0) {
+                player.seekTo(initialPosition)
+                currentPlayTime = initialPosition
+            }
         }
     }
 
@@ -637,8 +685,7 @@ fun PlayerScreen(
     var isMuted by remember { mutableStateOf(false) }
     var isMirrorModeActive by remember { mutableStateOf(false) }
     var isVerticalFlipActive by remember { mutableStateOf(false) }
-    var isHWAccelActive by remember { mutableStateOf(true) }
-    var currentDecoder by remember { mutableStateOf("HW+") }
+    // Decoder states are declared above player initialization
     var isDecoderDialogOpen by remember { mutableStateOf(false) }
     var playbackOrderIndex by remember { mutableStateOf(0) }
 
@@ -648,7 +695,6 @@ fun PlayerScreen(
     var isSleepTimerEndOfVideo by remember { mutableStateOf(false) }
     var isSleepTimerDialogOpen by remember { mutableStateOf(false) }
     var isVideoDetailsDialogOpen by remember { mutableStateOf(false) }
-    var isFavorite by remember { mutableStateOf(false) }
     var isBookmarked by remember { mutableStateOf(false) }
     var isDeleteDialogOpen by remember { mutableStateOf(false) }
     val bookmarksList = remember { mutableStateListOf<Long>() }
@@ -656,6 +702,7 @@ fun PlayerScreen(
 
     var pointA by remember { mutableStateOf<Long?>(null) }
     var pointB by remember { mutableStateOf<Long?>(null) }
+    var isAbRepeatBarOpen by remember { mutableStateOf(false) }
 
     var isEqualizerOpen by remember { mutableStateOf(false) }
     var isEqualizerActive by remember { mutableStateOf(false) }
@@ -931,12 +978,22 @@ fun PlayerScreen(
     // Set equalizerband safely
     fun setEqualizerBand(band: Int, value: Float) {
         try {
-            equalizerInstance?.setBandLevel(band.toShort(), (value * 100).toInt().toShort())
-            val newList = equalizerBandLevels.clone()
-            newList[band] = value
-            equalizerBandLevels = newList
+            val eq = equalizerInstance
+            if (eq != null) {
+                val range = try { eq.bandLevelRange } catch (e: Exception) { shortArrayOf(-1500, 1500) }
+                val minLevel = range[0].toInt()
+                val maxLevel = range[1].toInt()
+                val targetLevel = (minLevel + (value + 1.0f) / 2.0f * (maxLevel - minLevel))
+                    .toInt()
+                    .coerceIn(minLevel, maxLevel)
+                    .toShort()
+                eq.setBandLevel(band.toShort(), targetLevel)
+            }
         } catch (e: Exception) {
-            val newList = equalizerBandLevels.clone()
+            e.printStackTrace()
+        }
+        val newList = equalizerBandLevels.clone()
+        if (band in newList.indices) {
             newList[band] = value
             equalizerBandLevels = newList
         }
@@ -1084,9 +1141,47 @@ fun PlayerScreen(
         }
     }
 
-    // Do not auto-advance automatically when video finishes; wait for user input on the overlay menu
     LaunchedEffect(playbackState) {
-        // Intentionally left empty so video stops on STATE_ENDED and shows the end-of-video overlay menu
+        if (playbackState == Player.STATE_ENDED) {
+            when (playbackOrderIndex) {
+                0 -> { // قائمة (Sequential)
+                    if (hasNextVideo) {
+                        val nextPath = allVideos[currentVideoIndex + 1].path
+                        onNavigateToVideo(nextPath)
+                    }
+                }
+                1 -> { // تكرار مرة (Repeat One)
+                    player.seekTo(0)
+                    player.playWhenReady = true
+                    player.play()
+                }
+                2 -> { // تكرار الكل (Repeat All)
+                    if (hasNextVideo) {
+                        val nextPath = allVideos[currentVideoIndex + 1].path
+                        onNavigateToVideo(nextPath)
+                    } else if (allVideos.isNotEmpty()) {
+                        val firstPath = allVideos[0].path
+                        onNavigateToVideo(firstPath)
+                    }
+                }
+                3 -> { // تشغيل عشوائي (Shuffle)
+                    if (allVideos.size > 1) {
+                        var randomIndex = (0 until allVideos.size).random()
+                        if (randomIndex == currentVideoIndex) {
+                            randomIndex = (randomIndex + 1) % allVideos.size
+                        }
+                        onNavigateToVideo(allVideos[randomIndex].path)
+                    } else if (allVideos.isNotEmpty()) {
+                        player.seekTo(0)
+                        player.playWhenReady = true
+                        player.play()
+                    }
+                }
+                4 -> { // الإيقاف عند انتهاء الفيديو الحالي
+                    // Stay on STATE_ENDED so end-of-video overlay menu is shown
+                }
+            }
+        }
     }
 
     val isAnyPopupOpen = isQuickSettingsOpen ||
@@ -1613,9 +1708,10 @@ fun PlayerScreen(
                         useController = false
                         subtitleView?.visibility = android.view.View.GONE // Disable built-in caption layer
                         resizeMode = when (scaleMode) {
-                            "FILL" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            "STRETCH" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                            "CROP" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            "FILL", "املا", "CROP" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            "STRETCH", "تمديد" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                            "Fit-H" -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
+                            "16:9", "4:3", "18:9", "19.5:9", "20:9", "1.85:1", "2.21:1", "2.35:1", "2.39:1" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                             else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                         }
                         layoutParams = ViewGroup.LayoutParams(
@@ -1629,9 +1725,10 @@ fun PlayerScreen(
                         view.player = player
                     }
                     view.resizeMode = when (scaleMode) {
-                        "FILL" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        "STRETCH" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                        "CROP" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        "FILL", "املا", "CROP" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        "STRETCH", "تمديد" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        "Fit-H" -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
+                        "16:9", "4:3", "18:9", "19.5:9", "20:9", "1.85:1", "2.21:1", "2.35:1", "2.39:1" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                         else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                     }
                     view.subtitleView?.visibility = android.view.View.GONE // Force hide built-in caption layer
@@ -2347,20 +2444,7 @@ fun PlayerScreen(
                             }
                         }
 
-                        // DECODER CHIP (HW / HW+ / SW)
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .clickable { isDecoderDialogOpen = true }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = currentDecoder,
-                                color = Color(0xFF00C8FF),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+
 
                         // SCREENSHOT BUTTON
                         IconButton(
@@ -3290,6 +3374,9 @@ fun PlayerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
+                            if (player.currentPosition > 0L) {
+                                savedPosForDecoderChange = player.currentPosition
+                            }
                             currentDecoder = decoder
                             isHWAccelActive = (decoder == "HW" || decoder == "HW+")
                             Toast.makeText(context, "تم التبديل إلى $decoder", Toast.LENGTH_SHORT).show()
@@ -3385,86 +3472,7 @@ fun PlayerScreen(
             }
         }
 
-        // -----------------------------------------------------
-        // SUBTITLE PANEL DIALOG (CC Overlay configuration)
-        // -----------------------------------------------------
-        SubtitleSettingsPanel(
-            isVisible = isSubtitlePanelViewOpen,
-            onDismiss = { isSubtitlePanelViewOpen = false },
-            isSubtitleEnabled = isSubtitleEnabled,
-            onSubtitleEnabledChange = { enabled ->
-                isSubtitleEnabled = enabled
-                player.trackSelectionParameters = player.trackSelectionParameters
-                    .buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
-                    .build()
-            },
-            detectedSubtitles = detectedSubtitles,
-            subtitleLanguages = subtitleLanguages,
-            selectedSubtitleLang = selectedSubtitleLang,
-            onSelectedSubtitleLangChange = { lang ->
-                isSubtitleEnabled = true
-                selectedSubtitleLang = lang
-                player.trackSelectionParameters = player.trackSelectionParameters
-                    .buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .setPreferredTextLanguage(lang)
-                    .build()
-            },
-            manualSubs = manualSubs,
-            onAddSubtitleClick = {
-                try { subtitlePickerLauncher.launch(arrayOf("*/*")) } catch (e: Exception) { }
-            },
-            onCustomizeAppearanceClick = {
-                isSubtitleCustomizationOpen = true
-                isSubtitlePanelViewOpen = false
-            },
-            subtitleDelayMs = subtitleDelayMs,
-            onSubtitleDelayMsChange = { subtitleDelayMs = it },
-            subtitleSpeed = subtitleSpeed,
-            onSubtitleSpeedChange = { subtitleSpeed = it },
-            subtitleStyle = subtitleStyle,
-            onSubtitleStyleChange = { subtitleStyle = it },
-            filePath = filePath,
-            videoDurationMs = videoDuration,
-            onSubtitleFileGenerated = { file ->
-                val dispName = file.name
-                val uri = android.net.Uri.fromFile(file)
-                val currentPos = player.currentPosition
-                val compositeConfigs = mutableListOf<androidx.media3.common.MediaItem.SubtitleConfiguration>()
-                detectedSubtitles.forEachIndexed { idx, f ->
-                    val fLang = subtitleLanguages.getOrNull(idx) ?: "ar"
-                    val subUri = android.net.Uri.fromFile(f)
-                    val isSrt = f.name.endsWith(".srt", ignoreCase = true)
-                    val mimeType = if (isSrt) "application/x-subrip" else "text/vtt"
-                    compositeConfigs.add(
-                        androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(subUri)
-                            .setMimeType(mimeType).setLanguage(fLang)
-                            .setSelectionFlags(if (idx == 0) C.SELECTION_FLAG_DEFAULT else 0).build()
-                    )
-                }
-                val newLang = "manual_${manualSubs.size}_$dispName"
-                val newIsSrt = dispName.endsWith(".srt", ignoreCase = true)
-                val newMimeType = if (newIsSrt) "application/x-subrip" else "text/vtt"
-                compositeConfigs.add(
-                    androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(uri)
-                        .setMimeType(newMimeType).setLanguage(newLang)
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
-                )
-                manualSubs.add(Pair(dispName, uri))
-                val videoUri = android.net.Uri.fromFile(java.io.File(filePath))
-                val newMediaItem = androidx.media3.common.MediaItem.Builder()
-                    .setUri(videoUri).setSubtitleConfigurations(compositeConfigs).build()
-                player.setMediaItem(newMediaItem)
-                player.prepare()
-                player.seekTo(currentPos)
-                isSubtitleEnabled = true
-                selectedSubtitleLang = newLang
-                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .setPreferredTextLanguage(newLang).build()
-            }
-        )
+        // Subtitle Panel handled inside sideContent slot
 
         // -----------------------------------------------------
         // SUBTITLE CUSTOMIZATION DIALOG (DataStore Persisted)
@@ -3476,79 +3484,219 @@ fun PlayerScreen(
 
 
         // -----------------------------------------------------
-        // EQUALIZER BOTTOM SHEET DIALOG
+        // EQUALIZER BLACK POPUP DIALOG WITH RED SLIDERS
         // -----------------------------------------------------
-        SidePanel(
-            visible = isEqualizerOpen,
-            onDismissRequest = { isEqualizerOpen = false },
-            title = "موازن الصوت (Equalizer Panel) 🎚️"
-        ) {
-            Text("مسبقات موازن الصوت (Presets):", color = Color.White, fontSize = 11.sp)
-            val eqPresetsList = listOf("Normal", "Bass Boost", "Treble Boost", "Flat", "Classical", "Rock")
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(vertical = 6.dp)
+        if (isEqualizerOpen) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { isEqualizerOpen = false },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
             ) {
-                items(eqPresetsList.size) { idx ->
-                    FilterChip(
-                        selected = equalizerPresetIndex == idx,
-                        onClick = {
-                            equalizerPresetIndex = idx
-                            isEqualizerActive = true
-                            try {
-                                equalizerInstance?.usePreset(idx.toShort())
-                            } catch (e: Exception) {}
-                            
-                            equalizerBandLevels = when (idx) {
-                                1 -> floatArrayOf(0.8f, 0.4f, 0.1f, 0.1f, 0.1f)
-                                2 -> floatArrayOf(0.1f, 0.1f, 0.4f, 0.7f, 0.9f)
-                                3 -> floatArrayOf(0.0f, 0.0f, 0.0f, 0.0f, 0.0f)
-                                4 -> floatArrayOf(0.5f, 0.3f, 0.2f, 0.4f, 0.5f)
-                                5 -> floatArrayOf(0.6f, 0.4f, -0.1f, 0.4f, 0.7f)
-                                else -> floatArrayOf(0.2f, 0.2f, 0.2f, 0.2f, 0.2f)
-                            }
-                            Toast.makeText(context, "الوضع النشط: ${eqPresetsList[idx]}", Toast.LENGTH_SHORT).show()
-                        },
-                        label = { Text(eqPresetsList[idx], fontSize = 11.sp) }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-            Text("ترددات موازنة الصوت (5-Band):", color = Color(0xFF00C8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-
-            val bandFrequenciesList = listOf("60Hz", "230Hz", "910Hz", "4kHz", "14kHz")
-            repeat(5) { band ->
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    modifier = Modifier
+                        .widthIn(max = 420.dp)
+                        .fillMaxWidth(0.92f)
+                        .padding(12.dp),
+                    color = Color(0xFF08080C),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Color(0xFFFF2C2C).copy(alpha = 0.35f))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(bandFrequenciesList[band], color = Color.White, fontSize = 11.sp)
-                        val dbValue = (equalizerBandLevels[band] * 12).toInt()
-                        Text("${if (dbValue > 0) "+" else ""}${dbValue} dB", color = Color.LightGray, fontSize = 11.sp)
+                        // Header: Close, Title, Enable Switch
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { isEqualizerOpen = false },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.LightGray)
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = if (isEqualizerActive) "نشط ⚡" else "معطل",
+                                    color = if (isEqualizerActive) Color(0xFFFF2C2C) else Color.Gray,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Switch(
+                                    checked = isEqualizerActive,
+                                    onCheckedChange = { active ->
+                                        isEqualizerActive = active
+                                        try {
+                                            equalizerInstance?.enabled = active
+                                        } catch (e: Exception) {}
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFFFF2C2C),
+                                        uncheckedThumbColor = Color.Gray,
+                                        uncheckedTrackColor = Color(0xFF22222A)
+                                    )
+                                )
+                            }
+
+                            Text(
+                                text = "موازن الصوت (Equalizer) 🎚️",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                        // Presets
+                        Text(
+                            text = "الأنماط الجاهزة (Presets):",
+                            color = Color.LightGray,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        val eqPresetsList = listOf("افتراضي", "Bass Boost", "Treble Boost", "Flat", "Rock", "Pop", "Jazz", "Classical")
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(eqPresetsList.size) { idx ->
+                                val isSelected = equalizerPresetIndex == idx
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        equalizerPresetIndex = idx
+                                        isEqualizerActive = true
+                                        try {
+                                            equalizerInstance?.enabled = true
+                                            equalizerInstance?.usePreset(idx.toShort())
+                                        } catch (e: Exception) {}
+
+                                        val targetLevels = when (idx) {
+                                            1 -> floatArrayOf(0.8f, 0.5f, 0.1f, 0.1f, 0.1f) // Bass Boost
+                                            2 -> floatArrayOf(0.1f, 0.1f, 0.3f, 0.7f, 0.9f) // Treble Boost
+                                            3 -> floatArrayOf(0.0f, 0.0f, 0.0f, 0.0f, 0.0f) // Flat
+                                            4 -> floatArrayOf(0.6f, 0.3f, -0.1f, 0.4f, 0.7f) // Rock
+                                            5 -> floatArrayOf(0.3f, 0.5f, 0.6f, 0.4f, 0.2f) // Pop
+                                            6 -> floatArrayOf(0.4f, 0.2f, -0.1f, 0.3f, 0.5f) // Jazz
+                                            7 -> floatArrayOf(0.5f, 0.3f, 0.2f, 0.4f, 0.5f) // Classical
+                                            else -> floatArrayOf(0.0f, 0.0f, 0.0f, 0.0f, 0.0f)
+                                        }
+                                        for (b in targetLevels.indices) {
+                                            setEqualizerBand(b, targetLevels[b])
+                                        }
+                                    },
+                                    label = { Text(eqPresetsList[idx], fontSize = 10.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFFFF2C2C).copy(alpha = 0.3f),
+                                        selectedLabelColor = Color(0xFFFF2C2C),
+                                        containerColor = Color(0xFF1E1E26),
+                                        labelColor = Color.White
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(2.dp))
+
+                        // 5-Band RED Sliders
+                        Text(
+                            text = "شرائط التحكم بالترددات (Real Audio FX):",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        val bandFrequenciesList = listOf("60 Hz", "230 Hz", "910 Hz", "3.6 kHz", "14 kHz")
+                        repeat(5) { band ->
+                            val bandLevel = equalizerBandLevels.getOrElse(band) { 0f }
+                            val dbValue = (bandLevel * 12).toInt()
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF14141C))
+                                    .padding(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${if (dbValue > 0) "+" else ""}${dbValue} dB",
+                                        color = if (dbValue != 0) Color(0xFFFF2C2C) else Color.LightGray,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = bandFrequenciesList[band],
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(2.dp))
+
+                                AppSlider(
+                                    value = bandLevel,
+                                    onValueChange = { newVal ->
+                                        setEqualizerBand(band, newVal)
+                                        isEqualizerActive = true
+                                        try { equalizerInstance?.enabled = true } catch (e: Exception) {}
+                                    },
+                                    valueRange = -1.0f..1.0f,
+                                    activeColor = Color(0xFFFF2C2C), // شرائط حمراء
+                                    inactiveColor = Color.White.copy(alpha = 0.2f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(20.dp)
+                                )
+                            }
+                        }
+
+                        // Buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    for (b in 0..4) {
+                                        setEqualizerBand(b, 0.0f)
+                                    }
+                                    equalizerPresetIndex = 0
+                                    Toast.makeText(context, "تمت إعادة ضبط موازن الصوت", Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f),
+                                border = BorderStroke(1.dp, Color.Gray.copy(alpha = 0.5f))
+                            ) {
+                                Text("إعادة ضبط", color = Color.White, fontSize = 11.sp)
+                            }
+
+                            Button(
+                                onClick = { isEqualizerOpen = false },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF2C2C)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("تم", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
-                    AppSlider(
-                        value = equalizerBandLevels[band],
-                        onValueChange = { newVal ->
-                            setEqualizerBand(band, newVal)
-                            isEqualizerActive = true
-                        },
-                        valueRange = -1.0f..1.0f,
-                        activeColor = Color(0xFF00C8FF),
-                        inactiveColor = Color.White.copy(alpha = 0.25f),
-                        modifier = Modifier.height(20.dp)
-                    )
                 }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = { isEqualizerOpen = false },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2B32)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("موافق", color = Color.White, fontSize = 13.sp)
             }
         }
 
@@ -3753,31 +3901,25 @@ fun PlayerScreen(
             AlertDialog(
                 onDismissRequest = { isCustomSleepTimerDialogOpen = false },
                 title = {
-                    Text("تحديد مؤقت النوم (Sleep Timer)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Select time", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 },
                 text = {
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "اختر الوقت بالدقائق لإيقاف التشغيل تلقائياً:",
-                            color = Color.LightGray,
-                            fontSize = 13.sp
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "${customSleepTimerMins.toInt()} دقيقة",
+                            text = "${customSleepTimerMins.toInt()} دقائق",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF00C8FF),
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                            color = redAccent,
+                            modifier = Modifier.padding(vertical = 8.dp)
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Slider(
                             value = customSleepTimerMins,
                             onValueChange = { customSleepTimerMins = it },
-                            valueRange = 1f..120f,
+                            valueRange = 1f..180f,
                             colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFF00C8FF),
-                                activeTrackColor = Color(0xFF00C8FF),
+                                thumbColor = redAccent,
+                                activeTrackColor = redAccent,
                                 inactiveTrackColor = Color.White.copy(alpha = 0.2f)
                             )
                         )
@@ -3785,17 +3927,19 @@ fun PlayerScreen(
                 },
                 confirmButton = {
                     Button(
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C8FF)),
+                        colors = ButtonDefaults.buttonColors(containerColor = redAccent),
+                        shape = RoundedCornerShape(12.dp),
                         onClick = {
                             val mins = customSleepTimerMins.toInt()
                             sleepTimerInitialMinutes = mins
                             sleepTimerRemainingSecs = mins * 60
                             sleepTimerActive = true
+                            isSleepTimerEndOfVideo = false
                             isCustomSleepTimerDialogOpen = false
-                            Toast.makeText(context, "تم ضبط مؤقت النوم بعد $mins دقيقة ⏱️", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "After $mins mins into the sleep mode ⏱️", Toast.LENGTH_SHORT).show()
                         }
                     ) {
-                        Text("بدء المؤقت", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text("موافق", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
@@ -3806,6 +3950,206 @@ fun PlayerScreen(
                 containerColor = Color(0xFF24242A),
                 shape = RoundedCornerShape(20.dp)
             )
+        }
+
+        // Floating Sleep Timer Stop Button (وقف مؤقت النوم)
+        AnimatedVisibility(
+            visible = sleepTimerActive,
+            enter = fadeIn() + slideInVertically(),
+            exit = fadeOut() + slideOutVertically(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 90.dp)
+        ) {
+            Surface(
+                color = Color(0xEC181820),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, redAccent.copy(alpha = 0.5f)),
+                shadowElevation = 8.dp,
+                modifier = Modifier.clickable {
+                    sleepTimerActive = false
+                    isSleepTimerEndOfVideo = false
+                    sleepTimerRemainingSecs = 0
+                    Toast.makeText(context, "تم إيقاف مؤقت النوم ⏹️", Toast.LENGTH_SHORT).show()
+                }
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "إيقاف المؤقت",
+                        tint = redAccent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isSleepTimerEndOfVideo) "وقف مؤقت النوم (عند نهاية الفيديو)" 
+                               else "وقف مؤقت النوم (${sleepTimerRemainingSecs / 60}:%02d)".format(sleepTimerRemainingSecs % 60),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        // -----------------------------------------------------
+        // FLOATING A-B REPEAT WIDGET (كرر AB)
+        // -----------------------------------------------------
+        AnimatedVisibility(
+            visible = isAbRepeatBarOpen || pointA != null || pointB != null,
+            enter = fadeIn() + slideInVertically(),
+            exit = fadeOut() + slideOutVertically(),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp, bottom = 80.dp)
+        ) {
+            Surface(
+                color = Color(0xEC181820),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.width(210.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Repeat,
+                                contentDescription = "كرر AB",
+                                tint = redAccent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "كرر AB",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        IconButton(
+                            onClick = { isAbRepeatBarOpen = false },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "إغلاق",
+                                tint = Color.Gray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val formatTimeMs: (Long?) -> String = { ms ->
+                            if (ms == null) "--:--"
+                            else {
+                                val s = (ms / 1000).toInt()
+                                val sec = s % 60
+                                val min = (s / 60) % 60
+                                val hr = s / 3600
+                                if (hr > 0) "%02d:%02d:%02d".format(hr, min, sec)
+                                else "%02d:%02d".format(min, sec)
+                            }
+                        }
+
+                        Surface(
+                            color = if (pointA != null) redAccent.copy(alpha = 0.25f) else Color(0xFF262630),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, if (pointA != null) redAccent else Color.Transparent)
+                        ) {
+                            Text(
+                                text = formatTimeMs(pointA),
+                                color = if (pointA != null) redAccent else Color.Gray,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Text("~", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+
+                        Surface(
+                            color = if (pointB != null) redAccent.copy(alpha = 0.25f) else Color(0xFF262630),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, if (pointB != null) redAccent else Color.Transparent)
+                        ) {
+                            Text(
+                                text = formatTimeMs(pointB),
+                                color = if (pointB != null) redAccent else Color.Gray,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                pointA = player.currentPosition
+                                Toast.makeText(context, "تم تحديد النقطة A 📌", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (pointA != null) redAccent else Color(0xFF32323D)
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("A", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                pointB = player.currentPosition
+                                Toast.makeText(context, "تم تحديد النقطة B 📌 وتفعيل التكرار", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (pointB != null) redAccent else Color(0xFF32323D)
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("B", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                pointA = null
+                                pointB = null
+                                Toast.makeText(context, "تم إلغاء التكرار ❌", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("مسح", color = Color.LightGray, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
         }
 
         // Real File Delete Dialog
@@ -3943,6 +4287,12 @@ sideContent = {
         }
     }
 
+    if (isSubtitlePanelViewOpen) {
+        BackHandler {
+            isSubtitlePanelViewOpen = false
+        }
+    }
+
     AnimatedVisibility(
         visible = isMoreOptionsSheetOpen,
         enter = if (isMainLandscape) {
@@ -4063,7 +4413,6 @@ sideContent = {
                     ) {
                         when (currentMenuState) {
                             SidePanelMenuState.MAIN -> {
-                                val redAccent = Color(0xFFFF2A4B)
                                 val dimWhite = Color.White.copy(alpha = 0.75f)
                                 val dividerColor = Color.White.copy(alpha = 0.08f)
 
@@ -4071,119 +4420,232 @@ sideContent = {
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    // 1. QUICK ACTION ICONS (Horizontal scrollable grid)
+                                    // الصف الأول: الترجمة + تشغيل في الخلفية (بخط صغير) + المعادل + المفضلة
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                            .padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceEvenly,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // Subtitles
+                                        // 1. الترجمة
                                         Column(
                                             horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.clickable {
-                                                isSubtitlePanelViewOpen = true
-                                                isMoreOptionsSheetOpen = false
-                                            }
-                                        ) {
-                                            CcSubtitleIcon(modifier = Modifier.size(22.dp), tint = Color.White)
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text("الترجمة", fontSize = 10.sp, color = dimWhite, textAlign = TextAlign.Center)
-                                        }
-
-                                        // Audio track / BG play
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.clickable { isAudioTracksDialogOpen = true }
-                                        ) {
-                                            HeadphonesCustomIcon(modifier = Modifier.size(22.dp), tint = Color.White)
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text("لتشغيل في الخلفية اختر مقطعا صوتيا", fontSize = 9.sp, color = dimWhite, textAlign = TextAlign.Center)
-                                        }
-
-                                        // Equalizer
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.clickable {
-                                                try {
-                                                    val intent = android.content.Intent(android.media.audiofx.AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL)
-                                                    intent.putExtra(android.media.audiofx.AudioEffect.EXTRA_AUDIO_SESSION, player.audioSessionId)
-                                                    activity?.startActivityForResult(intent, 1001); isEqualizerOpen = true
-                                                } catch (e: Exception) {
-                                                    isEqualizerOpen = true
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    isSubtitlePanelViewOpen = true
+                                                    isMoreOptionsSheetOpen = false
                                                 }
-                                            }
+                                                .padding(vertical = 4.dp)
                                         ) {
-                                            Icon(Icons.Default.Tune, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                                            CcSubtitleIcon(modifier = Modifier.size(24.dp), tint = Color.White)
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            Text("المعادل", fontSize = 10.sp, color = dimWhite, textAlign = TextAlign.Center)
+                                            Text("الترجمة", fontSize = 11.sp, color = dimWhite, textAlign = TextAlign.Center)
                                         }
 
-                                        // Favorites
+                                        // 2. تشغيل في الخلفية بخط صغير
                                         Column(
                                             horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.clickable {
-                                                isFavorite = !isFavorite
-                                                Toast.makeText(context, if (isFavorite) "تمت الإضافة للمفضلة ❤️" else "تم الإلغاء من المفضلة", Toast.LENGTH_SHORT).show()
-                                            }
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    isAudioTracksDialogOpen = true
+                                                    isMoreOptionsSheetOpen = false
+                                                }
+                                                .padding(vertical = 4.dp)
+                                        ) {
+                                            HeadphonesCustomIcon(modifier = Modifier.size(24.dp), tint = Color.White)
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                "تشغيل في الخلفية",
+                                                fontSize = 9.sp, // بخط صغير كما طلب المستخدم
+                                                color = dimWhite,
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 2,
+                                                lineHeight = 11.sp
+                                            )
+                                        }
+
+                                        // 3. المعادل
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    isEqualizerOpen = true
+                                                    isMoreOptionsSheetOpen = false
+                                                }
+                                                .padding(vertical = 4.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Tune,
+                                                contentDescription = "المعادل",
+                                                tint = if (isEqualizerActive) redAccent else Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("المعادل", fontSize = 11.sp, color = dimWhite, textAlign = TextAlign.Center)
+                                        }
+
+                                        // 4. المفضلة
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    isFavorite = !isFavorite
+                                                    scope.launch {
+                                                        try {
+                                                            val media = viewModel.getMediaByPath(filePath)
+                                                            if (media != null) {
+                                                                viewModel.toggleFavorite(media)
+                                                            }
+                                                        } catch (e: Exception) {
+                                                            e.printStackTrace()
+                                                        }
+                                                    }
+                                                    Toast.makeText(
+                                                        context,
+                                                        if (isFavorite) "تمت الإضافة للمفضلة ❤️" else "تم الإلغاء من المفضلة",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                                .padding(vertical = 4.dp)
                                         ) {
                                             Icon(
                                                 imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                                contentDescription = null,
+                                                contentDescription = "المفضلة",
                                                 tint = if (isFavorite) redAccent else Color.White,
-                                                modifier = Modifier.size(22.dp)
+                                                modifier = Modifier.size(24.dp)
                                             )
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            Text("مفضلات", fontSize = 10.sp, color = dimWhite, textAlign = TextAlign.Center)
+                                            Text(
+                                                "المفضلة",
+                                                fontSize = 11.sp,
+                                                color = if (isFavorite) redAccent else dimWhite,
+                                                textAlign = TextAlign.Center,
+                                                fontWeight = if (isFavorite) FontWeight.Bold else FontWeight.Normal
+                                            )
                                         }
+                                    }
 
-                                        // Bookmarks
+                                    HorizontalDivider(color = dividerColor, thickness = 1.dp, modifier = Modifier.padding(vertical = 2.dp))
+
+                                    // الصف الثاني: حذف + مشاركة + العلامات + التفاصيل
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceEvenly,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 1. حذف
                                         Column(
                                             horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.clickable {
-                                                isBookmarksDialogOpen = true
-                                                Toast.makeText(context, if (isBookmarked) "تمت إضافة العلامة 🔖" else "تم إزالة العلامة", Toast.LENGTH_SHORT).show()
-                                            }
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    isDeleteDialogOpen = true
+                                                    isMoreOptionsSheetOpen = false
+                                                }
+                                                .padding(vertical = 4.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.DeleteOutline,
+                                                contentDescription = "حذف",
+                                                tint = Color(0xFFFF4D4D),
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("حذف", fontSize = 11.sp, color = Color(0xFFFF4D4D), textAlign = TextAlign.Center)
+                                        }
+
+                                        // 2. مشاركة فعلياً
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    isMoreOptionsSheetOpen = false
+                                                    try {
+                                                        val videoFile = java.io.File(filePath)
+                                                        if (videoFile.exists()) {
+                                                            val contentUri = try {
+                                                                androidx.core.content.FileProvider.getUriForFile(
+                                                                    context,
+                                                                    "${context.packageName}.fileprovider",
+                                                                    videoFile
+                                                                )
+                                                            } catch (e: Exception) {
+                                                                android.net.Uri.fromFile(videoFile)
+                                                            }
+                                                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                                type = "video/*"
+                                                                putExtra(android.content.Intent.EXTRA_STREAM, contentUri)
+                                                                putExtra(android.content.Intent.EXTRA_TEXT, "شاهد هذا الفيديو: ${videoFile.name}")
+                                                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                            }
+                                                            activity?.startActivity(android.content.Intent.createChooser(shareIntent, "مشاركة الفيديو عبر"))
+                                                        } else {
+                                                            Toast.makeText(context, "ملف الفيديو غير موجود", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(context, "خطأ أثناء المشاركة: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                                .padding(vertical = 4.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Share,
+                                                contentDescription = "مشاركة",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("مشاركة", fontSize = 11.sp, color = dimWhite, textAlign = TextAlign.Center)
+                                        }
+
+                                        // 3. العلامات
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    isBookmarksDialogOpen = true
+                                                    isMoreOptionsSheetOpen = false
+                                                }
+                                                .padding(vertical = 4.dp)
                                         ) {
                                             Icon(
                                                 imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                                contentDescription = null,
+                                                contentDescription = "العلامات",
                                                 tint = if (isBookmarked) redAccent else Color.White,
-                                                modifier = Modifier.size(22.dp)
+                                                modifier = Modifier.size(24.dp)
                                             )
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            Text("العلامات", fontSize = 10.sp, color = dimWhite, textAlign = TextAlign.Center)
+                                            Text("العلامات", fontSize = 11.sp, color = dimWhite, textAlign = TextAlign.Center)
                                         }
 
-                                        // Delete
+                                        // 4. التفاصيل
                                         Column(
                                             horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.clickable {
-                                                isDeleteDialogOpen = true
-                                            }
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    isVideoDetailsDialogOpen = true
+                                                    isMoreOptionsSheetOpen = false
+                                                }
+                                                .padding(vertical = 4.dp)
                                         ) {
-                                            Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                                            Icon(
+                                                Icons.Default.Info,
+                                                contentDescription = "التفاصيل",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                            )
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            Text("حذف", fontSize = 10.sp, color = dimWhite, textAlign = TextAlign.Center)
-                                        }
-
-                                        // Share
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.clickable {
-                                                try {
-                                                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                                        type = "text/plain"
-                                                        putExtra(android.content.Intent.EXTRA_TEXT, "أشاهد الآن: ${java.io.File(filePath).name}")
-                                                    }
-                                                    activity?.startActivity(android.content.Intent.createChooser(shareIntent, "مشاركة الفيديو"))
-                                                } catch (e: Exception) { }
-                                            }
-                                        ) {
-                                            Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text("مشاركة", fontSize = 10.sp, color = dimWhite, textAlign = TextAlign.Center)
+                                            Text("التفاصيل", fontSize = 11.sp, color = dimWhite, textAlign = TextAlign.Center)
                                         }
                                     }
 
@@ -4210,33 +4672,25 @@ sideContent = {
                                                 horizontalAlignment = Alignment.CenterHorizontally,
                                                 modifier = Modifier.clickable {
                                                     isNightModeActive = !isNightModeActive
-                                                     Toast.makeText(context, if (isNightModeActive) "تم تفعيل الوضع الليلي 🌙" else "تم إيقاف الوضع الليلي ☀️", Toast.LENGTH_SHORT).show()
+                                                     Toast.makeText(context, if (isNightModeActive) "تم تفعيل الوضع الداكن 🌙" else "تم إيقاف الوضع الداكن ☀️", Toast.LENGTH_SHORT).show()
                                                 }
                                             ) {
-                                                Icon(Icons.Default.NightsStay, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                                Icon(Icons.Default.NightsStay, contentDescription = "الوضع الداكن", tint = if (isNightModeActive) redAccent else Color.White, modifier = Modifier.size(20.dp))
                                                 Spacer(modifier = Modifier.height(3.dp))
-                                                Text("الوضع الداكن", fontSize = 10.sp, color = dimWhite)
+                                                Text("الوضع الداكن", fontSize = 10.sp, color = if (isNightModeActive) redAccent else dimWhite)
                                             }
 
                                             Column(
                                                 horizontalAlignment = Alignment.CenterHorizontally,
                                                 modifier = Modifier.clickable {
-                                                    if (pointA == null) {
-                                                         pointA = player.currentPosition
-                                                         Toast.makeText(context, "تم تحديد النقطة A 📌", Toast.LENGTH_SHORT).show()
-                                                     } else if (pointB == null) {
-                                                         pointB = player.currentPosition
-                                                         Toast.makeText(context, "تم تحديد النقطة B 📌 وتفعيل التكرار", Toast.LENGTH_SHORT).show()
-                                                     } else {
-                                                         pointA = null
-                                                         pointB = null
-                                                         Toast.makeText(context, "تم إلغاء تكرار A-B ❌", Toast.LENGTH_SHORT).show()
-                                                     }
+                                                    isAbRepeatBarOpen = !isAbRepeatBarOpen
+                                                    isMoreOptionsSheetOpen = false
+                                                    Toast.makeText(context, "تم فتح شريط كرر AB 🔁", Toast.LENGTH_SHORT).show()
                                                 }
                                             ) {
-                                                Icon(Icons.Default.Repeat, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                                Icon(Icons.Default.Repeat, contentDescription = "كرر AB", tint = if (pointA != null || pointB != null || isAbRepeatBarOpen) redAccent else Color.White, modifier = Modifier.size(20.dp))
                                                 Spacer(modifier = Modifier.height(3.dp))
-                                                Text("كرر AB", fontSize = 10.sp, color = dimWhite)
+                                                Text("كرر AB", fontSize = 10.sp, color = if (pointA != null || pointB != null || isAbRepeatBarOpen) redAccent else dimWhite)
                                             }
 
                                             Column(
@@ -4283,69 +4737,71 @@ sideContent = {
                                             horizontalArrangement = Arrangement.SpaceEvenly,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            IconButton(onClick = { playbackOrderIndex = 4 }) {
+                                            IconButton(onClick = {
+                                                playbackOrderIndex = 4
+                                                Toast.makeText(context, "الإيقاف عند انتهاء الفيديو الحالي 🛑", Toast.LENGTH_SHORT).show()
+                                            }) {
                                                 Icon(
                                                     imageVector = Icons.Default.SwapHoriz,
-                                                    contentDescription = null,
+                                                    contentDescription = "الإيقاف عند انتهاء الفيديو الحالي",
                                                     tint = if (playbackOrderIndex == 4) redAccent else dimWhite,
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
-
                                             IconButton(onClick = {
                                                 playbackOrderIndex = 0
                                                 player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
                                                 player.shuffleModeEnabled = false
+                                                Toast.makeText(context, "قائمة 📋", Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Default.SyncAlt,
-                                                    contentDescription = null,
+                                                    contentDescription = "قائمة",
                                                     tint = if (playbackOrderIndex == 0) redAccent else dimWhite,
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
-
                                             IconButton(onClick = {
                                                 playbackOrderIndex = 1
                                                 player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
                                                 player.shuffleModeEnabled = false
+                                                Toast.makeText(context, "تكرار مرة 🔂", Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Default.RepeatOne,
-                                                    contentDescription = null,
+                                                    contentDescription = "تكرار مرة",
                                                     tint = if (playbackOrderIndex == 1) redAccent else dimWhite,
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
-
                                             IconButton(onClick = {
                                                 playbackOrderIndex = 3
                                                 player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
                                                 player.shuffleModeEnabled = true
+                                                Toast.makeText(context, "تشغيل عشوائي 🔀", Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Default.Shuffle,
-                                                    contentDescription = null,
+                                                    contentDescription = "تشغيل عشوائي",
                                                     tint = if (playbackOrderIndex == 3) redAccent else dimWhite,
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
-
                                             IconButton(onClick = {
                                                 playbackOrderIndex = 2
                                                 player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                                                 player.shuffleModeEnabled = false
+                                                Toast.makeText(context, "تكرار الكل 🔁", Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(
                                                     imageVector = Icons.Default.Repeat,
-                                                    contentDescription = null,
+                                                    contentDescription = "تكرار الكل",
                                                     tint = if (playbackOrderIndex == 2) redAccent else dimWhite,
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
                                         }
                                     }
-
                                     HorizontalDivider(color = dividerColor, thickness = 1.dp)
 
                                     // 4. DECODER (فك التشفير)
@@ -4366,14 +4822,18 @@ sideContent = {
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = "حفك التشفير SW",
+                                                text = "فك التشفير SW",
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (currentDecoder == "SW") redAccent else dimWhite,
                                                 modifier = Modifier
                                                     .clickable {
+                                                        if (player.currentPosition > 0L) {
+                                                            savedPosForDecoderChange = player.currentPosition
+                                                        }
                                                         currentDecoder = "SW"
                                                         isHWAccelActive = false
+                                                        Toast.makeText(context, "تم التبديل إلى فك التشفير البرمجي (SW) ⚙️", Toast.LENGTH_SHORT).show()
                                                     }
                                                     .padding(6.dp)
                                             )
@@ -4382,11 +4842,32 @@ sideContent = {
                                                 text = "فك التشفير HW",
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (currentDecoder == "HW" || currentDecoder == "HW+") redAccent else dimWhite,
+                                                color = if (currentDecoder == "HW") redAccent else dimWhite,
                                                 modifier = Modifier
                                                     .clickable {
+                                                        if (player.currentPosition > 0L) {
+                                                            savedPosForDecoderChange = player.currentPosition
+                                                        }
                                                         currentDecoder = "HW"
                                                         isHWAccelActive = true
+                                                        Toast.makeText(context, "تم التبديل إلى فك التشفير العتادي (HW) ⚡", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                    .padding(6.dp)
+                                            )
+
+                                            Text(
+                                                text = "فك التشفير HW+",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (currentDecoder == "HW+") redAccent else dimWhite,
+                                                modifier = Modifier
+                                                    .clickable {
+                                                        if (player.currentPosition > 0L) {
+                                                            savedPosForDecoderChange = player.currentPosition
+                                                        }
+                                                        currentDecoder = "HW+"
+                                                        isHWAccelActive = true
+                                                        Toast.makeText(context, "تم التبديل إلى فك التشفير العتادي المتقدم (HW+) ⚡+", Toast.LENGTH_SHORT).show()
                                                     }
                                                     .padding(6.dp)
                                             )
@@ -4442,14 +4923,14 @@ sideContent = {
                                                                 0 -> {
                                                                     sleepTimerActive = false
                                                                     sleepTimerRemainingSecs = 0
+                                                                    isSleepTimerEndOfVideo = false
+                                                                    Toast.makeText(context, "تم إيقاف مؤقت النوم ⏹️", Toast.LENGTH_SHORT).show()
                                                                 }
                                                                 -1 -> {
-                                                                    val remainingMillis = videoDuration - player.currentPosition
-                                                                    if (remainingMillis > 0) {
-                                                                        sleepTimerInitialMinutes = -1
-                                                                        sleepTimerRemainingSecs = (remainingMillis / 1000).toInt()
-                                                                        sleepTimerActive = true
-                                                                    }
+                                                                    sleepTimerInitialMinutes = -1
+                                                                    isSleepTimerEndOfVideo = true
+                                                                    sleepTimerActive = true
+                                                                    Toast.makeText(context, "Will stop when finish current video 🎬", Toast.LENGTH_SHORT).show()
                                                                 }
                                                                 -2 -> {
                                                                     isCustomSleepTimerDialogOpen = true
@@ -4458,6 +4939,8 @@ sideContent = {
                                                                     sleepTimerInitialMinutes = value
                                                                     sleepTimerRemainingSecs = value * 60
                                                                     sleepTimerActive = true
+                                                                    isSleepTimerEndOfVideo = false
+                                                                    Toast.makeText(context, "After $value mins into the sleep mode ⏱️", Toast.LENGTH_SHORT).show()
                                                                 }
                                                             }
                                                         }
@@ -4672,50 +5155,94 @@ sideContent = {
                             }
 
                             SidePanelMenuState.ASPECT_RATIO -> {
-                                // ASPECT RATIO SUB-SCREEN
-                                val aspectRatios = listOf(
-                                    Triple("FIT", "تكييف الشاشة", "إظهار الفيديو كاملاً بدون قص مع الحفاظ على الأبعاد الأصليية"),
-                                    Triple("FILL", "تعبئة الشاشة", "ملء كامل الشاشة مع قص بسيط للحواف لتجنب الأشرطة السوداء"),
-                                    Triple("STRETCH", "تطويع الصورة", "تمديد الصورة قسرياً لتغطي كامل العرض والارتفاع"),
-                                    Triple("CROP", "قص الحواف", "تكبير الفيديو لقص الشريط الأسود العلوي والسفلي"),
-                                    Triple("16:9", "شاشة عريضة 16:9", "النسبة القياسية والشائعة لمعظم أجهزة التلفزيون والأنمي"),
-                                    Triple("4:3", "شاشة كلاسيكية 4:3", "نسبة العرض القديمة للشاشات المربعة والأنمي القديم"),
-                                    Triple("21:9", "سينمائي عريض 21:9", "أبعاد الشاشات السينمائية للأفلام الحماسية")
-                                )
+                                // ASPECT RATIO SUB-SCREEN MATCHING VIDEO FRAME 00:21
+                                val generalRatios = listOf("احتواء", "املا", "تمديد", "الأصلي", "Fit-H")
+                                val classicRatios = listOf("18:9", "16:9", "4:3", "19.5:9", "20:9")
+                                val filmRatios = listOf("1.85:1", "2.21:1", "2.35:1", "2.39:1")
 
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    aspectRatios.forEach { (mode, name, desc) ->
-                                        val isSelected = scaleMode == mode
-                                        Card(
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = if (isSelected) Color(0xFF00C8FF).copy(alpha = 0.15f) else Color(0xFF24242A)
-                                            ),
-                                            shape = RoundedCornerShape(12.dp),
-                                            border = BorderStroke(
-                                                1.dp,
-                                                if (isSelected) Color(0xFF00C8FF) else Color.White.copy(alpha = 0.08f)
-                                            ),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable { scaleMode = mode }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(12.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(name, color = if (isSelected) Color(0xFF00C8FF) else Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                    Text(desc, color = Color.Gray, fontSize = 10.sp)
-                                                }
-                                                RadioButton(
-                                                    selected = isSelected,
-                                                    onClick = { scaleMode = mode },
-                                                    colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF00C8FF))
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.verticalScroll(rememberScrollState())
+                                ) {
+                                    // Section 1: عام
+                                    Text("عام", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = redAccent)
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        generalRatios.forEach { mode ->
+                                            val isSelected = scaleMode == mode || (mode == "احتواء" && scaleMode == "FIT") || (mode == "املا" && scaleMode == "FILL") || (mode == "تمديد" && scaleMode == "STRETCH")
+                                            FilterChip(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    scaleMode = mode
+                                                    Toast.makeText(context, "نسبة العرض: $mode", Toast.LENGTH_SHORT).show()
+                                                },
+                                                label = { Text(mode, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = redAccent,
+                                                    selectedLabelColor = Color.White,
+                                                    containerColor = Color(0xFF24242A),
+                                                    labelColor = Color.White
                                                 )
-                                            }
+                                            )
+                                        }
+                                    }
+
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp)
+
+                                    // Section 2: كلاسيكي
+                                    Text("كلاسيكي", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = redAccent)
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        classicRatios.forEach { mode ->
+                                            val isSelected = scaleMode == mode
+                                            FilterChip(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    scaleMode = mode
+                                                    Toast.makeText(context, "نسبة العرض: $mode", Toast.LENGTH_SHORT).show()
+                                                },
+                                                label = { Text(mode, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = redAccent,
+                                                    selectedLabelColor = Color.White,
+                                                    containerColor = Color(0xFF24242A),
+                                                    labelColor = Color.White
+                                                )
+                                            )
+                                        }
+                                    }
+
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp)
+
+                                    // Section 3: فيلم
+                                    Text("فيلم", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = redAccent)
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        filmRatios.forEach { mode ->
+                                            val isSelected = scaleMode == mode
+                                            FilterChip(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    scaleMode = mode
+                                                    Toast.makeText(context, "نسبة العرض: $mode", Toast.LENGTH_SHORT).show()
+                                                },
+                                                label = { Text(mode, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = redAccent,
+                                                    selectedLabelColor = Color.White,
+                                                    containerColor = Color(0xFF24242A),
+                                                    labelColor = Color.White
+                                                )
+                                            )
                                         }
                                     }
                                 }
@@ -4757,6 +5284,110 @@ sideContent = {
                 }
             }
         }
+    }
+
+    AnimatedVisibility(
+        visible = isSubtitlePanelViewOpen,
+        enter = if (isMainLandscape) {
+            slideInHorizontally(
+                initialOffsetX = { fullWidth -> fullWidth },
+                animationSpec = tween(300)
+            ) + fadeIn(animationSpec = tween(250))
+        } else {
+            slideInVertically(
+                initialOffsetY = { fullHeight -> fullHeight },
+                animationSpec = tween(300)
+            ) + fadeIn(animationSpec = tween(250))
+        },
+        exit = if (isMainLandscape) {
+            slideOutHorizontally(
+                targetOffsetX = { fullWidth -> fullWidth },
+                animationSpec = tween(300)
+            ) + fadeOut(animationSpec = tween(250))
+        } else {
+            slideOutVertically(
+                targetOffsetY = { fullHeight -> fullHeight },
+                animationSpec = tween(300)
+            ) + fadeOut(animationSpec = tween(250))
+        }
+    ) {
+        SubtitleSettingsPanel(
+            isVisible = isSubtitlePanelViewOpen,
+            onDismiss = { isSubtitlePanelViewOpen = false },
+            isSubtitleEnabled = isSubtitleEnabled,
+            onSubtitleEnabledChange = { enabled ->
+                isSubtitleEnabled = enabled
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
+                    .build()
+            },
+            detectedSubtitles = detectedSubtitles,
+            subtitleLanguages = subtitleLanguages,
+            selectedSubtitleLang = selectedSubtitleLang,
+            onSelectedSubtitleLangChange = { lang ->
+                isSubtitleEnabled = true
+                selectedSubtitleLang = lang
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setPreferredTextLanguage(lang)
+                    .build()
+            },
+            manualSubs = manualSubs,
+            onAddSubtitleClick = {
+                try { subtitlePickerLauncher.launch(arrayOf("*/*")) } catch (e: Exception) { }
+            },
+            onCustomizeAppearanceClick = {
+                isSubtitleCustomizationOpen = true
+                isSubtitlePanelViewOpen = false
+            },
+            subtitleDelayMs = subtitleDelayMs,
+            onSubtitleDelayMsChange = { subtitleDelayMs = it },
+            subtitleSpeed = subtitleSpeed,
+            onSubtitleSpeedChange = { subtitleSpeed = it },
+            subtitleStyle = subtitleStyle,
+            onSubtitleStyleChange = { subtitleStyle = it },
+            filePath = filePath,
+            videoDurationMs = videoDuration,
+            onSubtitleFileGenerated = { file ->
+                val dispName = file.name
+                val uri = android.net.Uri.fromFile(file)
+                val currentPos = player.currentPosition
+                val compositeConfigs = mutableListOf<androidx.media3.common.MediaItem.SubtitleConfiguration>()
+                detectedSubtitles.forEachIndexed { idx, f ->
+                    val fLang = subtitleLanguages.getOrNull(idx) ?: "ar"
+                    val subUri = android.net.Uri.fromFile(f)
+                    val isSrt = f.name.endsWith(".srt", ignoreCase = true)
+                    val mimeType = if (isSrt) "application/x-subrip" else "text/vtt"
+                    compositeConfigs.add(
+                        androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(subUri)
+                            .setMimeType(mimeType).setLanguage(fLang)
+                            .setSelectionFlags(if (idx == 0) C.SELECTION_FLAG_DEFAULT else 0).build()
+                    )
+                }
+                val newLang = "manual_${manualSubs.size}_$dispName"
+                val newIsSrt = dispName.endsWith(".srt", ignoreCase = true)
+                val newMimeType = if (newIsSrt) "application/x-subrip" else "text/vtt"
+                compositeConfigs.add(
+                    androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(uri)
+                        .setMimeType(newMimeType).setLanguage(newLang)
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
+                )
+                manualSubs.add(Pair(dispName, uri))
+                val videoUri = android.net.Uri.fromFile(java.io.File(filePath))
+                val newMediaItem = androidx.media3.common.MediaItem.Builder()
+                    .setUri(videoUri).setSubtitleConfigurations(compositeConfigs).build()
+                player.setMediaItem(newMediaItem)
+                player.prepare()
+                player.seekTo(currentPos)
+                isSubtitleEnabled = true
+                selectedSubtitleLang = newLang
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setPreferredTextLanguage(newLang).build()
+            }
+        )
     }
 }
 )
