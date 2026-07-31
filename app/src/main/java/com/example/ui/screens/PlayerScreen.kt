@@ -723,6 +723,7 @@ fun PlayerScreen(
         val savedAlignment = sharedPrefs.getInt("sub_alignment", android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL)
         val savedEdgeType = sharedPrefs.getInt("sub_edge_type", CaptionStyleCompat.EDGE_TYPE_OUTLINE)
         val savedEdgeColor = sharedPrefs.getInt("sub_edge_color", Color.Black.toArgb())
+        val savedFontFamily = sharedPrefs.getString("sub_font_family", "default") ?: "default"
         
         mutableStateOf(
             SubtitleStyle(
@@ -732,6 +733,7 @@ fun PlayerScreen(
                 backgroundEnabled = savedBgEnabled,
                 bold = savedBold,
                 italic = savedItalic,
+                fontFamily = savedFontFamily,
                 alignment = savedAlignment,
                 bottomPadding = savedPadding,
                 edgeType = savedEdgeType,
@@ -752,6 +754,7 @@ fun PlayerScreen(
             .putInt("sub_alignment", subtitleStyle.alignment)
             .putInt("sub_edge_type", subtitleStyle.edgeType)
             .putInt("sub_edge_color", subtitleStyle.edgeColor.toArgb())
+            .putString("sub_font_family", subtitleStyle.fontFamily)
             .apply()
     }
     var subtitleDelayMs by remember { mutableStateOf(0L) }
@@ -2200,6 +2203,13 @@ fun PlayerScreen(
                             androidx.compose.ui.text.font.FontStyle.Italic
                         else
                             androidx.compose.ui.text.font.FontStyle.Normal
+                        val fontFamily = when (subtitleStyle.fontFamily) {
+                            "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
+                            "monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
+                            "cursive" -> androidx.compose.ui.text.font.FontFamily.Cursive
+                            "sans-serif" -> androidx.compose.ui.text.font.FontFamily.SansSerif
+                            else -> androidx.compose.ui.text.font.FontFamily.Default
+                        }
                         val shadowStyle = when (subtitleStyle.edgeType) {
                             androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW -> Shadow(
                                 color = subtitleStyle.edgeColor.copy(alpha = 0.95f),
@@ -2218,6 +2228,7 @@ fun PlayerScreen(
                             fontSize = (16f * subtitleStyle.textSize).sp,
                             fontWeight = fontWeight,
                             fontStyle = fontStyle,
+                            fontFamily = fontFamily,
                             textAlign = TextAlign.Center,
                             lineHeight = (16f * subtitleStyle.textSize * 1.25f).sp,
                             onTextLayout = { textLayoutResult = it },
@@ -4012,19 +4023,12 @@ sideContent = {
                                 color = Color.White
                             )
                         } else {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "βta",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = " anime",
-                                    fontSize = 11.sp,
-                                    color = Color.Gray
-                                )
-                            }
+                            Text(
+                                text = "خيارات التشغيل",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
                         }
                     }
 
@@ -4078,11 +4082,14 @@ sideContent = {
                                         // Subtitles
                                         Column(
                                             horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.clickable { sidePanelMenuState = SidePanelMenuState.SUBTITLE_SETTINGS }
+                                            modifier = Modifier.clickable {
+                                                isSubtitlePanelViewOpen = true
+                                                isMoreOptionsSheetOpen = false
+                                            }
                                         ) {
                                             CcSubtitleIcon(modifier = Modifier.size(22.dp), tint = Color.White)
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            Text("العنوان الفرعي", fontSize = 10.sp, color = dimWhite, textAlign = TextAlign.Center)
+                                            Text("الترجمة", fontSize = 10.sp, color = dimWhite, textAlign = TextAlign.Center)
                                         }
 
                                         // Audio track / BG play
