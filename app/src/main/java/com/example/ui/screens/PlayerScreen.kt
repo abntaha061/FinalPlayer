@@ -941,7 +941,7 @@ fun PlayerScreen(
 
             if (frameSaved) {
                 android.media.MediaScannerConnection.scanFile(ctx, arrayOf(file.absolutePath), arrayOf("image/jpeg"), null)
-                Toast.makeText(ctx, "تم حفظ لقطة الشاشة في ${file.absolutePath} 📸", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "تم حفظ لقطة الشاشة في ${file.absolutePath}", Toast.LENGTH_SHORT).show()
             } else {
                 // Fallback: create a dummy valid JPEG file so that it at least opens and works instead of being 0 bytes
                 val width = 1280
@@ -4843,8 +4843,7 @@ sideContent = {
                                 val filmRatios = listOf("1.85:1", "2.21:1", "2.35:1", "2.39:1")
 
                                 Column(
-                                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.verticalScroll(rememberScrollState())
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     // Section 1: عام
                                     Text("عام", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = redAccent)

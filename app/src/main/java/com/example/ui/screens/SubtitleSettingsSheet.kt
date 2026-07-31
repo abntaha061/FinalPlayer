@@ -330,7 +330,7 @@ fun SubtitleSettingsPanel(
                         onSubtitleDelayMsChange(it.toLong())
                     },
                     valueRange = -10000f..10000f,
-                    steps = 100,
+                    steps = 0,
                     activeColor = accentRed,
                     modifier = Modifier
                         .fillMaxWidth()
