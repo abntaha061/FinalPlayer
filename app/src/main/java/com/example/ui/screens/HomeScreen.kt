@@ -2438,49 +2438,16 @@ fun VideosAndFoldersTab(
                                         }
                                     }
 
-                                    // Offset 3-dots actions menu
-                                    var isMenuExpanded by remember { mutableStateOf(false) }
-                                    Box {
-                                        IconButton(
-                                            onClick = { isMenuExpanded = true },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.MoreVert,
-                                                contentDescription = "Options menu",
-                                                tint = Color.Gray
-                                            )
-                                        }
-                                        DropdownMenu(
-                                            expanded = isMenuExpanded,
-                                            onDismissRequest = { isMenuExpanded = false }
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text("تسمية الملف", fontSize = 13.sp) },
-                                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                                onClick = {
-                                                    isMenuExpanded = false
-                                                    videoToRename = video
-                                                    newNameText = video.title
-                                                }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("حذف الملف", fontSize = 13.sp) },
-                                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
-                                                onClick = {
-                                                    isMenuExpanded = false
-                                                    videoToDelete = video
-                                                }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
-                                                leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                                onClick = {
-                                                    isMenuExpanded = false
-                                                    viewModel.setPrivateStatus(video, true)
-                                                }
-                                            )
-                                        }
+                                    // 3-dots options menu -> opens VideoOptionsBottomSheet
+                                    IconButton(
+                                        onClick = { videoForBottomSheet = video },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "Options menu",
+                                            tint = Color.Gray
+                                        )
                                     }
                                 }
                             }
@@ -2896,49 +2863,16 @@ fun VideosAndFoldersTab(
                                         }
                                     }
 
-                                    // Offset 3-dots actions menu
-                                    var isMenuExpanded by remember { mutableStateOf(false) }
-                                    Box {
-                                        IconButton(
-                                            onClick = { isMenuExpanded = true },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.MoreVert,
-                                                contentDescription = "Options menu",
-                                                tint = Color.Gray
-                                            )
-                                        }
-                                        DropdownMenu(
-                                            expanded = isMenuExpanded,
-                                            onDismissRequest = { isMenuExpanded = false }
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text("تسمية الملف", fontSize = 13.sp) },
-                                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                                onClick = {
-                                                    isMenuExpanded = false
-                                                    videoToRename = video
-                                                    newNameText = video.title
-                                                }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("حذف الملف", fontSize = 13.sp) },
-                                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
-                                                onClick = {
-                                                    isMenuExpanded = false
-                                                    videoToDelete = video
-                                                }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
-                                                leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                                onClick = {
-                                                    isMenuExpanded = false
-                                                    viewModel.setPrivateStatus(video, true)
-                                                }
-                                            )
-                                        }
+                                    // Offset 3-dots actions menu -> VideoOptionsBottomSheet
+                                    IconButton(
+                                        onClick = { videoForBottomSheet = video },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "Options menu",
+                                            tint = Color.Gray
+                                        )
                                     }
                                 }
                             }
@@ -3035,6 +2969,9 @@ fun VideosAndFoldersTab(
                     }
                     is com.example.ui.components.VideoOptionAction.Rename -> {
                         videoForRename = video
+                    }
+                    is com.example.ui.components.VideoOptionAction.Delete -> {
+                        videoToDelete = video
                     }
                     is com.example.ui.components.VideoOptionAction.Details -> {
                         videoForDetails = video
@@ -3589,55 +3526,17 @@ fun VideoGridItem(
                         }
                     }
 
-                    // 3-dots Menu trigger
-                    var isMenuExpanded by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(
-                            onClick = {
-                                if (onOptionsClick != null) {
-                                    onOptionsClick()
-                                } else {
-                                    isMenuExpanded = true
-                                }
-                            },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "Options menu",
-                                tint = Color.Gray,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = isMenuExpanded,
-                            onDismissRequest = { isMenuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("تسمية الملف", fontSize = 13.sp) },
-                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                onClick = {
-                                    isMenuExpanded = false
-                                    onRenameClick()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("حذف الملف", fontSize = 13.sp) },
-                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
-                                onClick = {
-                                    isMenuExpanded = false
-                                    onDeleteClick()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
-                                leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                onClick = {
-                                    isMenuExpanded = false
-                                    onVaultClick()
-                                }
-                            )
-                        }
+                    // 3-dots Menu trigger -> opens VideoOptionsBottomSheet
+                    IconButton(
+                        onClick = { onOptionsClick?.invoke() },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "Options menu",
+                            tint = Color.Gray,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
                 val metaParts = remember(video.size, video.dateModified, video.path, showSize, showDate, showPath, historyList) {
@@ -3685,6 +3584,7 @@ fun VideoListItem(
     onVaultClick: () -> Unit,
     onRenameClick: () -> Unit,
     onDeleteClick: () -> Unit,
+    onOptionsClick: (() -> Unit)? = null,
     isSelected: Boolean,
     historyList: List<com.example.data.local.entities.HistoryEntity> = emptyList(),
     showExtension: Boolean,
@@ -4027,48 +3927,16 @@ fun VideoListItem(
                 }
             }
 
-            // Offset 3-dots actions menu
-            var isMenuExpanded by remember { mutableStateOf(false) }
-            Box {
-                IconButton(
-                    onClick = { isMenuExpanded = true },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Options menu",
-                        tint = Color.Gray
-                    )
-                }
-                DropdownMenu(
-                    expanded = isMenuExpanded,
-                    onDismissRequest = { isMenuExpanded = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("تسمية الملف", fontSize = 13.sp) },
-                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        onClick = {
-                            isMenuExpanded = false
-                            onRenameClick()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("حذف الملف", fontSize = 13.sp) },
-                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Red) },
-                        onClick = {
-                            isMenuExpanded = false
-                            onDeleteClick()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("نقل إلى الخزنة", fontSize = 13.sp) },
-                        leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        onClick = {
-                            isMenuExpanded = false
-                            onVaultClick()
-                        }
-                    )
-                }
+            // 3-dots options menu -> opens VideoOptionsBottomSheet
+            IconButton(
+                onClick = { onOptionsClick?.invoke() },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Options menu",
+                    tint = Color.Gray
+                )
             }
         }
     }

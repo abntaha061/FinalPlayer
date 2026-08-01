@@ -49,6 +49,7 @@ sealed class VideoOptionAction {
     object Edit : VideoOptionAction()
     object Share : VideoOptionAction()
     object Rename : VideoOptionAction()
+    object Delete : VideoOptionAction()
     object Details : VideoOptionAction()
 }
 
@@ -140,7 +141,7 @@ fun VideoOptionsBottomSheet(
                 color = Color.White.copy(alpha = 0.1f)
             )
 
-            // 8 Options List
+            // Options List
             val optionsList = listOf(
                 Triple("أضف لقائمة التشغيل", Icons.Default.PlaylistAdd, VideoOptionAction.AddToPlaylist),
                 Triple("تحويل لـ MP3 (استخراج الصوت)", Icons.Default.Audiotrack, VideoOptionAction.ConvertToMp3),
@@ -149,6 +150,7 @@ fun VideoOptionsBottomSheet(
                 Triple("تعديل وتحرير (Edit)", Icons.Default.EditNote, VideoOptionAction.Edit),
                 Triple("مشاركة الفيديو", Icons.Default.Share, VideoOptionAction.Share),
                 Triple("إعادة تسمية الملف", Icons.Default.DriveFileRenameOutline, VideoOptionAction.Rename),
+                Triple("حذف الملف", Icons.Default.Delete, VideoOptionAction.Delete),
                 Triple("تفاصيل الفيديو المعمقة", Icons.Default.Info, VideoOptionAction.Details)
             )
 

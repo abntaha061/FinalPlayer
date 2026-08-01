@@ -485,11 +485,11 @@ fun PlayerScreen(
             
             isSubtitleEnabled = true
             selectedSubtitleLang = newLang
-            player.trackSelectionParameters = player.trackSelectionParameters
+            try { player.trackSelectionParameters = player.trackSelectionParameters
                 .buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                 .setPreferredTextLanguage(newLang)
-                .build()
+                .build() } catch (e: Exception) { e.printStackTrace() }
                 
             player.playWhenReady = isPlaying
             Toast.makeText(context, "تم تحميل ملف الترجمة: $dispName", Toast.LENGTH_SHORT).show()
@@ -2891,61 +2891,11 @@ fun PlayerScreen(
                             }
                         }
 
-                        if (subtitleLanguages.isNotEmpty()) {
-                            Box {
-                                IconButton(onClick = { isSubtitlesExpanded = true }) {
-                                    CcSubtitleIcon(
-                                        modifier = Modifier.size(20.dp),
-                                        tint = if (isSubtitleEnabled) MaterialTheme.colorScheme.primary else Color.LightGray
-                                    )
-                                }
-                                DropdownMenu(
-                                    expanded = isSubtitlesExpanded,
-                                    onDismissRequest = { isSubtitlesExpanded = false },
-                                    modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("إيقاف الترجمة", color = Color.White) },
-                                        onClick = {
-                                            isSubtitleEnabled = false
-                                            player.trackSelectionParameters = player.trackSelectionParameters
-                                                .buildUpon()
-                                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                                                .build()
-                                            isSubtitlesExpanded = false
-                                            gestureIndicatorText = "الترجمة: معطلة"
-                                            scope.launch {
-                                                isIndicatorVisible = true
-                                                delay(800)
-                                                isIndicatorVisible = false
-                                            }
-                                        }
-                                    )
-                                    subtitleLanguages.forEachIndexed { idx, lang ->
-                                        val subFile = detectedSubtitles.getOrNull(idx)
-                                        val displayName = subFile?.name ?: "ترجمة: $lang"
-                                        DropdownMenuItem(
-                                            text = { Text(displayName, color = Color.White) },
-                                            onClick = {
-                                                isSubtitleEnabled = true
-                                                selectedSubtitleLang = lang
-                                                player.trackSelectionParameters = player.trackSelectionParameters
-                                                    .buildUpon()
-                                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                                    .setPreferredTextLanguage(lang)
-                                                    .build()
-                                                isSubtitlesExpanded = false
-                                                gestureIndicatorText = "ترجمة: $displayName"
-                                                scope.launch {
-                                                    isIndicatorVisible = true
-                                                    delay(800)
-                                                    isIndicatorVisible = false
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                            }
+                        IconButton(onClick = { isSubtitlePanelViewOpen = true }) {
+                            CcSubtitleIcon(
+                                modifier = Modifier.size(20.dp),
+                                tint = if (isSubtitleEnabled) MaterialTheme.colorScheme.primary else Color.LightGray
+                            )
                         }
                     }
                 }
@@ -3156,10 +3106,10 @@ fun PlayerScreen(
                     checked = isSubtitleEnabled,
                     onCheckedChange = {
                         isSubtitleEnabled = it
-                        player.trackSelectionParameters = player.trackSelectionParameters
+                        try { player.trackSelectionParameters = player.trackSelectionParameters
                             .buildUpon()
                             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !it)
-                            .build()
+                            .build() } catch (e: Exception) { e.printStackTrace() }
                     }
                 )
             }
@@ -4744,10 +4694,10 @@ sideContent = {
                                                 checked = isSubtitleEnabled,
                                                 onCheckedChange = { enabled ->
                                                     isSubtitleEnabled = enabled
-                                                    player.trackSelectionParameters = player.trackSelectionParameters
+                                                    try { player.trackSelectionParameters = player.trackSelectionParameters
                                                         .buildUpon()
                                                         .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
-                                                        .build()
+                                                        .build() } catch (e: Exception) { e.printStackTrace() }
                                                 },
                                                 colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF00C8FF))
                                             )
@@ -5000,10 +4950,10 @@ sideContent = {
             isSubtitleEnabled = isSubtitleEnabled,
             onSubtitleEnabledChange = { enabled ->
                 isSubtitleEnabled = enabled
-                player.trackSelectionParameters = player.trackSelectionParameters
+                try { player.trackSelectionParameters = player.trackSelectionParameters
                     .buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled)
-                    .build()
+                    .build() } catch (e: Exception) { e.printStackTrace() }
             },
             detectedSubtitles = detectedSubtitles,
             subtitleLanguages = subtitleLanguages,
@@ -5011,11 +4961,11 @@ sideContent = {
             onSelectedSubtitleLangChange = { lang ->
                 isSubtitleEnabled = true
                 selectedSubtitleLang = lang
-                player.trackSelectionParameters = player.trackSelectionParameters
+                try { player.trackSelectionParameters = player.trackSelectionParameters
                     .buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                     .setPreferredTextLanguage(lang)
-                    .build()
+                    .build() } catch (e: Exception) { e.printStackTrace() }
             },
             manualSubs = manualSubs,
             onAddSubtitleClick = {
@@ -5066,9 +5016,9 @@ sideContent = {
                 player.seekTo(currentPos)
                 isSubtitleEnabled = true
                 selectedSubtitleLang = newLang
-                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                try { player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .setPreferredTextLanguage(newLang).build()
+                    .setPreferredTextLanguage(newLang).build() } catch (e: Exception) { e.printStackTrace() }
             }
         )
     }
