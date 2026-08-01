@@ -233,7 +233,7 @@ fun SubtitleSettingsPanel(
                     }
 
                     items(subtitleLanguages.indices.toList()) { idx ->
-                        val lang = subtitleLanguages[idx]
+                        val lang = subtitleLanguages.getOrNull(idx) ?: return@items
                         val subFile = detectedSubtitles.getOrNull(idx)
                         val displayName = subFile?.name ?: lang
                         val isSelected = isSubtitleEnabled && selectedSubtitleLang == lang
@@ -257,7 +257,7 @@ fun SubtitleSettingsPanel(
                     }
 
                     items(manualSubs.indices.toList()) { idx ->
-                        val pair = manualSubs[idx]
+                        val pair = manualSubs.getOrNull(idx) ?: return@items
                         val lang = "manual_${idx}_${pair.first}"
                         val isSelected = isSubtitleEnabled && selectedSubtitleLang == lang
                         FilterChip(

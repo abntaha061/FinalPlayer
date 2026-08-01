@@ -761,7 +761,9 @@ fun PlayerScreen(
     val sharedPrefs = remember { context.getSharedPreferences("mx_player_prefs", Context.MODE_PRIVATE) }
     var subtitleStyle by remember {
         val savedPadding = sharedPrefs.getFloat("sub_bottom_padding", 0.012f)
-        val savedTextSize = sharedPrefs.getFloat("sub_text_size", 1.0f)
+        val savedTextSizeRaw = sharedPrefs.getFloat("sub_text_size", 1.0f)
+        val savedTextSize = if (savedTextSizeRaw > 5.0f) savedTextSizeRaw / 16f else savedTextSizeRaw
+        val safeTextSize = savedTextSize.coerceIn(0.5f, 2.5f)
         val savedBold = sharedPrefs.getBoolean("sub_bold", false)
         val savedItalic = sharedPrefs.getBoolean("sub_italic", false)
         val savedBgEnabled = sharedPrefs.getBoolean("sub_bg_enabled", false)
@@ -774,7 +776,7 @@ fun PlayerScreen(
         
         mutableStateOf(
             SubtitleStyle(
-                textSize = savedTextSize,
+                textSize = safeTextSize,
                 textColor = Color(savedTextColor),
                 backgroundColor = Color(savedBgColor),
                 backgroundEnabled = savedBgEnabled,

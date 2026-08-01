@@ -34,8 +34,13 @@ fun AppSlider(
         activeTrackColor = activeColor,
         inactiveTrackColor = inactiveColor
     )
+    val safeValue = if (value.isNaN() || value.isInfinite()) {
+        valueRange.start
+    } else {
+        value.coerceIn(valueRange.start, valueRange.endInclusive)
+    }
     Slider(
-        value = value,
+        value = safeValue,
         onValueChange = onValueChange,
         modifier = modifier,
         enabled = enabled,
