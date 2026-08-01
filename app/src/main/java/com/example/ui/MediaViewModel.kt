@@ -13,22 +13,46 @@ import com.example.data.local.entities.MediaFile
 import com.example.data.local.entities.PlaylistEntity
 import com.example.data.local.entities.ScannedFolder
 import com.example.data.observer.RealTimeMediaWatcher
+import com.example.data.repository.AppSettings
+import com.example.data.repository.AppSettingsRepository
 import com.example.data.repository.MediaRepository
 import android.util.Log
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 
 class MediaViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MediaRepository(application)
+    val appSettingsRepository = AppSettingsRepository(application)
     private val context = application.applicationContext
+
+    val appSettings: StateFlow<AppSettings> = appSettingsRepository.appSettingsFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
+
+    fun setShowNoMediaFiles(value: Boolean) = viewModelScope.launch { appSettingsRepository.updateShowNoMediaFiles(value) }
+    fun setShowHiddenFiles(value: Boolean) = viewModelScope.launch { appSettingsRepository.updateShowHiddenFiles(value) }
+    fun setResumePlaybackMode(value: String) = viewModelScope.launch { appSettingsRepository.updateResumePlaybackMode(value) }
+    fun setRememberBrightness(value: Boolean) = viewModelScope.launch { appSettingsRepository.updateRememberBrightness(value) }
+    fun setBackgroundPlayback(value: Boolean) = viewModelScope.launch { appSettingsRepository.updateBackgroundPlayback(value) }
+    fun setRememberAspectRatio(value: Boolean) = viewModelScope.launch { appSettingsRepository.updateRememberAspectRatio(value) }
+    fun setRememberSpeed(value: Boolean) = viewModelScope.launch { appSettingsRepository.updateRememberSpeed(value) }
+    fun setDefaultOrientation(value: String) = viewModelScope.launch { appSettingsRepository.updateDefaultOrientation(value) }
+    fun setSeekIncrementSeconds(value: Int) = viewModelScope.launch { appSettingsRepository.updateSeekIncrementSeconds(value) }
+    fun setAutoPlayNext(value: Boolean) = viewModelScope.launch { appSettingsRepository.updateAutoPlayNext(value) }
+    fun setAutoPip(value: Boolean) = viewModelScope.launch { appSettingsRepository.updateAutoPip(value) }
+    fun setShowRecentlyPlayed(value: Boolean) = viewModelScope.launch { appSettingsRepository.updateShowRecentlyPlayed(value) }
+    fun setShowFab(value: Boolean) = viewModelScope.launch { appSettingsRepository.updateShowFab(value) }
 
     private val _subtitleOffsetY = MutableStateFlow(80f) // default bottom padding in DP
     val subtitleOffsetY: StateFlow<Float> = _subtitleOffsetY.asStateFlow()
@@ -203,10 +227,73 @@ class MediaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- REACTIVE STREAMS ---
-    val videos = repository.videosFlow
-    val audio = repository.audioFlow
+    val videos: Flow<List<MediaFile>> = combine(repository.videosFlow, appSettingsRepository.appSettingsFlow) { list, settings ->
+        list.filter { media ->
+            if (media.isPrivate) return@filter true
+            val file = File(media.path)
+            val isHidden = file.name.startsWith(".") || file.parentFile?.name?.startsWith(".") == true || media.path.split("/").any { it.startsWith(".") && it.length > 1 }
+            if (!settings.showHiddenFiles && isHidden) return@filter false
+            if (!settings.showNoMediaFiles) {
+                var parent: File? = file.parentFile
+                var hasNoMedia = false
+                while (parent != null && parent.exists()) {
+                    if (File(parent, ".nomedia").exists()) {
+                        hasNoMedia = true
+                        break
+                    }
+                    parent = parent.parentFile
+                }
+                if (hasNoMedia) return@filter false
+            }
+            true
+        }
+    }
+
+    val audio: Flow<List<MediaFile>> = combine(repository.audioFlow, appSettingsRepository.appSettingsFlow) { list, settings ->
+        list.filter { media ->
+            if (media.isPrivate) return@filter true
+            val file = File(media.path)
+            val isHidden = file.name.startsWith(".") || file.parentFile?.name?.startsWith(".") == true || media.path.split("/").any { it.startsWith(".") && it.length > 1 }
+            if (!settings.showHiddenFiles && isHidden) return@filter false
+            if (!settings.showNoMediaFiles) {
+                var parent: File? = file.parentFile
+                var hasNoMedia = false
+                while (parent != null && parent.exists()) {
+                    if (File(parent, ".nomedia").exists()) {
+                        hasNoMedia = true
+                        break
+                    }
+                    parent = parent.parentFile
+                }
+                if (hasNoMedia) return@filter false
+            }
+            true
+        }
+    }
+
     val favorites = repository.favoritesFlow
-    val folders = repository.foldersFlow
+
+    val folders: Flow<List<ScannedFolder>> = combine(repository.foldersFlow, appSettingsRepository.appSettingsFlow) { list, settings ->
+        list.filter { folder ->
+            val dir = File(folder.folderPath)
+            val isHidden = dir.name.startsWith(".") || folder.folderPath.split("/").any { it.startsWith(".") && it.length > 1 }
+            if (!settings.showHiddenFiles && isHidden) return@filter false
+            if (!settings.showNoMediaFiles) {
+                var parent: File? = dir
+                var hasNoMedia = false
+                while (parent != null && parent.exists()) {
+                    if (File(parent, ".nomedia").exists()) {
+                        hasNoMedia = true
+                        break
+                    }
+                    parent = parent.parentFile
+                }
+                if (hasNoMedia) return@filter false
+            }
+            true
+        }
+    }
+
     val playlists = repository.playlistsFlow
     val history = repository.historyFlow
     val privateFiles = repository.privateFilesFlow
