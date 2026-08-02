@@ -1,4 +1,3 @@
-// /app/src/main/java/com/example/ui/screens/HomeScreen.kt
 package com.example.ui.screens
 
 import com.example.ui.components.SquareWithTriangleIcon
@@ -334,9 +333,6 @@ fun HomeScreen(
                                             IconButton(onClick = { isOptionsSheetVisible = true }) {
                                                 Icon(Icons.Default.FilterList, contentDescription = "Display options Dialog")
                                             }
-                                            IconButton(onClick = { selectedBottomTab = 2 }) {
-                                                Icon(Icons.Default.Settings, contentDescription = "الإعدادات")
-                                            }
                                         }
                                     }
                                 },
@@ -444,58 +440,36 @@ fun HomeScreen(
                         windowInsets = WindowInsets.navigationBars,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(64.dp)
+                            .height(56.dp)
                     ) {
                         NavigationBarItem(
                             selected = selectedBottomTab == 0,
                             onClick = { selectedBottomTab = 0 },
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.Default.VideoLibrary,
-                                    contentDescription = "فيديو",
-                                    tint = if (selectedBottomTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = "فيديو",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selectedBottomTab == 0) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (selectedBottomTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
+                            icon = { RedCircleIcon(Icons.Default.VideoLibrary, selectedBottomTab == 0, "Videos", currentAccentColor) },
                             colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                indicatorColor = Color.Transparent,
+                                selectedIconColor = Color.Unspecified,
+                                unselectedIconColor = Color.Unspecified
                             )
                         )
                         NavigationBarItem(
                             selected = selectedBottomTab == 1,
                             onClick = { selectedBottomTab = 1 },
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.Default.MusicNote,
-                                    contentDescription = "موسيقى",
-                                    tint = if (selectedBottomTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = "موسيقى",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selectedBottomTab == 1) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (selectedBottomTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
+                            icon = { RedCircleIcon(Icons.Default.MusicNote, selectedBottomTab == 1, "Music", currentAccentColor) },
                             colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                indicatorColor = Color.Transparent,
+                                selectedIconColor = Color.Unspecified,
+                                unselectedIconColor = Color.Unspecified
+                            )
+                        )
+                        NavigationBarItem(
+                            selected = selectedBottomTab == 2,
+                            onClick = { selectedBottomTab = 2 },
+                            icon = { RedCircleIcon(Icons.Default.Settings, selectedBottomTab == 2, "Settings", currentAccentColor) },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent,
+                                selectedIconColor = Color.Unspecified,
+                                unselectedIconColor = Color.Unspecified
                             )
                         )
                     }
@@ -1747,7 +1721,6 @@ fun VideosAndFoldersTab(
     var videoForPlaylist by remember { mutableStateOf<MediaFile?>(null) }
     var videoForTrimming by remember { mutableStateOf<MediaFile?>(null) }
     val historyList by viewModel.history.collectAsState(initial = emptyList())
-    val appSettings by viewModel.appSettings.collectAsState(initial = com.example.data.repository.AppSettings())
 
     val themeColorHex by viewModel.themeColorHexState.collectAsState()
     val accentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
@@ -1902,13 +1875,6 @@ fun VideosAndFoldersTab(
     val columns = 2
     val videoChunks = remember(displayVideos, columns) { displayVideos.chunked(columns) }
 
-    val resumeVideoFilePath = remember(historyList, videoList) {
-        val inHistory = historyList.firstOrNull { entry ->
-            videoList.any { it.path == entry.mediaFilePath }
-        }?.mediaFilePath
-        inHistory ?: videoList.firstOrNull()?.path
-    }
-
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1917,82 +1883,6 @@ fun VideosAndFoldersTab(
     ) {
         // --- CONTENT SPLITTING OR DIRECT VIEW ---
         if (selectedFolderPath == null && searchQuery.isBlank()) {
-            if (appSettings.showRecentlyPlayed && resumeVideoFilePath != null) {
-                item {
-                    val resumeFileName = remember(resumeVideoFilePath) { File(resumeVideoFilePath).name }
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                            .clickable { onPlayFile(resumeVideoFilePath) }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayCircle,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "آخر فيديو تم تشغيله",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = resumeFileName,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            FilledIconButton(
-                                onClick = { onPlayFile(resumeVideoFilePath) },
-                                shape = CircleShape,
-                                colors = IconButtonDefaults.filledIconButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                ),
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = "تشغيل",
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
             // Folders rendering list mode
             if (derivedFoldersList.isEmpty()) {
                 item {
@@ -2082,102 +1972,112 @@ fun VideosAndFoldersTab(
                     }
                 }
                 items(derivedFoldersList, key = { "folder_${it.folderPath}" }) { folder ->
+                    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
                     val folderName = File(folder.folderPath).name
                     val stats = folderStatsMap[folder.folderPath] ?: FolderStats(0, 0, 0)
                     val filesCount = stats.filesCount
-                    val isFolderSelected = selectedPaths.contains(folder.folderPath)
+                    val totalBytes = stats.totalBytes
 
-                    Card(
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isFolderSelected)
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                            else
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .combinedClickable(
-                                onClick = {
-                                    try {
-                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                        view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
-                                    } catch (e: Exception) {}
-                                    if (selectedPaths.isNotEmpty()) {
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                        val isFolderSelected = selectedPaths.contains(folder.folderPath)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (isFolderSelected) Modifier.background(accentColor.copy(alpha = 0.22f))
+                                    else Modifier
+                                )
+                                .combinedClickable(
+                                    onClick = {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                            view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                        } catch (e: Exception) {}
+                                        if (selectedPaths.isNotEmpty()) {
+                                            if (selectedPaths.contains(folder.folderPath)) {
+                                                selectedPaths.remove(folder.folderPath)
+                                            } else {
+                                                selectedPaths.add(folder.folderPath)
+                                            }
+                                        } else {
+                                            onSelectedFolderPathChange(folder.folderPath)
+                                        }
+                                    },
+                                    onLongClick = {
+                                        try {
+                                            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                                            view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+                                        } catch (e: Exception) {}
                                         if (selectedPaths.contains(folder.folderPath)) {
                                             selectedPaths.remove(folder.folderPath)
                                         } else {
                                             selectedPaths.add(folder.folderPath)
                                         }
-                                    } else {
-                                        onSelectedFolderPathChange(folder.folderPath)
                                     }
-                                },
-                                onLongClick = {
-                                    try {
-                                        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
-                                        view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
-                                    } catch (e: Exception) {}
-                                    if (selectedPaths.contains(folder.folderPath)) {
-                                        selectedPaths.remove(folder.folderPath)
-                                    } else {
-                                        selectedPaths.add(folder.folderPath)
+                                )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val folderNewVideosCount = stats.newVideosCount
+                                if (showThumbnail) {
+                                    MXFolderIcon(folderName = folderName, filesCount = folderNewVideosCount, isSelected = isFolderSelected, accentColor = accentColor)
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = folderName,
+                                            fontSize = 15.sp,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                    }
+                                    if (showPath) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = folder.folderPath,
+                                            fontSize = 11.sp,
+                                            color = Color.Gray,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = formatVideosCountArabic(filesCount),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                            fontSize = 12.sp
+                                        )
+                                        if (showSize) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape = RoundedCornerShape(3.dp))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = formatFolderSizeArabic(totalBytes),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
                                     }
                                 }
-                            )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Folder icon with fixed theme color
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(24.dp)
-                                )
                             }
-
-                            Spacer(modifier = Modifier.width(14.dp))
-
-                            // Folder details
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = folderName,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = formatVideosCountArabic(filesCount),
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                )
-                            }
-
-                            // Arrow indicator
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                modifier = Modifier.size(20.dp)
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 78.dp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                                thickness = 0.5.dp
                             )
                         }
                     }
@@ -5832,58 +5732,4 @@ fun TrackEntranceTransition(
     ) {
         content()
     }
-}
-
-
-
-@Composable
-fun FilePropertiesDialog(
-    file: MediaFile,
-    onDismiss: () -> Unit
-) {
-    val mb = file.size / (1024 * 1024)
-    val durSec = file.duration / 1000
-    val min = durSec / 60
-    val sec = durSec % 60
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("تفاصيل الملف", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("الاسم: ${file.title}")
-                Text("المسار: ${file.path}")
-                Text("الحجم: $mb ميجابايت")
-                Text("المدة: $min د $sec ث")
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("موافق")
-            }
-        }
-    )
-}
-
-@Composable
-fun MultiFilesPropertiesDialog(
-    files: List<MediaFile>,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("تفاصيل الملفات المحددة", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("عدد الملفات: ${files.size}")
-                val totalBytes = files.sumOf { it.size }
-                val mb = totalBytes / (1024 * 1024)
-                Text("الحجم الإجمالي: ${mb} ميجابايت")
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("موافق")
-            }
-        }
-    )
 }

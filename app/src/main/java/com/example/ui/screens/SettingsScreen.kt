@@ -1,606 +1,830 @@
-// app/src/main/java/com/example/ui/screens/SettingsScreen.kt
 package com.example.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.AspectRatio
-import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.ColorLens
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Subtitles
-import androidx.compose.material.icons.filled.VpnKey
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.local.entities.MediaFile
 import com.example.ui.MediaViewModel
-import com.example.ui.components.SettingsNavigationRow
-import com.example.ui.components.SettingsSectionHeader
-import com.example.ui.components.SettingsSwitchRow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.layout.ContentScale
+import com.example.data.local.entities.MediaFile
+import com.example.ui.components.frostedGlass
+import com.example.ui.components.AppSlider
 
-/**
- * Modern Settings Screen integrated with Private Vault management.
- *
- * `activeVaultViewState` navigation states:
- * - "settings": Standard sectioned settings list
- * - "keypad_unlock": Prompts for PIN to unlock private vault
- * - "keypad_unlock_for_change": Prompts for existing PIN before changing PIN
- * - "keypad_setup": Setup flow for entering and confirming new PIN
- * - "dashboard": Private Vault file list view
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    viewModel: MediaViewModel? = null,
+    viewModel: MediaViewModel,
     onPlayFile: ((String) -> Unit)? = null,
-    onBack: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    onBack: () -> Unit
 ) {
-    val context = LocalContext.current
+    val scrollState = rememberScrollState()
 
-    // Vault ViewModel states
-    val isPrivateLocked by viewModel?.isPrivateFolderLocked?.collectAsState(initial = true) ?: remember { mutableStateOf(true) }
-    val privateFiles by viewModel?.privateFiles?.collectAsState(initial = emptyList()) ?: remember { mutableStateOf(emptyList()) }
-    val savedPasscode = viewModel?.getPasscode()
-    val hasPasscode = !savedPasscode.isNullOrEmpty()
+    val isPrivateLocked by viewModel.isPrivateFolderLocked.collectAsState()
+    val privateFiles by viewModel.privateFiles.collectAsState(initial = emptyList())
+    var hasPasscodeState by remember { mutableStateOf(viewModel.getPasscode() != null) }
 
-    val appSettings by viewModel?.appSettings?.collectAsState(initial = com.example.data.repository.AppSettings()) ?: remember { mutableStateOf(com.example.data.repository.AppSettings()) }
-
-    // Active screen navigation inside Settings
+    // Vault View State Machine: "settings", "keypad_unlock", "keypad_setup", "dashboard"
     var activeVaultViewState by remember { mutableStateOf("settings") }
 
-    // Keypad & setup states
-    var setupStep by remember { mutableStateOf(1) } // 1 = enter new PIN, 2 = confirm
-    var tempPin by remember { mutableStateOf("") }
-    var keypadError by remember { mutableStateOf<String?>(null) }
+    // Setup Passcode parameters
+    var setupStepState by remember { mutableStateOf(1) } // 1 = enter code, 2 = confirm code
+    var setupFirstPinState by remember { mutableStateOf("") }
+    var setupErrorTextState by remember { mutableStateOf<String?>(null) }
 
-    // Dialog state for choices (resume_mode, seek_increment, default_orientation)
-    var selectionDialogType by remember { mutableStateOf<String?>(null) }
+    // Unlock parameters
+    var unlockErrorTextState by remember { mutableStateOf<String?>(null) }
 
-    // Vault click handler
-    val handleVaultClick = {
-        if (!hasPasscode) {
-            setupStep = 1
-            tempPin = ""
-            keypadError = null
-            activeVaultViewState = "keypad_setup"
-        } else if (isPrivateLocked) {
-            keypadError = null
+    // Playback settings
+    var defaultSpeed by remember { mutableStateOf(viewModel.getPlaybackSpeed()) }
+    var hideControlsDelay by remember { mutableStateOf(viewModel.getHideControlsDelay()) }
+    var subtitleSize by remember { mutableStateOf(viewModel.getSubtitleSize()) }
+    var subtitlesEnabled by remember { mutableStateOf(viewModel.getSubtitlesEnabled()) }
+    var audioBoostEnabled by remember { mutableStateOf(viewModel.getAudioBoostEnabled()) }
+    var defaultScaleMode by remember { mutableStateOf(viewModel.getDefaultScaleMode()) }
+
+    val appThemeMode by viewModel.appThemeModeState.collectAsState()
+
+    var showThemeDialog by remember { mutableStateOf(false) }
+    var showAccentColorDialog by remember { mutableStateOf(false) }
+    var showSpeedDialog by remember { mutableStateOf(false) }
+    var showAspectRatioDialog by remember { mutableStateOf(false) }
+    var showResumeButtonDialog by remember { mutableStateOf(false) }
+
+    var alertMessage by remember { mutableStateOf<String?>(null) }
+
+    val themeColorHex by viewModel.themeColorHexState.collectAsState()
+    val resumeButtonPosition by viewModel.resumeButtonPositionState.collectAsState()
+    val currentAccentColor = remember(themeColorHex) { Color(android.graphics.Color.parseColor(themeColorHex)) }
+
+    // Auto Lock synchronization: if files locked & we are on dashboard, swap back
+    LaunchedEffect(isPrivateLocked) {
+        if (isPrivateLocked && activeVaultViewState == "dashboard") {
             activeVaultViewState = "keypad_unlock"
-        } else {
-            activeVaultViewState = "dashboard"
         }
     }
 
-    // PIN change click handler
-    val handlePinChangeClick = {
-        if (!hasPasscode) {
-            setupStep = 1
-            tempPin = ""
-            keypadError = null
-            activeVaultViewState = "keypad_setup"
-        } else {
-            keypadError = null
-            activeVaultViewState = "keypad_unlock_for_change"
-        }
-    }
-
-    // Status text for vault row
-    val vaultStatusText = when {
-        !hasPasscode -> "غير نشط (بدون رمز)"
-        isPrivateLocked -> "مغلق 🔒"
-        else -> "مفتوح 🔓"
-    }
-
-    // Controlled navigation routing
+    // --- RENDER DYNAMIC ACTIVE VIEW ---
     when (activeVaultViewState) {
         "keypad_unlock" -> {
             VaultKeypad(
-                title = "فتح الخزنة السرية",
-                subtitle = "أدخل الرقم السري المكون من 4 أرقام للوصول إلى الملفات المحمية",
-                accentColor = MaterialTheme.colorScheme.primary,
-                errorText = keypadError,
-                onPinEntered = { pin: String ->
-                    val success = viewModel?.unlockPrivateFolder(pin) ?: false
-                    if (success) {
-                        keypadError = null
+                title = "فتح قفل الخزنة الآمنة 🔓",
+                subtitle = "الرجاء كتابة رمز PIN السري لفك التشفير والاستعراض",
+                accentColor = currentAccentColor,
+                errorText = unlockErrorTextState,
+                onPinEntered = { pin ->
+                    if (viewModel.unlockPrivateFolder(pin)) {
+                        unlockErrorTextState = null
                         activeVaultViewState = "dashboard"
                     } else {
-                        keypadError = "الرقم السري غير صحيح، حاول مجدداً"
+                        unlockErrorTextState = "رمز PIN خاطئ! يرجى التحقق المحاولة مرة أخرى."
                     }
                 },
-                onBack = { activeVaultViewState = "settings" }
-            )
-        }
-
-        "keypad_unlock_for_change" -> {
-            VaultKeypad(
-                title = "التحقق من الرقم السري",
-                subtitle = "أدخل الرقم السري الحالي للمتابعة إلى تغيير الرمز",
-                accentColor = MaterialTheme.colorScheme.secondary,
-                errorText = keypadError,
-                onPinEntered = { pin: String ->
-                    val success = (savedPasscode == pin)
-                    if (success) {
-                        setupStep = 1
-                        tempPin = ""
-                        keypadError = null
-                        activeVaultViewState = "keypad_setup"
-                    } else {
-                        keypadError = "الرقم السري الحالي غير صحيح"
-                    }
-                },
-                onBack = { activeVaultViewState = "settings" }
+                onBack = {
+                    activeVaultViewState = "settings"
+                }
             )
         }
 
         "keypad_setup" -> {
-            val titleText = if (setupStep == 1) "تعيين رقم سري جديد" else "تأكيد الرقم السري"
-            val subtitleText = if (setupStep == 1) "أدخل 4 أرقام لحماية ملفاتك الخاصة" else "أعد إدخال نفس الأرقام للتأكيد"
+            val setupTitle = if (setupStepState == 1) "إعداد الخزنة السرية 🔐" else "تأكيد الرمز السري 🔒"
+            val setupSubtitle = if (setupStepState == 1) 
+                "أدخل رمز الـ PIN المكون من 4 أرقام لتعيينه ككود قفل أساسي" 
+            else 
+                "أعد كتابة الرمز السري المكون من 4 أرقام لتأكيد التفعيل"
 
             VaultKeypad(
-                title = titleText,
-                subtitle = subtitleText,
-                accentColor = MaterialTheme.colorScheme.primary,
-                errorText = keypadError,
-                onPinEntered = { pin: String ->
-                    if (setupStep == 1) {
-                        tempPin = pin
-                        setupStep = 2
-                        keypadError = null
+                title = setupTitle,
+                subtitle = setupSubtitle,
+                accentColor = currentAccentColor,
+                errorText = setupErrorTextState,
+                onPinEntered = { pin ->
+                    if (setupStepState == 1) {
+                        setupFirstPinState = pin
+                        setupStepState = 2
+                        setupErrorTextState = null
                     } else {
-                        if (pin == tempPin) {
-                            viewModel?.savePasscode(pin)
-                            viewModel?.unlockPrivateFolder(pin)
-                            Toast.makeText(context, "تم حفظ الرقم السري بنجاح", Toast.LENGTH_SHORT).show()
+                        if (pin == setupFirstPinState) {
+                            viewModel.savePasscode(pin)
+                            hasPasscodeState = true
+                            setupStepState = 1
+                            setupFirstPinState = ""
+                            setupErrorTextState = null
                             activeVaultViewState = "dashboard"
                         } else {
-                            keypadError = "الرموز غير متطابقة، حاول مجدداً"
-                            setupStep = 1
-                            tempPin = ""
+                            setupStepState = 1
+                            setupFirstPinState = ""
+                            setupErrorTextState = "الرموز غير متطابقة! يرجى إعادة تعيين الكود مجدداً."
                         }
                     }
                 },
-                onBack = { activeVaultViewState = "settings" }
+                onBack = {
+                    if (setupStepState == 2) {
+                        setupStepState = 1
+                        setupFirstPinState = ""
+                        setupErrorTextState = null
+                    } else {
+                        activeVaultViewState = "settings"
+                    }
+                }
             )
         }
 
         "dashboard" -> {
             VaultDashboard(
+                viewModel = viewModel,
                 privateFiles = privateFiles,
-                onPlayFile = { path ->
-                    onPlayFile?.invoke(path)
-                },
-                onRemoveFromVault = { file ->
-                    viewModel?.setPrivateStatus(file, false)
-                    Toast.makeText(context, "تمت إزالة الملف من الخزنة", Toast.LENGTH_SHORT).show()
-                },
-                onLockVault = {
-                    viewModel?.lockPrivateFolder()
+                accentColor = currentAccentColor,
+                onPlayFile = onPlayFile,
+                onBackToSettings = {
                     activeVaultViewState = "settings"
                 },
-                onBack = { activeVaultViewState = "settings" }
+                onChangePin = {
+                    setupStepState = 1
+                    setupFirstPinState = ""
+                    setupErrorTextState = null
+                    activeVaultViewState = "keypad_setup"
+                }
             )
         }
 
         else -> {
-            // "settings" main view
-            val scrollState = rememberScrollState()
-
+            // "settings" view
             Scaffold(
-                modifier = modifier.fillMaxSize(),
                 topBar = {
                     TopAppBar(
-                        title = {
-                            Text(
-                                text = "الإعدادات والمحاذاة (Settings)",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        },
+                        title = { Text("الإعدادات والمحاذاة (Settings)", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
                         navigationIcon = {
-                            if (onBack != null) {
-                                IconButton(onClick = onBack) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "رجوع"
-                                    )
-                                }
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                            titleContentColor = MaterialTheme.colorScheme.onSurface,
-                            navigationIconContentColor = MaterialTheme.colorScheme.onSurface
+                            containerColor = Color.Transparent
                         )
                     )
                 },
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor = Color.Transparent
             ) { paddingValues ->
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(paddingValues)
                         .verticalScroll(scrollState)
+                        .padding(16.dp)
                 ) {
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // =========================================================
-                    // 1. قسم "خصائص المشغل والتشغيل"
-                    // =========================================================
-                    SettingsSectionHeader(title = "خصائص المشغل والتشغيل")
-
-                    val resumeLabel = when (appSettings.resumePlaybackMode) {
-                        "AUTO" -> "استئناف تلقائي (AUTO)"
-                        "START" -> "البدء من البداية (START)"
-                        else -> "سؤال دائماً (ASK)"
+                    val colorsList = remember {
+                        listOf(
+                            "#FFD500F9" to "أرجواني كودياك (Kodiak Magenta)",
+                            "#FFFF3366" to "وردي نيون (Neon Pink)",
+                            "#FF007AFF" to "أزرق ملكي (iOS Blue)",
+                            "#FF00E5FF" to "سماوي نيون (Neon Cyan)",
+                            "#FF4CD964" to "أخضر عشبي (Lawn Green)",
+                            "#FFFF9500" to "برتقالي ناري (Fiery Orange)",
+                            "#FFFF5252" to "أحمر مرجاني (Coral Red)",
+                            "#FF9C27B0" to "بنفسجي عميق (Deep Violet)",
+                            // New vibrant and modern colors requested by user
+                            "#FF3A86FF" to "أزرق كهربائي (Electric Blue)",
+                            "#FF06D6A0" to "أخضر نعناعي (Mint Green)",
+                            "#FF009688" to "فيروزي كلاسيكي (Classic Teal)",
+                            "#FF00A86B" to "أخضر زمردي (Emerald Green)",
+                            "#FF7209B7" to "بنفسجي كهربائي (Electric Violet)",
+                            "#FF8338EC" to "لافندر نيون (Neon Lavender)",
+                            "#FFF15BB5" to "وردي أوركيد (Orchid Pink)",
+                            "#FFFF70A6" to "خوخي دافئ (Warm Peach)",
+                            "#FFE63946" to "أحمر الغروب (Sunset Crimson)",
+                            "#FFFB5607" to "برتقالي مشرق (Radiant Orange)",
+                            "#FFFFB300" to "ذهبي مشمس (Sunny Gold)",
+                            "#FF3F51B5" to "أزرق نيلج (Indigo Blue)"
+                        )
                     }
-                    SettingsNavigationRow(
-                        icon = Icons.Default.Replay,
-                        title = "نمط استئناف التشغيل",
-                        currentValue = resumeLabel,
-                        onClick = { selectionDialogType = "resume_mode" }
-                    )
 
-                    SettingsNavigationRow(
-                        icon = Icons.Default.Speed,
-                        title = "مدة التقديم والترجيع",
-                        currentValue = "${appSettings.seekIncrementSeconds} ثوانٍ",
-                        onClick = { selectionDialogType = "seek_increment" }
-                    )
-
-                    val orientationLabel = when (appSettings.defaultOrientation) {
-                        "PORTRAIT" -> "عمودي (PORTRAIT)"
-                        "LANDSCAPE" -> "أفقي (LANDSCAPE)"
-                        "AUTO" -> "تلقائي مع المستشعر (AUTO)"
-                        else -> "افتراضي النظام (SYSTEM)"
+                    val currentAccentColorName = remember(themeColorHex) {
+                        colorsList.find { it.first.equals(themeColorHex, ignoreCase = true) }?.second ?: "مخصص"
                     }
-                    SettingsNavigationRow(
-                        icon = Icons.Default.AspectRatio,
-                        title = "اتجاه الشاشة الافتراضي",
-                        currentValue = orientationLabel,
-                        onClick = { selectionDialogType = "default_orientation" }
+
+                    val currentThemeModeText = when (appThemeMode) {
+                        "LIGHT" -> "الوضع الفاتح (Light Mode)"
+                        "DARK" -> "الوضع الداكن (Dark Mode)"
+                        else -> "تلقائي حسب النظام (System)"
+                    }
+
+                    val currentResumeSideText = if (resumeButtonPosition == "LEFT") "اليسار (Left)" else "اليمين (Right)"
+
+                    // General Title Section
+                    Text(
+                        "خصائص التشغيل (Playback Configuration)",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
 
-                    SettingsSwitchRow(
-                        icon = Icons.Default.PlayArrow,
-                        title = "التشغيل التلقائي للتالي",
-                        description = "تشغيل الفيديو التالي تلقائياً عند انتهاء الحالي",
-                        checked = appSettings.autoPlayNext,
-                        onCheckedChange = { viewModel?.setAutoPlayNext(it) }
-                    )
-
-                    SettingsSwitchRow(
-                        icon = Icons.Default.PlayArrow,
-                        title = "صورة داخل صورة تلقائية (Auto-PiP)",
-                        description = "تفعيل وضع PiP تلقائياً عند الخروج للتطبيق الآخر",
-                        checked = appSettings.autoPip,
-                        onCheckedChange = { viewModel?.setAutoPip(it) }
-                    )
-
-                    SettingsSwitchRow(
-                        icon = Icons.Default.PlayArrow,
-                        title = "التشغيل في الخلفية",
-                        description = "استمرار تشغيل الصوت عند تصغير التطبيق",
-                        checked = appSettings.backgroundPlayback,
-                        onCheckedChange = { viewModel?.setBackgroundPlayback(it) }
-                    )
-
-                    SettingsSwitchRow(
-                        icon = Icons.Default.ColorLens,
-                        title = "تذكر السطوع",
-                        description = "حفظ مستوى السطوع واستعادته عند فتح المشغل",
-                        checked = appSettings.rememberBrightness,
-                        onCheckedChange = { viewModel?.setRememberBrightness(it) }
-                    )
-
-                    SettingsSwitchRow(
+                    // 1. Playback Speed Clickable Row
+                    SettingsOptionRow(
+                        title = "السرعة الافتراضية للتشغيل (Default Playing Speed)",
+                        subtitle = "حدد معدل السرعة كوضع أساسي عند فتح أي ملف تشغيل",
+                        currentValue = "${defaultSpeed}x",
                         icon = Icons.Default.Speed,
-                        title = "تذكر السرعة",
-                        description = "تذكر سرعة التشغيل المختارة بين الفيديوهات",
-                        checked = appSettings.rememberSpeed,
-                        onCheckedChange = { viewModel?.setRememberSpeed(it) }
+                        accentColor = currentAccentColor,
+                        onClick = { showSpeedDialog = true }
                     )
 
-                    SettingsSwitchRow(
+                    // 2. Aspect Ratio Clickable Row
+                    SettingsOptionRow(
+                        title = "تحجيم الشاشة الافتراضي (Default Aspect Ratio)",
+                        subtitle = "حدد طريقة ملء الشاشة كخيار وعرض أساسي للفيديوهات",
+                        currentValue = defaultScaleMode,
                         icon = Icons.Default.AspectRatio,
-                        title = "تذكر أبعاد الشاشة",
-                        description = "تذكر نسبة أبعاد الفيديو واستعادتها تلقائياً",
-                        checked = appSettings.rememberAspectRatio,
-                        onCheckedChange = { viewModel?.setRememberAspectRatio(it) }
+                        accentColor = currentAccentColor,
+                        onClick = { showAspectRatioDialog = true }
                     )
 
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // --- THEME & CUSTOMIZATION SECTION ---
+                    Text(
+                        "مظهر التطبيق وتخصيص الألوان (App Theme & Settings)",
+                        fontSize = 13.sp,
+                        color = currentAccentColor,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
 
-                    // =========================================================
-                    // 2. قسم "إدارة الوسائط والمكتبة"
-                    // =========================================================
-                    SettingsSectionHeader(title = "إدارة الوسائط والمكتبة")
-
-                    SettingsSwitchRow(
-                        icon = Icons.Default.Info,
-                        title = "إظهار الملفات المخفية",
-                        description = "عرض الملفات والمجلدات التي تبدأ بنقطة (.)",
-                        checked = appSettings.showHiddenFiles,
-                        onCheckedChange = { viewModel?.setShowHiddenFiles(it) }
+                    // 3. Theme Mode Selection Card/Row
+                    SettingsOptionRow(
+                        title = "وضع مظهر التطبيق (Dark / Light Mode)",
+                        subtitle = "التحكم في المظهر الداكن (الليلي) أو الفاتح (النهاري) أو التلقائي",
+                        currentValue = currentThemeModeText,
+                        icon = Icons.Default.Brightness4,
+                        accentColor = currentAccentColor,
+                        onClick = { showThemeDialog = true }
                     )
 
-                    SettingsSwitchRow(
-                        icon = Icons.Default.Info,
-                        title = "إظهار مجلدات .nomedia",
-                        description = "إظهار مجلدات وسائط تحتوي على ملفات .nomedia",
-                        checked = appSettings.showNoMediaFiles,
-                        onCheckedChange = { viewModel?.setShowNoMediaFiles(it) }
-                    )
-
-                    SettingsSwitchRow(
-                        icon = Icons.Default.Replay,
-                        title = "إظهار مشغل مؤخراً",
-                        description = "عرض قسم آخر الفيديوهات المشغلة في الصفحة الرئيسية",
-                        checked = appSettings.showRecentlyPlayed,
-                        onCheckedChange = { viewModel?.setShowRecentlyPlayed(it) }
-                    )
-
-                    SettingsSwitchRow(
+                    // 4. Accent Color Row
+                    SettingsOptionRow(
+                        title = "لون السمة الأساسي (Accent Color Selection)",
+                        subtitle = "اختيار اللون السائد لأزرار التشغيل والتقدم والنوافذ المنبثقة",
+                        currentValue = currentAccentColorName,
                         icon = Icons.Default.Palette,
-                        title = "إظهار الزر العائم (FAB)",
-                        description = "إظهار زر التشغيل العائم في الواجهة الرئيسية",
-                        checked = appSettings.showFab,
-                        onCheckedChange = { viewModel?.setShowFab(it) }
+                        accentColor = currentAccentColor,
+                        onClick = { showAccentColorDialog = true }
                     )
 
-                    SettingsNavigationRow(
-                        icon = Icons.Default.Refresh,
-                        title = "تحديث المكتبة يدوياً",
-                        currentValue = "إعادة فحص",
-                        onClick = {
-                            viewModel?.launchIncrementalScan()
-                            Toast.makeText(context, "جاري تحديث ملفات الوسائط...", Toast.LENGTH_SHORT).show()
+                    // 5. Resume Side Button Position
+                    SettingsOptionRow(
+                        title = "موقع زر استئناف التشغيل (Resume Button Side)",
+                        subtitle = "تحديد اتجاه زر استئناف تشغيل الفيديوهات (اليمين أو اليسار)",
+                        currentValue = currentResumeSideText,
+                        icon = Icons.Default.CompareArrows,
+                        accentColor = currentAccentColor,
+                        onClick = { showResumeButtonDialog = true }
+                    )
+
+                    // --- POPUP DIALOGS IMPLEMENTATION ---
+                    if (showThemeDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showThemeDialog = false },
+                            title = {
+                                Text(
+                                    text = "وضع مظهر التطبيق (Theme Mode)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    listOf(
+                                        "SYSTEM" to "تلقائي حسب النظام (System Default)",
+                                        "LIGHT" to "الوضع الفاتح الصباحي (Light Day Mode)",
+                                        "DARK" to "الوضع الداكن الليلي (Dark Night Mode)"
+                                    ).forEach { (mode, label) ->
+                                        val isSelected = appThemeMode == mode
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) currentAccentColor.copy(alpha = 0.15f) else Color.Transparent)
+                                                .clickable {
+                                                    viewModel.saveAppThemeMode(mode)
+                                                    showThemeDialog = false
+                                                }
+                                                .padding(14.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    viewModel.saveAppThemeMode(mode)
+                                                    showThemeDialog = false
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = currentAccentColor)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = label,
+                                                fontSize = 14.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) currentAccentColor else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showThemeDialog = false }) {
+                                    Text("إلغاء (Cancel)", color = currentAccentColor)
+                                }
+                            }
+                        )
+                    }
+
+                    if (showSpeedDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showSpeedDialog = false },
+                            title = {
+                                Text(
+                                    text = "السرعة الافتراضية للتشغيل (Playback Speed)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f).forEach { speed ->
+                                        val isSelected = defaultSpeed == speed
+                                        val label = if (speed == 1.0f) "1.0x (طبيعي)" else "${speed}x"
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) currentAccentColor.copy(alpha = 0.15f) else Color.Transparent)
+                                                .clickable {
+                                                    defaultSpeed = speed
+                                                    viewModel.savePlaybackSpeed(speed)
+                                                    showSpeedDialog = false
+                                                }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    defaultSpeed = speed
+                                                    viewModel.savePlaybackSpeed(speed)
+                                                    showSpeedDialog = false
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = currentAccentColor)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = label,
+                                                fontSize = 14.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) currentAccentColor else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showSpeedDialog = false }) {
+                                    Text("إلغاء (Cancel)", color = currentAccentColor)
+                                }
+                            }
+                        )
+                    }
+
+                    if (showAspectRatioDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showAspectRatioDialog = false },
+                            title = {
+                                Text(
+                                    text = "تحجيم الشاشة الافتراضي (Aspect Ratio)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf(
+                                        "FIT" to "ملاءمة الشاشة (FIT)",
+                                        "FILL" to "تعبئة الشاشة كاملة (FILL)",
+                                        "STRETCH" to "تمديد الصورة (STRETCH)",
+                                        "CROP" to "قص أطراف الفيديو (CROP)"
+                                    ).forEach { (mode, label) ->
+                                        val isSelected = defaultScaleMode == mode
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) currentAccentColor.copy(alpha = 0.15f) else Color.Transparent)
+                                                .clickable {
+                                                    defaultScaleMode = mode
+                                                    viewModel.saveDefaultScaleMode(mode)
+                                                    showAspectRatioDialog = false
+                                                }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    defaultScaleMode = mode
+                                                    viewModel.saveDefaultScaleMode(mode)
+                                                    showAspectRatioDialog = false
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = currentAccentColor)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = label,
+                                                fontSize = 14.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) currentAccentColor else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showAspectRatioDialog = false }) {
+                                    Text("إلغاء (Cancel)", color = currentAccentColor)
+                                }
+                            }
+                        )
+                    }
+
+                    if (showAccentColorDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showAccentColorDialog = false },
+                            title = {
+                                Text(
+                                    text = "اختر لون السمة الأساسي (Accent Color)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    colorsList.forEach { (hex, name) ->
+                                        val colorItem = Color(android.graphics.Color.parseColor(hex))
+                                        val isSelected = themeColorHex.equals(hex, ignoreCase = true)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) colorItem.copy(alpha = 0.15f) else Color.Transparent)
+                                                .clickable {
+                                                    viewModel.saveThemeColorHex(hex)
+                                                    showAccentColorDialog = false
+                                                }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    viewModel.saveThemeColorHex(hex)
+                                                    showAccentColorDialog = false
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = colorItem)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            // Color indicator circle
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .clip(CircleShape)
+                                                    .background(colorItem)
+                                                    .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = name,
+                                                fontSize = 13.5.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) colorItem else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showAccentColorDialog = false }) {
+                                    Text("إلغاء (Cancel)", color = currentAccentColor)
+                                }
+                            }
+                        )
+                    }
+
+                    if (showResumeButtonDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showResumeButtonDialog = false },
+                            title = {
+                                Text(
+                                    text = "موقع زر استئناف التشغيل (Resume Button)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    textAlign = TextAlign.Right,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            text = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf(
+                                        "LEFT" to "اليسار (Resume Button on Left)",
+                                        "RIGHT" to "اليمين (Resume Button on Right)"
+                                    ).forEach { (side, label) ->
+                                        val isSelected = resumeButtonPosition == side
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) currentAccentColor.copy(alpha = 0.15f) else Color.Transparent)
+                                                .clickable {
+                                                    viewModel.saveResumeButtonPosition(side)
+                                                    showResumeButtonDialog = false
+                                                }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    viewModel.saveResumeButtonPosition(side)
+                                                    showResumeButtonDialog = false
+                                                },
+                                                colors = RadioButtonDefaults.colors(selectedColor = currentAccentColor)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = label,
+                                                fontSize = 14.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) currentAccentColor else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showResumeButtonDialog = false }) {
+                                    Text("إلغاء (Cancel)", color = currentAccentColor)
+                                }
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Subtitle Title Section
+                    Text(
+                        "الترجمة والخطوط (Subtitles Styling)",
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text("تمكين الترجمة (Enable Subtitles)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text("تفعيل استيراد ملف ترجمة الفيديو بشكل دائم", fontSize = 11.sp, color = Color.Gray)
+                                }
+                                Switch(
+                                    checked = subtitlesEnabled,
+                                    onCheckedChange = {
+                                        subtitlesEnabled = it
+                                        viewModel.saveSubtitlesEnabled(it)
+                                    }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Text("حجم خط الترجمة (Subtitle size): ${subtitleSize.toInt()}sp", fontSize = 14.sp)
+                            AppSlider(
+                                value = subtitleSize,
+                                onValueChange = {
+                                    subtitleSize = it
+                                    viewModel.saveSubtitleSize(it)
+                                },
+                                valueRange = 12f..32f,
+                                modifier = Modifier.testTag("subtitle_size_slider")
+                            )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // --- NEW DEDICATED VAULT PORT-CARD ---
+                    Text(
+                        "الخزنة السرية المحمية (Secure Vault Center)",
+                        fontSize = 15.sp,
+                        color = currentAccentColor,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 12.dp)
                     )
 
-                    SettingsNavigationRow(
-                        icon = Icons.Default.CleaningServices,
-                        title = "تصفية سجل المشاهدة",
-                        currentValue = "مسح",
-                        onClick = {
-                            viewModel?.clearHistory()
-                            Toast.makeText(context, "تم تنظيف سجل المشاهدة", Toast.LENGTH_SHORT).show()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp)
+                            .clickable {
+                                if (!hasPasscodeState) {
+                                    activeVaultViewState = "keypad_setup"
+                                } else if (isPrivateLocked) {
+                                    activeVaultViewState = "keypad_unlock"
+                                } else {
+                                    activeVaultViewState = "dashboard"
+                                }
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(currentAccentColor.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = "Safe Folder",
+                                    tint = currentAccentColor,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "الخزنة الخاصة (Private Folder)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    if (!hasPasscodeState) "غير نشط. اضغط لتهيئة الرمز السري وحماية ملفاتك"
+                                    else if (isPrivateLocked) "مغلق. انقر لإدخال الرمز السري واستعراض المحتوى"
+                                    else "مفتوح. انقر لتصفح الملفات والتحكم بها",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                            thickness = 0.5.dp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Cleaner DB Systems
+                    Text(
+                        "الأداء والذاكرة والترقية (Performance & Maintenance)",
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 12.dp)
                     )
 
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                            // Manual refresh index scans
+                            Button(
+                                onClick = {
+                                    viewModel.launchIncrementalScan()
+                                    alertMessage = "تم إطلاق الفحص المتكامل للملفات بنجاح"
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("settings_scan_trigger"),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Scan")
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("تحديث مكتبة الوسائط يدوياً (Rescan Library)", color = Color.Black)
+                                }
+                            }
 
-                    // =========================================================
-                    // 3. قسم "الخزنة السرية المحمية"
-                    // =========================================================
-                    SettingsSectionHeader(title = "الخزنة السرية المحمية")
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                    SettingsNavigationRow(
-                        icon = if (isPrivateLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                        title = "الخزنة الخاصة",
-                        currentValue = vaultStatusText,
-                        onClick = handleVaultClick
-                    )
+                            // Wipe history button
+                            Button(
+                                onClick = {
+                                    viewModel.clearHistory()
+                                    alertMessage = "تم تصفية وإلغاء أرشيف تاريخ المشاهدة بنجاح"
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("settings_clear_history"),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.DeleteSweep, contentDescription = "Clear")
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("تصفية سجل المشاهدة (Wipe Playback History)", color = Color.White)
+                                }
+                            }
+                        }
+                    }
 
-                    SettingsNavigationRow(
-                        icon = Icons.Default.VpnKey,
-                        title = "تغيير الرقم السري (PIN)",
-                        currentValue = if (hasPasscode) "تعيين رمز جديد" else "لم يتم الضبط",
-                        onClick = handlePinChangeClick
-                    )
-
-                    Spacer(modifier = Modifier.height(24.dp))
+                    // Status feedback modal
+                    alertMessage?.let { msg ->
+                        AlertDialog(
+                            onDismissRequest = { alertMessage = null },
+                            title = { Text("إشعار (Notification)", fontWeight = FontWeight.Bold) },
+                            text = { Text(msg) },
+                            confirmButton = {
+                                TextButton(onClick = { alertMessage = null }) {
+                                    Text("حسناً (Ok)")
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
     }
-
-    // Choice Dialogs
-    when (selectionDialogType) {
-        "resume_mode" -> {
-            AlertDialog(
-                onDismissRequest = { selectionDialogType = null },
-                title = { Text("نمط استئناف التشغيل", fontWeight = FontWeight.Bold) },
-                text = {
-                    Column {
-                        listOf(
-                            "ASK" to "سؤال دائماً (ASK)",
-                            "AUTO" to "استئناف تلقائي (AUTO)",
-                            "START" to "البدء من البداية (START)"
-                        ).forEach { (modeKey, label) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel?.setResumePlaybackMode(modeKey)
-                                        selectionDialogType = null
-                                    }
-                                    .padding(vertical = 10.dp, horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                androidx.compose.material3.RadioButton(
-                                    selected = (appSettings.resumePlaybackMode == modeKey),
-                                    onClick = {
-                                        viewModel?.setResumePlaybackMode(modeKey)
-                                        selectionDialogType = null
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(text = label, style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { selectionDialogType = null }) {
-                        Text("إلغاء")
-                    }
-                }
-            )
-        }
-
-        "seek_increment" -> {
-            AlertDialog(
-                onDismissRequest = { selectionDialogType = null },
-                title = { Text("مدة التقديم والترجيع", fontWeight = FontWeight.Bold) },
-                text = {
-                    Column {
-                        listOf(5, 10, 15, 30).forEach { seconds ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel?.setSeekIncrementSeconds(seconds)
-                                        selectionDialogType = null
-                                    }
-                                    .padding(vertical = 10.dp, horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                androidx.compose.material3.RadioButton(
-                                    selected = (appSettings.seekIncrementSeconds == seconds),
-                                    onClick = {
-                                        viewModel?.setSeekIncrementSeconds(seconds)
-                                        selectionDialogType = null
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(text = "$seconds ثوانٍ", style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { selectionDialogType = null }) {
-                        Text("إلغاء")
-                    }
-                }
-            )
-        }
-
-        "default_orientation" -> {
-            AlertDialog(
-                onDismissRequest = { selectionDialogType = null },
-                title = { Text("اتجاه الشاشة الافتراضي", fontWeight = FontWeight.Bold) },
-                text = {
-                    Column {
-                        listOf(
-                            "SYSTEM" to "افتراضي النظام (SYSTEM)",
-                            "PORTRAIT" to "عمودي (PORTRAIT)",
-                            "LANDSCAPE" to "أفقي (LANDSCAPE)",
-                            "AUTO" to "تلقائي مع المستشعر (AUTO)"
-                        ).forEach { (orientKey, label) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel?.setDefaultOrientation(orientKey)
-                                        selectionDialogType = null
-                                    }
-                                    .padding(vertical = 10.dp, horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                androidx.compose.material3.RadioButton(
-                                    selected = (appSettings.defaultOrientation == orientKey),
-                                    onClick = {
-                                        viewModel?.setDefaultOrientation(orientKey)
-                                        selectionDialogType = null
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(text = label, style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { selectionDialogType = null }) {
-                        Text("إلغاء")
-                    }
-                }
-            )
-        }
-    }
 }
 
-// =============================================================================
-// AUXILIARY COMPOSABLE FUNCTIONS (VAULT KEYPAD, DASHBOARD & DIALOGS)
-// =============================================================================
-
-/**
- * PIN Keypad composable for unlocking or setting up the Private Vault.
- */
+// ==========================================
+// --- PREMIUM KEYPAD COMPOSABLE LOCK SCREEN ---
+// ==========================================
 @Composable
 fun VaultKeypad(
     title: String,
     subtitle: String,
     accentColor: Color,
-    errorText: String?,
+    errorText: String? = null,
     onPinEntered: (String) -> Unit,
     onBack: () -> Unit
 ) {
@@ -609,320 +833,883 @@ fun VaultKeypad(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(MaterialTheme.colorScheme.background)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier.align(Alignment.Start)
+        // Upper section
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.weight(1f)
         ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "رجوع",
-                tint = MaterialTheme.colorScheme.onSurface
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Start
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(30.dp))
+
+            Text(
+                text = title,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center
             )
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-        Text(
-            text = title,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center
-        )
+            Text(
+                text = subtitle,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                textAlign = TextAlign.Center,
+                lineHeight = 18.sp
+            )
 
-        Spacer(modifier = Modifier.height(8.dp))
+            if (errorText != null) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.Red.copy(alpha = 0.08f)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.Red.copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = errorText,
+                        fontSize = 12.sp,
+                        color = Color.Red,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
 
-        Text(
-            text = subtitle,
-            fontSize = 13.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
+            Spacer(modifier = Modifier.height(36.dp))
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            repeat(4) { idx ->
-                val isFilled = idx < pin.length
-                Box(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(if (isFilled) accentColor else MaterialTheme.colorScheme.surfaceVariant)
-                        .border(1.dp, accentColor, CircleShape)
-                )
+            // Active visual PIN dots
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                for (i in 0 until 4) {
+                    val isFilled = pin.length > i
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .border(
+                                width = 2.dp,
+                                color = if (isFilled) accentColor else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f),
+                                shape = CircleShape
+                            )
+                            .background(
+                                color = if (isFilled) accentColor else Color.Transparent,
+                                shape = CircleShape
+                            )
+                    )
+                }
             }
         }
 
-        if (errorText != null) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = errorText,
-                color = MaterialTheme.colorScheme.error,
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center
+        // Numerical keypad layout
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            modifier = Modifier.padding(bottom = 30.dp)
+        ) {
+            val keyRows = listOf(
+                listOf("1", "2", "3"),
+                listOf("4", "5", "6"),
+                listOf("7", "8", "9"),
+                listOf("C", "0", "back")
             )
-        }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        val keys = listOf(
-            listOf("1", "2", "3"),
-            listOf("4", "5", "6"),
-            listOf("7", "8", "9"),
-            listOf("", "0", "⌫")
-        )
-
-        keys.forEach { row ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
-                modifier = Modifier.padding(vertical = 8.dp)
-            ) {
-                row.forEach { key ->
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(CircleShape)
-                            .background(if (key.isNotEmpty()) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
-                            .clickable(enabled = key.isNotEmpty()) {
-                                when (key) {
-                                    "⌫" -> if (pin.isNotEmpty()) pin = pin.dropLast(1)
-                                    "" -> {}
-                                    else -> {
+            keyRows.forEach { rowKeys ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    rowKeys.forEach { key ->
+                        Box(
+                            modifier = Modifier
+                                .size(76.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (key == "C" || key == "back") Color.Transparent 
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                )
+                                .clickable {
+                                    if (key == "back") {
+                                        if (pin.isNotEmpty()) {
+                                            pin = pin.dropLast(1)
+                                        }
+                                    } else if (key == "C") {
+                                        pin = ""
+                                    } else {
                                         if (pin.length < 4) {
                                             pin += key
                                             if (pin.length == 4) {
-                                                val fullPin = pin
-                                                pin = ""
-                                                onPinEntered(fullPin)
+                                                val savedPin = pin
+                                                pin = "" // clear for next try
+                                                onPinEntered(savedPin)
                                             }
                                         }
                                     }
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = key,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (key == "back") {
+                                Icon(
+                                    imageVector = Icons.Default.Backspace,
+                                    contentDescription = "Backspace",
+                                    tint = MaterialTheme.colorScheme.onBackground
+                                )
+                            } else {
+                                Text(
+                                    text = key,
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (key == "C") Color.Red.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onBackground
+                                )
+                            }
+                        }
                     }
+                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }
     }
 }
 
-/**
- * Private Vault Dashboard for viewing and managing secure media files.
- */
-@OptIn(ExperimentalMaterial3Api::class)
+// ==========================================
+// --- PREMIUM VAULT DEDICATED DASHBOARD ---
+// ==========================================
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun VaultDashboard(
+    viewModel: MediaViewModel,
     privateFiles: List<MediaFile>,
-    onPlayFile: (String) -> Unit,
-    onRemoveFromVault: (MediaFile) -> Unit,
-    onLockVault: () -> Unit,
-    onBack: () -> Unit
+    accentColor: Color,
+    onPlayFile: ((String) -> Unit)? = null,
+    onBackToSettings: () -> Unit,
+    onChangePin: () -> Unit
 ) {
-    var fileDetailsToDisplay by remember { mutableStateOf<MediaFile?>(null) }
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.lockPrivateFolder()
+        }
+    }
+
+    var searchQuery by remember { mutableStateOf("") }
+    var sortBy by remember { mutableStateOf("date") } // "date", "title", "size"
+    var showDeleteConfirmByFile by remember { mutableStateOf<MediaFile?>(null) }
+
+    val selectedVaultPaths = remember { mutableStateListOf<String>() }
+    var showPropertiesDialog by remember { mutableStateOf<MediaFile?>(null) }
+    var showMultiPropertiesDialog by remember { mutableStateOf(false) }
+    var showMultiDeleteConfirm by remember { mutableStateOf(false) }
+
+    LaunchedEffect(privateFiles) {
+        val currentPaths = privateFiles.map { it.path }
+        val toRemove = selectedVaultPaths.filter { it !in currentPaths }
+        selectedVaultPaths.removeAll(toRemove)
+    }
+
+    val filteredFiles = remember(privateFiles, searchQuery, sortBy) {
+        var list = privateFiles.filter { 
+            it.title.contains(searchQuery, ignoreCase = true)
+        }
+        when (sortBy) {
+            "title" -> list = list.sortedBy { it.title }
+            "size" -> list = list.sortedByDescending { it.size }
+            "date" -> list = list.sortedByDescending { it.dateModified }
+        }
+        list
+    }
+
+    val totalSize = remember(privateFiles) {
+        privateFiles.sumOf { it.size }
+    }
+
+    val formattedTotalSize = remember(totalSize) {
+        val mb = totalSize / (1024f * 1024f)
+        if (mb > 1024) {
+            "%.2f GB".format(mb / 1024f)
+        } else {
+            "%.1f MB".format(mb)
+        }
+    }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "الخزنة السرية (${privateFiles.size})",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "رجوع"
+            @OptIn(ExperimentalMaterial3Api::class)
+            if (selectedVaultPaths.isNotEmpty()) {
+                TopAppBar(
+                    title = { 
+                        Text(
+                            "${selectedVaultPaths.size} محدد",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
                         )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { selectedVaultPaths.clear() }) {
+                            Icon(Icons.Default.Close, contentDescription = "إلغاء التحديد")
+                        }
+                    },
+                    actions = {
+                        // Unhide/Restore selected files
+                        IconButton(onClick = {
+                            val selectedFiles = privateFiles.filter { it.path in selectedVaultPaths }
+                            selectedFiles.forEach { file ->
+                                viewModel.setPrivateStatus(file, false)
+                            }
+                            selectedVaultPaths.clear()
+                        }) {
+                            Icon(Icons.Default.Visibility, contentDescription = "إظهار المحدّد", tint = accentColor)
+                        }
+                        // Delete selected files permanently
+                        IconButton(onClick = {
+                            showMultiDeleteConfirm = true
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = "حذف المحدّد نهائياً", tint = Color(0xFFFF5252))
+                        }
+                        // Info/Properties of selected files
+                        IconButton(onClick = {
+                            showMultiPropertiesDialog = true
+                        }) {
+                            Icon(Icons.Default.Info, contentDescription = "خصائص المحدّد", tint = MaterialTheme.colorScheme.onSurface)
+                        }
                     }
-                },
-                actions = {
-                    Button(
-                        onClick = onLockVault,
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                )
+            } else {
+                TopAppBar(
+                    title = { 
+                        Text(
+                            "الخزنة الخاصة (Private Folder)",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("قفل الخزنة", fontSize = 12.sp)
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBackToSettings) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        // Quick Lock Button
+                        Button(
+                            onClick = { 
+                                viewModel.lockPrivateFolder()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Text("قفل المجلد", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.surface
-    ) { paddingValues ->
-        if (privateFiles.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                    modifier = Modifier.size(64.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "الخزنة السرية فارغة",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "يمكنك نقل أي فيديو إلى الخزنة من قائمة الخيارات في الشاشة الرئيسية لحمايته",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
                 )
             }
-        } else {
-            LazyColumn(
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp)
+        ) {
+            // Stats Panel
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(privateFiles, key = { it.id }) { file ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        ),
-                        onClick = { onPlayFile(file.path) }
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalAlignment = Alignment.Start
                     ) {
-                        Row(
+                        Text("حالة الخزنة", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "مؤمنة 🛡️",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = accentColor
+                        )
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        Text("المساحة المستخدمة", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            formattedTotalSize,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = accentColor
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Search Bar & Filter Menu
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("ابحث عن فيديو خاص بالاسم...", fontSize = 12.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", modifier = Modifier.size(20.dp)) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+
+                // Sort Dropdown
+                Box {
+                    var expandedSortShow by remember { mutableStateOf(false) }
+                    Button(
+                        onClick = { expandedSortShow = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.height(52.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Sort, contentDescription = "Sort", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+                            Text(
+                                when (sortBy) {
+                                    "date" -> "الأحدث"
+                                    "title" -> "الاسم"
+                                    "size" -> "الحجم"
+                                    else -> "افتراضي"
+                                },
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = expandedSortShow,
+                        onDismissRequest = { expandedSortShow = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("ترتيب حسب الأحدث 📅") },
+                            onClick = { 
+                                sortBy = "date"
+                                expandedSortShow = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("ترتيب حسب الاسم أ-ي 🔤") },
+                            onClick = { 
+                                sortBy = "title"
+                                expandedSortShow = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("ترتيب حسب الحجم الأكبر 💾") },
+                            onClick = { 
+                                sortBy = "size"
+                                expandedSortShow = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Media Files List view
+            if (filteredFiles.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Empty",
+                            tint = accentColor.copy(alpha = 0.4f),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            if (searchQuery.isNotEmpty()) "لا توجد نتائج مطابقة لبحثك!" 
+                            else "الخزنة فارغة حالياً!\n\nلتأمين الفيديوهات اضغط على زر الخيارات (3 نقاط) لأي فيديو في الصفحة الرئيسية واختر \"نقل إلى الخزنة\".",
+                            fontSize = 13.sp,
+                            color = Color.Gray,
+                            lineHeight = 20.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    items(filteredFiles, key = { it.id }) { file ->
+                        val thumbnail = rememberVideoThumbnail(file.path)
+                        val sizeMb = file.size / (1024f * 1024f)
+
+                        val isSelected = selectedVaultPaths.contains(file.path)
+                        var showPopupMenu by remember { mutableStateOf(false) }
+
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .combinedClickable(
+                                    onClick = {
+                                        if (selectedVaultPaths.isNotEmpty()) {
+                                            if (isSelected) selectedVaultPaths.remove(file.path)
+                                            else selectedVaultPaths.add(file.path)
+                                        } else {
+                                            showPopupMenu = true
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (selectedVaultPaths.isNotEmpty()) {
+                                            if (isSelected) selectedVaultPaths.remove(file.path)
+                                            else selectedVaultPaths.add(file.path)
+                                        } else {
+                                            selectedVaultPaths.add(file.path)
+                                        }
+                                    }
+                                ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) accentColor.copy(alpha = 0.2f)
+                                                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ),
+                            border = if (isSelected) BorderStroke(1.5.dp, accentColor) else null
                         ) {
-                            Box(
+                            Row(
                                 modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
+                                // Multi-select Checkbox/Indicator
+                                if (selectedVaultPaths.isNotEmpty()) {
+                                    Icon(
+                                        imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = "Selected Status",
+                                        tint = if (isSelected) accentColor else Color.Gray,
+                                        modifier = Modifier.padding(end = 8.dp).size(20.dp)
+                                    )
+                                }
 
-                            Spacer(modifier = Modifier.width(12.dp))
+                                // Thumbnail
+                                Box(
+                                    modifier = Modifier
+                                        .size(100.dp, 64.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (thumbnail != null) {
+                                        androidx.compose.foundation.Image(
+                                            bitmap = thumbnail,
+                                            contentDescription = "Thumbnail",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Play Icon",
+                                            tint = accentColor.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(32.dp)
+                                        )
+                                    }
 
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = file.title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = file.path,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                                    if (file.duration > 0) {
+                                        val totalSec = file.duration / 1000
+                                        val min = totalSec / 60
+                                        val sec = totalSec % 60
+                                        val durFormatted = "%02d:%02d".format(min, sec)
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(4.dp)
+                                                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = durFormatted,
+                                                fontSize = 9.sp,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
 
-                            IconButton(onClick = { fileDetailsToDisplay = file }) {
-                                Icon(
-                                    imageVector = Icons.Default.Info,
-                                    contentDescription = "التفاصيل",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                                Spacer(modifier = Modifier.width(12.dp))
 
-                            IconButton(onClick = { onRemoveFromVault(file) }) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "إزالة من الخزنة",
-                                    tint = MaterialTheme.colorScheme.error
-                                )
+                                // Details
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = file.title,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "الحجم: %.1f MB".format(sizeMb),
+                                        fontSize = 10.sp,
+                                        color = Color.Gray
+                                    )
+                                }
+
+                                // Popup menu anchor
+                                Box {
+                                    IconButton(
+                                        onClick = { showPopupMenu = true },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "خيارات الفيديو",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = showPopupMenu,
+                                        onDismissRequest = { showPopupMenu = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("تشغيل الفيديو ▶️") },
+                                            onClick = {
+                                                showPopupMenu = false
+                                                onPlayFile?.invoke(file.path)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("إظهار من الخزنة 👁️") },
+                                            onClick = {
+                                                showPopupMenu = false
+                                                viewModel.setPrivateStatus(file, false)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("خصائص الملف ℹ️") },
+                                            onClick = {
+                                                showPopupMenu = false
+                                                showPropertiesDialog = file
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("تحديد الملف ☑️") },
+                                            onClick = {
+                                                showPopupMenu = false
+                                                selectedVaultPaths.add(file.path)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("حذف نهائي ❌") },
+                                            onClick = {
+                                                showPopupMenu = false
+                                                showDeleteConfirmByFile = file
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+
+            // Secondary option: Customize PIN
+            OutlinedButton(
+                onClick = onChangePin,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.VpnKey, contentDescription = "Change Pin", modifier = Modifier.size(16.dp))
+                    Text("تغيير أو إعداد الرقم السري (PIN) الخاص بالخزنة", fontSize = 12.sp)
+                }
+            }
         }
     }
 
-    fileDetailsToDisplay?.let { file ->
-        VaultFileDetailsDialog(
-            file = file,
-            onDismiss = { fileDetailsToDisplay = null }
+    // Double Delete confirmation
+    showDeleteConfirmByFile?.let { fileToDelete ->
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmByFile = null },
+            title = { Text("حذف سري نهائي ⚠️", fontWeight = FontWeight.Bold) },
+            text = { Text("هل أنت متأكد تماماً أنك تريد حذف الفيديو \"${fileToDelete.title}\" بشكل دائم ونهائي من جهازك؟ لن تتمكن من استرجاع هذا الملف أبداً بعد الحذف!") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteFile(fileToDelete)
+                        showDeleteConfirmByFile = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                ) {
+                    Text("نعم، احذف نهائياً", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmByFile = null }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
+    // Multiple Delete confirmation
+    if (showMultiDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showMultiDeleteConfirm = false },
+            title = { Text("حذف سري نهائي للمحدّد ⚠️", fontWeight = FontWeight.Bold, color = Color.Red) },
+            text = { Text("هل أنت متأكد تماماً أنك تريد حذف كافة مقاطع الفيديو المحددة (${selectedVaultPaths.size}) بشكل دائم ونهائي من جهازك؟ لن تتمكن من استرجاع هذه الملفات أبداً بعد الحذف!") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val selectedFiles = privateFiles.filter { it.path in selectedVaultPaths }
+                        selectedFiles.forEach { file ->
+                            viewModel.deleteFile(file)
+                        }
+                        selectedVaultPaths.clear()
+                        showMultiDeleteConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                ) {
+                    Text("نعم، احذف المحدّد نهائياً", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMultiDeleteConfirm = false }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
+    // Single properties dialog
+    showPropertiesDialog?.let { propFile ->
+        FilePropertiesDialog(
+            file = propFile,
+            onDismiss = { showPropertiesDialog = null }
+        )
+    }
+
+    // Multi properties dialog
+    if (showMultiPropertiesDialog) {
+        val selectedFiles = privateFiles.filter { it.path in selectedVaultPaths }
+        MultiFilesPropertiesDialog(
+            files = selectedFiles,
+            onDismiss = { showMultiPropertiesDialog = false }
         )
     }
 }
 
-/**
- * File details popup dialog inside the Private Vault.
- */
 @Composable
-fun VaultFileDetailsDialog(
+fun SettingsOptionRow(
+    title: String,
+    subtitle: String,
+    currentValue: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accentColor: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (subtitle.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            if (currentValue.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .background(accentColor.copy(alpha = 0.12f), shape = RoundedCornerShape(6.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = currentValue,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                modifier = Modifier.size(12.dp)
+            )
+        }
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+            thickness = 0.5.dp
+        )
+    }
+}
+
+@Composable
+fun FilePropertiesDialog(
     file: MediaFile,
     onDismiss: () -> Unit
 ) {
-    val sizeMb = file.size / (1024 * 1024)
-    val durationSec = file.duration / 1000
-    val min = durationSec / 60
-    val sec = durationSec % 60
+    val sizeMb = file.size / (1024f * 1024f)
+    val dateStr = remember(file.dateModified) {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+        sdf.format(java.util.Date(file.dateModified * 1000))
+    }
+    val durationStr = remember(file.duration) {
+        val totalSec = file.duration / 1000
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        "%02d:%02d".format(min, sec)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "تفاصيل الملف المحمي",
-                fontWeight = FontWeight.Bold
-            )
-        },
+        title = { Text("خصائص الملف ℹ️", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("اسم الملف: ${file.title}")
-                Text("المسار: ${file.path}")
-                Text("الحجم: $sizeMb ميجابايت")
-                Text("المدة: $min د $sec ث")
+                PropertyRow("اسم الملف:", file.title)
+                PropertyRow("المسار الحالي:", file.path)
+                PropertyRow("الحجم:", "%.2f MB".format(sizeMb))
+                PropertyRow("التاريخ:", dateStr)
+                if (file.duration > 0) {
+                    PropertyRow("المدة:", durationStr)
+                }
+                if (file.width > 0 && file.height > 0) {
+                    PropertyRow("الأبعاد:", "${file.width} x ${file.height}")
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("حسناً")
+            Button(onClick = onDismiss) {
+                Text("إغلاق")
             }
         }
     )
 }
+
+@Composable
+fun MultiFilesPropertiesDialog(
+    files: List<MediaFile>,
+    onDismiss: () -> Unit
+) {
+    val totalSize = files.sumOf { it.size }
+    val formattedSize = remember(totalSize) {
+        val mb = totalSize / (1024f * 1024f)
+        if (mb > 1024) "%.2f GB".format(mb / 1024f) else "%.2f MB".format(mb)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("خصائص الملفات المحددة ℹ️", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PropertyRow("عدد الملفات:", "${files.size} ملف")
+                PropertyRow("إجمالي الحجم:", formattedSize)
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("إغلاق")
+            }
+        }
+    )
+}
+
+@Composable
+fun PropertyRow(label: String, value: String) {
+    Column {
+        Text(label, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color.Gray)
+        Text(value, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+

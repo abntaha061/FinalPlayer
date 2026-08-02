@@ -228,8 +228,6 @@ fun PlayerScreen(
         viewModel.markAsPlayed(filePath)
     }
 
-    val appSettings by viewModel.appSettings.collectAsState()
-
     // Navigation and indexing support
     val currentVideoIndex = remember(allVideos, filePath) {
         allVideos.indexOfFirst { it.path == filePath }
@@ -237,20 +235,11 @@ fun PlayerScreen(
     val hasPreviousVideo = currentVideoIndex > 0
     val hasNextVideo = currentVideoIndex >= 0 && currentVideoIndex < allVideos.size - 1
 
-    val seekStepSeconds = appSettings.seekIncrementSeconds
+    var seekStepSeconds by remember { mutableStateOf(10) }
 
     // Store original orientation on entry to restore on exit
     val initialOrientation = remember {
         activity?.requestedOrientation ?: android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-    }
-
-    LaunchedEffect(appSettings.defaultOrientation) {
-        activity?.requestedOrientation = when (appSettings.defaultOrientation) {
-            "PORTRAIT" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            "LANDSCAPE" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            "AUTO" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
-            else -> initialOrientation
-        }
     }
 
     // Clean up screen flags and restore original orientation/insets on leave
@@ -560,61 +549,17 @@ fun PlayerScreen(
     var currentPlayTime by remember { mutableStateOf(0L) }
     var isFavorite by remember { mutableStateOf(false) }
 
-    var showResumePrompt by remember { mutableStateOf(false) }
-    var pendingResumePosition by remember { mutableStateOf(0L) }
-
     // Seek to last played position upon initial video load & sync favorite state
-    LaunchedEffect(player, filePath, appSettings.resumePlaybackMode) {
+    LaunchedEffect(player, filePath) {
         val dbMedia = viewModel.getMediaByPath(filePath)
         if (dbMedia != null) {
             isFavorite = dbMedia.isFavorite
             val initialPosition = dbMedia.lastPlayPosition
             if (initialPosition > 0) {
-                when (appSettings.resumePlaybackMode) {
-                    "AUTO" -> {
-                        player.seekTo(initialPosition)
-                        currentPlayTime = initialPosition
-                    }
-                    "START" -> {
-                        player.seekTo(0)
-                        currentPlayTime = 0
-                    }
-                    else -> { // "ASK"
-                        pendingResumePosition = initialPosition
-                        showResumePrompt = true
-                        player.pause()
-                    }
-                }
+                player.seekTo(initialPosition)
+                currentPlayTime = initialPosition
             }
         }
-    }
-
-    if (showResumePrompt) {
-        AlertDialog(
-            onDismissRequest = { showResumePrompt = false },
-            title = { Text("استئناف التشغيل", fontWeight = FontWeight.Bold) },
-            text = { Text("هل ترغب في متابعة التشغيل من نقطة التوقف الأخيرة؟") },
-            confirmButton = {
-                Button(onClick = {
-                    player.seekTo(pendingResumePosition)
-                    currentPlayTime = pendingResumePosition
-                    player.play()
-                    showResumePrompt = false
-                }) {
-                    Text("متابعة الاستئناف")
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = {
-                    player.seekTo(0)
-                    currentPlayTime = 0
-                    player.play()
-                    showResumePrompt = false
-                }) {
-                    Text("البدء من البداية")
-                }
-            }
-        )
     }
 
     // Pinch-to-zoom parameters
@@ -1198,49 +1143,44 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(playbackState, appSettings.autoPlayNext) {
+    LaunchedEffect(playbackState) {
         if (playbackState == Player.STATE_ENDED) {
-            if (appSettings.autoPlayNext && hasNextVideo) {
-                val nextPath = allVideos[currentVideoIndex + 1].path
-                onNavigateToVideo(nextPath)
-            } else {
-                when (playbackOrderIndex) {
-                    0 -> { // قائمة (Sequential)
-                        if (hasNextVideo) {
-                            val nextPath = allVideos[currentVideoIndex + 1].path
-                            onNavigateToVideo(nextPath)
-                        }
+            when (playbackOrderIndex) {
+                0 -> { // قائمة (Sequential)
+                    if (hasNextVideo) {
+                        val nextPath = allVideos[currentVideoIndex + 1].path
+                        onNavigateToVideo(nextPath)
                     }
-                    1 -> { // تكرار مرة (Repeat One)
+                }
+                1 -> { // تكرار مرة (Repeat One)
+                    player.seekTo(0)
+                    player.playWhenReady = true
+                    player.play()
+                }
+                2 -> { // تكرار الكل (Repeat All)
+                    if (hasNextVideo) {
+                        val nextPath = allVideos[currentVideoIndex + 1].path
+                        onNavigateToVideo(nextPath)
+                    } else if (allVideos.isNotEmpty()) {
+                        val firstPath = allVideos[0].path
+                        onNavigateToVideo(firstPath)
+                    }
+                }
+                3 -> { // تشغيل عشوائي (Shuffle)
+                    if (allVideos.size > 1) {
+                        var randomIndex = (0 until allVideos.size).random()
+                        if (randomIndex == currentVideoIndex) {
+                            randomIndex = (randomIndex + 1) % allVideos.size
+                        }
+                        onNavigateToVideo(allVideos[randomIndex].path)
+                    } else if (allVideos.isNotEmpty()) {
                         player.seekTo(0)
                         player.playWhenReady = true
                         player.play()
                     }
-                    2 -> { // تكرار الكل (Repeat All)
-                        if (hasNextVideo) {
-                            val nextPath = allVideos[currentVideoIndex + 1].path
-                            onNavigateToVideo(nextPath)
-                        } else if (allVideos.isNotEmpty()) {
-                            val firstPath = allVideos[0].path
-                            onNavigateToVideo(firstPath)
-                        }
-                    }
-                    3 -> { // تشغيل عشوائي (Shuffle)
-                        if (allVideos.size > 1) {
-                            var randomIndex = (0 until allVideos.size).random()
-                            if (randomIndex == currentVideoIndex) {
-                                randomIndex = (randomIndex + 1) % allVideos.size
-                            }
-                            onNavigateToVideo(allVideos[randomIndex].path)
-                        } else if (allVideos.isNotEmpty()) {
-                            player.seekTo(0)
-                            player.playWhenReady = true
-                            player.play()
-                        }
-                    }
-                    4 -> { // الإيقاف عند انتهاء الفيديو الحالي
-                        // Stay on STATE_ENDED so end-of-video overlay menu is shown
-                    }
+                }
+                4 -> { // الإيقاف عند انتهاء الفيديو الحالي
+                    // Stay on STATE_ENDED so end-of-video overlay menu is shown
                 }
             }
         }
@@ -3094,7 +3034,7 @@ fun PlayerScreen(
                 steps.forEach { step ->
                     FilterChip(
                         selected = seekStepSeconds == step,
-                        onClick = { viewModel.setSeekIncrementSeconds(step) },
+                        onClick = { seekStepSeconds = step },
                         label = { Text("${step}ث", fontSize = 11.sp) }
                     )
                 }
